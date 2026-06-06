@@ -2173,23 +2173,23 @@ function App() {
           justifyContent: 'center',
           alignItems: 'center',
           zIndex: 9999,
-          padding: '1.5rem',
+          padding: '1rem',
         }}>
           <div style={{
-            width: '100%',
-            maxWidth: '1200px',
+            width: '95vw',
+            maxWidth: '1500px',
+            height: '92vh',
             background: 'rgba(250, 249, 246, 0.98)',
             border: '1px solid var(--text-primary)',
-            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.2)',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.25)',
             display: 'flex',
             flexDirection: 'column',
-            maxHeight: '90vh',
             borderRadius: '4px',
             overflow: 'hidden',
           }}>
             {/* Modal Header */}
             <div style={{
-              padding: '1.2rem 1.5rem',
+              padding: '1rem 1.5rem',
               borderBottom: '1px solid var(--glass-border)',
               display: 'flex',
               justifyContent: 'space-between',
@@ -2207,39 +2207,70 @@ function App() {
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setShowVolumetricSimulation(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  fontSize: '1.4rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  transition: 'background-color 0.2s',
-                  lineHeight: '1'
-                }}
-              >
-                ✕
-              </button>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                {/* Open in New Tab Button */}
+                <button 
+                  onClick={() => window.open('/loading-ai/', '_blank')}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--text-primary)',
+                    color: 'var(--text-primary)',
+                    padding: '0.4rem 0.8rem',
+                    fontSize: '0.75rem',
+                    fontFamily: 'var(--font-tech)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    borderRadius: '2px',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => { e.target.style.backgroundColor = 'var(--text-primary)'; e.target.style.color = '#ffffff'; }}
+                  onMouseLeave={(e) => { e.target.style.backgroundColor = 'transparent'; e.target.style.color = 'var(--text-primary)'; }}
+                >
+                  <span style={{ fontSize: '0.85rem' }}>↗</span> {lang === "Cn" ? "在新分頁中全屏運行" : "Open Fullscreen in New Tab"}
+                </button>
+
+                {/* Close Button */}
+                <button 
+                  onClick={() => setShowVolumetricSimulation(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    fontSize: '1.4rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    transition: 'background-color 0.2s',
+                    lineHeight: '1'
+                  }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(28,27,24,0.08)'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
-            {/* Modal Body / Iframe */}
-            <div style={{ flex: 1, padding: '1rem', background: '#F4F2EE', position: 'relative' }}>
+            {/* Modal Body / Iframe Container (Perfect 100% Height Fill) */}
+            <div style={{ flex: 1, padding: '0.8rem', background: '#F4F2EE', display: 'flex', flexDirection: 'column' }}>
               <iframe 
                 src="/loading-ai/" 
                 style={{
                   width: '100%',
-                  height: '580px',
+                  height: '100%',
+                  flex: 1,
                   border: '1px solid var(--glass-border)',
                   background: '#FFFFFF',
                   borderRadius: '2px',
-                  boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.02)'
+                  boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.02)',
+                  display: 'block'
                 }}
                 title="3D Loading AI Simulation"
               />
@@ -2247,7 +2278,7 @@ function App() {
 
             {/* Modal Footer */}
             <div style={{
-              padding: '1rem 1.5rem',
+              padding: '0.8rem 1.5rem',
               borderTop: '1px solid var(--glass-border)',
               display: 'flex',
               justifyContent: 'space-between',
