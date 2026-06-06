@@ -25,6 +25,15 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Build loading-ai sub-project
+        run: |
+          cd loading-ai
+          npm ci || npm install
+          npm run build
+          cd ..
+          mkdir -p dist/loading-ai
+          cp -r loading-ai/dist/* dist/loading-ai/
+
       - name: Deploy to Bluehost VPS via SSH/rsync
         uses: easingthemes/ssh-deploy@main
         with:

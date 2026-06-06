@@ -52,6 +52,7 @@ function App() {
   const [rfqDispatched, setRfqDispatched] = useState(false);
   const [docAudited, setDocAudited] = useState(false);
   const [archiveHashed, setArchiveHashed] = useState(false);
+  const [showVolumetricSimulation, setShowVolumetricSimulation] = useState(false);
 
 
   // =====================================================================
@@ -596,6 +597,13 @@ function App() {
               <span>{lang === "Cn" ? "裝載箱型: " : "Container Type: "}<strong style={{ color: 'var(--accent-cyan)' }}>40GP Container</strong></span>
               <span>{lang === "Cn" ? "容積利用率: " : "Space Efficiency: "}<strong style={{ color: 'var(--accent-cyan)' }}>68.6%</strong></span>
             </div>
+            <button 
+              className="btn-premium" 
+              style={{ width: '100%', marginTop: '1rem', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px' }} 
+              onClick={() => setShowVolumetricSimulation(true)}
+            >
+              📊 {lang === "Cn" ? "啟動 3D 排櫃三維立體仿真" : "Launch Interactive 3D Packing Simulation"}
+            </button>
           </div>
         </div>
       );
@@ -2146,6 +2154,116 @@ function App() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* High-End Glassmorphism Volumetric 3D Packing Simulation Modal */}
+      {showVolumetricSimulation && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'rgba(28, 27, 24, 0.65)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '1.5rem',
+        }}>
+          <div style={{
+            width: '100%',
+            maxWidth: '1200px',
+            background: 'rgba(250, 249, 246, 0.98)',
+            border: '1px solid var(--text-primary)',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.2)',
+            display: 'flex',
+            flexDirection: 'column',
+            maxHeight: '90vh',
+            borderRadius: '4px',
+            overflow: 'hidden',
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '1.2rem 1.5rem',
+              borderBottom: '1px solid var(--glass-border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'rgba(124, 114, 103, 0.05)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.4rem' }}>📦</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontFamily: 'var(--font-tech)', color: 'var(--text-primary)', fontWeight: '600', letterSpacing: '0.5px' }}>
+                    {lang === "Cn" ? "3D 集裝箱排櫃優化仿真模型 (Live Volumetric Packing Simulation)" : "3D Volumetric Container Packing Simulation Console"}
+                  </h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                    {lang === "Cn" ? "正在運行於 Bluehost VPS 服务器：129.121.98.185 | 實時三維渲染與堆疊算法" : "Live executing on Bluehost VPS: 129.121.98.185 | Realtime WebGL Render & Heuristics"}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowVolumetricSimulation(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontSize: '1.4rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  transition: 'background-color 0.2s',
+                  lineHeight: '1'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body / Iframe */}
+            <div style={{ flex: 1, padding: '1rem', background: '#F4F2EE', position: 'relative' }}>
+              <iframe 
+                src="/loading-ai/" 
+                style={{
+                  width: '100%',
+                  height: '580px',
+                  border: '1px solid var(--glass-border)',
+                  background: '#FFFFFF',
+                  borderRadius: '2px',
+                  boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.02)'
+                }}
+                title="3D Loading AI Simulation"
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '1rem 1.5rem',
+              borderTop: '1px solid var(--glass-border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#FAF9F6'
+            }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                {lang === "Cn" ? "💡 提示：滑鼠滾輪可縮放視角，按住左鍵可旋轉貨櫃，按右鍵拖曳可平移視角。" : "💡 Controls: Scroll wheel to zoom, left click & drag to rotate, right click to pan."}
+              </span>
+              <button 
+                className="btn-premium" 
+                style={{ padding: '0.5rem 1.5rem' }}
+                onClick={() => setShowVolumetricSimulation(false)}
+              >
+                {lang === "Cn" ? "關閉主控台" : "Close Simulation"}
+              </button>
             </div>
           </div>
         </div>
