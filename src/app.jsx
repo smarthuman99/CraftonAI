@@ -1128,6 +1128,17 @@ function App() {
     }
   };
 
+  // Listen to postMessage from child loading-ai
+  useEffect(() => {
+    const handleChildMessage = (e) => {
+      if (e.data && e.data.type === 'CRAFTON_CHILD_LANG_CHANGE') {
+        setLang(e.data.lang); // "Cn" or "En"
+      }
+    };
+    window.addEventListener('message', handleChildMessage);
+    return () => window.removeEventListener('message', handleChildMessage);
+  }, []);
+
   // Re-fetch when connection variables or language change
   useEffect(() => {
     fetchSupabaseData();
@@ -2211,7 +2222,7 @@ function App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 {/* Open in New Tab Button */}
                 <button 
-                  onClick={() => window.open('/loading-ai/', '_blank')}
+                  onClick={() => window.open(`/loading-ai/?lang=${lang === "Cn" ? "cn" : "en"}`, '_blank')}
                   style={{
                     background: 'none',
                     border: '1px solid var(--text-primary)',
@@ -2261,7 +2272,7 @@ function App() {
             {/* Modal Body / Iframe Container (Perfect 100% Height Fill) */}
             <div style={{ flex: 1, padding: '0.8rem', background: '#F4F2EE', display: 'flex', flexDirection: 'column' }}>
               <iframe 
-                src="/loading-ai/" 
+                src={`/loading-ai/?lang=${lang === "Cn" ? "cn" : "en"}`} 
                 style={{
                   width: '100%',
                   height: '100%',

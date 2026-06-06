@@ -11,9 +11,9 @@
 
 // Container Presets
 export const STANDARD_CONTAINERS = [
-  { id: '20GP', name: '20GP (标准箱)', l: 5890, w: 2350, h: 2390, maxWeight: 21800 },
-  { id: '40GP', name: '40GP (平柜)', l: 12030, w: 2350, h: 2390, maxWeight: 26600 },
-  { id: '40HQ', name: '40HQ (高柜)', l: 12030, w: 2350, h: 2690, maxWeight: 26500 },
+  { id: '20GP', name: '20GP (标准箱)', nameEn: '20GP (Standard)', l: 5890, w: 2350, h: 2390, maxWeight: 21800 },
+  { id: '40GP', name: '40GP (平柜)', nameEn: '40GP (Flat)', l: 12030, w: 2350, h: 2390, maxWeight: 26600 },
+  { id: '40HQ', name: '40HQ (高柜)', nameEn: '40HQ (High Cube)', l: 12030, w: 2350, h: 2690, maxWeight: 26500 },
 ];
 
 /**

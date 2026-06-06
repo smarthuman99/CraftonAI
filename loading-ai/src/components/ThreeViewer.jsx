@@ -2,14 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Play, Pause, SkipBack, SkipForward, RotateCcw, Eye } from 'lucide-react';
+import { TRANSLATIONS } from '../utils/translations.js';
 
 export default function ThreeViewer({
+  lang,
   containerData,
   currentStep,
   setCurrentStep,
   onHoverBox,
   hoveredBox
 }) {
+  const t = (key) => TRANSLATIONS[lang]?.[key] || TRANSLATIONS['en']?.[key] || key;
+
   const mountRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1000); // ms per step
@@ -361,9 +365,9 @@ export default function ThreeViewer({
   };
 
   const getStackingGradeName = (grade) => {
-    if (grade === 3) return { label: '重型底货 (Heavy)', class: 'heavy' };
-    if (grade === 2) return { label: '中型架货 (Medium)', class: 'medium' };
-    return { label: '轻型顶货 (Light)', class: 'light' };
+    if (grade === 3) return { label: t('heavyBottomLabel'), class: 'heavy' };
+    if (grade === 2) return { label: t('mediumMiddleLabel'), class: 'medium' };
+    return { label: t('lightTopLabel'), class: 'light' };
   };
 
   return (
@@ -374,23 +378,25 @@ export default function ThreeViewer({
       {/* Floating Directions Label */}
       <div style={{ position: 'absolute', top: '16px', left: '16px', display: 'flex', gap: '8px', pointerEvents: 'none' }}>
         <span className="logo-badge" style={{ background: 'rgba(6, 182, 212, 0.15)', borderColor: 'var(--color-secondary)' }}>
-          ← 柜尾 (CONTAINER BACK)
+          {t('containerBack')}
         </span>
         <span className="logo-badge" style={{ background: 'rgba(236, 72, 153, 0.15)', borderColor: '#ec4899' }}>
-          柜门 (DOOR FRONT) →
+          {t('containerDoor')}
         </span>
       </div>
 
       {/* Hover Information Card */}
       {hoveredBox && (
         <div className="hover-card glass-panel">
-          <h4 style={{ color: hoveredBox.color }}>{hoveredBox.sku}</h4>
-          <p><span>排装次序:</span> <strong>SOP #{hoveredBox.stepIndex}</strong></p>
-          <p><span>尺寸 (L×W×H):</span> <strong>{hoveredBox.dx}×{hoveredBox.dy}×{hoveredBox.dz} mm</strong></p>
-          <p><span>摆放位置:</span> <strong>X:{hoveredBox.x} Y:{hoveredBox.y} Z:{hoveredBox.z}</strong></p>
-          <p><span>单箱重量:</span> <strong>{hoveredBox.weight} kg</strong></p>
+          <h4 style={{ color: hoveredBox.color }}>
+            {lang === 'en' ? (hoveredBox.skuEn || hoveredBox.sku) : hoveredBox.sku}
+          </h4>
+          <p><span>{t('sopSeq')}:</span> <strong>SOP #{hoveredBox.stepIndex}</strong></p>
+          <p><span>{t('dimensions')}:</span> <strong>{hoveredBox.dx}×{hoveredBox.dy}×{hoveredBox.dz} mm</strong></p>
+          <p><span>{t('position')}:</span> <strong>X:{hoveredBox.x} Y:{hoveredBox.y} Z:{hoveredBox.z}</strong></p>
+          <p><span>{t('unitWeightLabel')}:</span> <strong>{hoveredBox.weight} kg</strong></p>
           <p style={{ marginTop: '6px' }}>
-            <span>承重等级:</span> 
+            <span>{t('stackingGradeLabel')}:</span> 
             <strong className={`badge-grade ${getStackingGradeName(hoveredBox.stackingGrade).class}`}>
               {getStackingGradeName(hoveredBox.stackingGrade).label}
             </strong>
@@ -401,31 +407,31 @@ export default function ThreeViewer({
       {/* Step-by-Step SOP Controls */}
       {maxSteps > 0 && (
         <div className="sop-controls">
-          <button className="sop-btn" onClick={handleReset} title="返回初始 (Reset)">
+          <button className="sop-btn" onClick={handleReset} title={t('resetBtn')}>
             <RotateCcw size={16} />
           </button>
-          <button className="sop-btn" onClick={handleStepBack} disabled={currentStep === 0} title="上一步 (Previous)">
+          <button className="sop-btn" onClick={handleStepBack} disabled={currentStep === 0} title={t('prevBtn')}>
             <SkipBack size={16} />
           </button>
           
-          <button className="sop-btn" onClick={handlePlayPause} style={{ background: isPlaying ? 'var(--color-danger)' : 'var(--color-success)', borderColor: 'transparent' }} title={isPlaying ? '暂停 (Pause)' : '自动演示 SOP (Auto Load)'}>
+          <button className="sop-btn" onClick={handlePlayPause} style={{ background: isPlaying ? 'var(--color-danger)' : 'var(--color-success)', borderColor: 'transparent' }} title={isPlaying ? t('pauseBtn') : t('autoLoadBtn')}>
             {isPlaying ? <Pause size={18} fill="#fff" /> : <Play size={18} fill="#fff" />}
           </button>
 
-          <button className="sop-btn" onClick={handleStepForward} disabled={currentStep === maxSteps} title="下一步 (Next)">
+          <button className="sop-btn" onClick={handleStepForward} disabled={currentStep === maxSteps} title={t('nextBtn')}>
             <SkipForward size={16} />
           </button>
-          <button className="sop-btn" onClick={handleShowAll} disabled={currentStep === maxSteps} title="显示全部 (Show All)">
+          <button className="sop-btn" onClick={handleShowAll} disabled={currentStep === maxSteps} title={t('showAllBtn')}>
             <Eye size={16} />
           </button>
 
           <span className="sop-progress-text">
-            装载步骤: <strong>{currentStep}</strong> / {maxSteps}
+            {t('loadStep')}: <strong>{currentStep}</strong> / {maxSteps}
           </span>
 
           {/* Speed slider */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderLeft: '1px solid var(--border-light)', paddingLeft: '14px' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>装载速度:</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('loadSpeed')}:</span>
             <input 
               type="range" 
               min="200" 

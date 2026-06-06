@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Plus, Trash2, Database, Upload, Layers } from 'lucide-react';
 import { MOCK_PRESETS } from '../utils/mockData.js';
 import { STANDARD_CONTAINERS } from '../utils/binPacking.js';
+import { TRANSLATIONS } from '../utils/translations.js';
 
 export default function SidebarInput({
+  lang,
   items,
   setItems,
   containerType,
@@ -11,6 +13,8 @@ export default function SidebarInput({
   onImportMock,
   onOpenImporter
 }) {
+  const t = (key) => TRANSLATIONS[lang]?.[key] || TRANSLATIONS['en']?.[key] || key;
+
   const [newSku, setNewSku] = useState('');
   const [newL, setNewL] = useState('1200');
   const [newW, setNewW] = useState('800');
@@ -29,6 +33,7 @@ export default function SidebarInput({
     const newItem = {
       id: Date.now().toString(),
       sku: newSku.trim(),
+      skuEn: newSku.trim(), // For manually added ones, SKU En is the same
       l: parseInt(newL),
       w: Math.max(10, parseInt(newW)),
       h: Math.max(10, parseInt(newH)),
@@ -62,9 +67,9 @@ export default function SidebarInput({
   };
 
   const getStackingLabel = (grade) => {
-    if (grade === 3) return '重底';
-    if (grade === 2) return '中架';
-    return '轻顶';
+    if (grade === 3) return t('heavy');
+    if (grade === 2) return t('medium');
+    return t('light');
   };
 
   const colorsList = [
@@ -83,12 +88,12 @@ export default function SidebarInput({
       {/* Container Settings */}
       <div className="panel-section glass-panel">
         <h3 className="panel-header">
-          <span>1. 货柜参数设置</span>
+          <span>{t('panel1Header')}</span>
           <Layers size={18} className="glow-text-primary" />
         </h3>
         
         <div className="form-group" style={{ marginTop: '8px' }}>
-          <label>货柜规格选项</label>
+          <label>{t('containerSpecLabel')}</label>
           <select 
             className="form-input" 
             value={containerType.id} 
@@ -99,17 +104,17 @@ export default function SidebarInput({
           >
             {STANDARD_CONTAINERS.map(c => (
               <option key={c.id} value={c.id}>
-                {c.name} ({c.l}×{c.w}×{c.h} mm, 载重:{c.maxWeight}kg)
+                {(lang === 'en' ? c.nameEn : c.name) || c.name} ({c.l}×{c.w}×{c.h} mm, {lang === 'en' ? 'MaxPayload' : '载重'}:{c.maxWeight}kg)
               </option>
             ))}
-            <option value="custom">自定义货柜...</option>
+            <option value="custom">{t('customContainer')}</option>
           </select>
         </div>
 
         {containerType.id === 'custom' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
             <div className="form-group">
-              <label>长 (Length, mm)</label>
+              <label>{t('length')}</label>
               <input 
                 type="number" 
                 className="form-input" 
@@ -118,7 +123,7 @@ export default function SidebarInput({
               />
             </div>
             <div className="form-group">
-              <label>宽 (Width, mm)</label>
+              <label>{t('width')}</label>
               <input 
                 type="number" 
                 className="form-input" 
@@ -127,7 +132,7 @@ export default function SidebarInput({
               />
             </div>
             <div className="form-group">
-              <label>高 (Height, mm)</label>
+              <label>{t('height')}</label>
               <input 
                 type="number" 
                 className="form-input" 
@@ -136,7 +141,7 @@ export default function SidebarInput({
               />
             </div>
             <div className="form-group">
-              <label>最大承重 (Payload, kg)</label>
+              <label>{t('payload')}</label>
               <input 
                 type="number" 
                 className="form-input" 
@@ -151,11 +156,11 @@ export default function SidebarInput({
       {/* Preset Packages */}
       <div className="panel-section glass-panel">
         <h3 className="panel-header">
-          <span>2. 预设套件一键加载</span>
+          <span>{t('panel2Header')}</span>
           <Database size={18} className="glow-text-secondary" />
         </h3>
         <p style={{ fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '4px' }}>
-          销售与物流主管快速演示装柜效果：
+          {t('presetSub')}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
           {MOCK_PRESETS.map(preset => (
@@ -166,8 +171,12 @@ export default function SidebarInput({
               style={{ textAlign: 'left', justifyContent: 'flex-start', padding: '8px 12px', borderRadius: 'var(--radius-md)' }}
             >
               <div>
-                <strong style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text)' }}>{preset.name.split(' (')[0]}</strong>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-muted)', display: 'block', marginTop: '2px', lineHeight: '1.2' }}>{preset.description}</span>
+                <strong style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text)' }}>
+                  {lang === 'en' ? preset.nameEn : preset.name}
+                </strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--color-muted)', display: 'block', marginTop: '2px', lineHeight: '1.2' }}>
+                  {lang === 'en' ? preset.descriptionEn : preset.description}
+                </span>
               </div>
             </button>
           ))}
@@ -177,22 +186,22 @@ export default function SidebarInput({
           onClick={onOpenImporter} 
           style={{ width: '100%', marginTop: '6px', fontSize: '0.8rem', padding: '6px 12px' }}
         >
-          <Upload size={14} /> 批量导入 / 飞书数据对接
+          <Upload size={14} /> {t('batchImport')}
         </button>
       </div>
 
       {/* Manual Input Form */}
       <form className="panel-section glass-panel" onSubmit={addManualItem}>
         <h3 className="panel-header">
-          <span>3. 手动录入/修改 SKU</span>
+          <span>{t('panel3Header')}</span>
           <Plus size={18} className="glow-text-primary" />
         </h3>
 
         <div className="form-group">
-          <label>SKU 名称</label>
+          <label>{t('skuName')}</label>
           <input 
             type="text" 
-            placeholder="例如: Solid Wood Chair" 
+            placeholder={t('skuPlaceholder')} 
             className="form-input" 
             value={newSku} 
             onChange={(e) => setNewSku(e.target.value)}
@@ -201,41 +210,41 @@ export default function SidebarInput({
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
           <div className="form-group">
-            <label>长 (L, mm)</label>
+            <label>{lang === 'en' ? 'L (mm)' : '长 (L, mm)'}</label>
             <input type="number" className="form-input" value={newL} onChange={(e) => setNewL(e.target.value)} />
           </div>
           <div className="form-group">
-            <label>宽 (W, mm)</label>
+            <label>{lang === 'en' ? 'W (mm)' : '宽 (W, mm)'}</label>
             <input type="number" className="form-input" value={newW} onChange={(e) => setNewW(e.target.value)} />
           </div>
           <div className="form-group">
-            <label>高 (H, mm)</label>
+            <label>{lang === 'en' ? 'H (mm)' : '高 (H, mm)'}</label>
             <input type="number" className="form-input" value={newH} onChange={(e) => setNewH(e.target.value)} />
           </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
           <div className="form-group">
-            <label>打包数量 (件)</label>
+            <label>{t('packingQty')}</label>
             <input type="number" className="form-input" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
           </div>
           <div className="form-group">
-            <label>单箱重量 (kg)</label>
+            <label>{t('unitWeight')}</label>
             <input type="number" className="form-input" value={newWeight} onChange={(e) => setNewWeight(e.target.value)} />
           </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '8px' }}>
           <div className="form-group">
-            <label>承重等级</label>
+            <label>{t('stackingPriority')}</label>
             <select className="form-input" value={newGrade} onChange={(e) => setNewGrade(e.target.value)}>
-              <option value="3">重底货 (3)</option>
-              <option value="2">中架货 (2)</option>
-              <option value="1">轻顶货 (1)</option>
+              <option value="3">{t('heavyBottom')}</option>
+              <option value="2">{t('mediumMiddle')}</option>
+              <option value="1">{t('lightTop')}</option>
             </select>
           </div>
           <div className="form-group">
-            <label>SKU 标志色</label>
+            <label>{t('skuColor')}</label>
             <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
               <input 
                 type="color" 
@@ -267,32 +276,32 @@ export default function SidebarInput({
         <div style={{ display: 'flex', gap: '12px', margin: '4px 0' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--color-muted)', cursor: 'pointer' }}>
             <input type="checkbox" checked={newAllowSide} onChange={(e) => setNewAllowSide(e.target.checked)} style={{ accentColor: 'var(--color-primary)' }} />
-            允许侧放 (Side)
+            {t('allowSide')}
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--color-muted)', cursor: 'pointer' }}>
             <input type="checkbox" checked={newAllowUpsideDown} onChange={(e) => setNewAllowUpsideDown(e.target.checked)} style={{ accentColor: 'var(--color-primary)' }} />
-            允许倒置 (Flip)
+            {t('allowFlip')}
           </label>
         </div>
 
         <button type="submit" className="btn-primary" style={{ width: '100%' }}>
-          <Plus size={16} /> 添加此货物到清单
+          <Plus size={16} /> {t('addItemBtn')}
         </button>
       </form>
 
       {/* Cargo List Display */}
       <div className="panel-section glass-panel" style={{ flex: 1, minHeight: '200px', overflowY: 'auto' }}>
         <h3 className="panel-header" style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>
-          <span>清单列表 ({items.length} 种)</span>
+          <span>{t('cargoListTitle')} ({items.length} {t('cargoTypes')})</span>
           <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)', fontWeight: '600' }}>
-            总计: {items.reduce((sum, item) => sum + parseInt(item.qty || 0), 0)} 件
+            {t('cargoTotal')}: {items.reduce((sum, item) => sum + parseInt(item.qty || 0), 0)} {t('cargoPcs')}
           </span>
         </h3>
 
         {items.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-muted)', padding: '24px 0', gap: '8px' }}>
             <Database size={24} style={{ opacity: 0.5 }} />
-            <span style={{ fontSize: '0.8rem' }}>清单为空，请点击预设一键加载</span>
+            <span style={{ fontSize: '0.8rem' }}>{t('emptyCargo')}</span>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
@@ -315,24 +324,24 @@ export default function SidebarInput({
                 
                 <div style={{ paddingLeft: '8px', flex: 1 }}>
                   <div style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--color-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
-                    {item.sku}
+                    {lang === 'en' ? (item.skuEn || item.sku) : item.sku}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)', marginTop: '2px' }}>
-                    {item.l}×{item.w}×{item.h} mm | {item.weight}kg | {item.qty}件
+                    {item.l}×{item.w}×{item.h} mm | {item.weight}kg | {item.qty}{t('cargoPcs')}
                   </div>
                   <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
                     <span className={`badge-grade ${getStackingClass(item.stackingGrade)}`}>
                       {getStackingLabel(item.stackingGrade)}
                     </span>
-                    {!item.allowSide && <span style={{ fontSize: '0.65rem', color: '#fda4af', padding: '1px 4px', background: 'rgba(225,29,72,0.1)', borderRadius: '3px', border: '1px solid rgba(225,29,72,0.2)' }}>防侧放</span>}
-                    {!item.allowUpsideDown && <span style={{ fontSize: '0.65rem', color: '#fde047', padding: '1px 4px', background: 'rgba(234,88,12,0.1)', borderRadius: '3px', border: '1px solid rgba(234,88,12,0.2)' }}>防倒置</span>}
+                    {!item.allowSide && <span style={{ fontSize: '0.65rem', color: '#fda4af', padding: '1px 4px', background: 'rgba(225,29,72,0.1)', borderRadius: '3px', border: '1px solid rgba(225,29,72,0.2)' }}>{t('noSide')}</span>}
+                    {!item.allowUpsideDown && <span style={{ fontSize: '0.65rem', color: '#fde047', padding: '1px 4px', background: 'rgba(234,88,12,0.1)', borderRadius: '3px', border: '1px solid rgba(234,88,12,0.2)' }}>{t('noFlip')}</span>}
                   </div>
                 </div>
 
                 <button 
                   onClick={() => deleteItem(item.id)} 
                   style={{ background: 'transparent', border: 'none', color: 'var(--color-muted)', cursor: 'pointer', padding: '4px' }}
-                  title="删除"
+                  title="Delete"
                 >
                   <Trash2 size={14} className="hover-red" style={{ transition: 'color var(--transition-fast)' }} />
                 </button>

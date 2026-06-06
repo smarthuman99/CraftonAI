@@ -1,13 +1,58 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Layers, Activity, Sparkles, Send, ShieldCheck, Box } from 'lucide-react';
+import { Layers, Activity, Sparkles, Send, ShieldCheck, Box, Globe } from 'lucide-react';
 import SidebarInput from './components/SidebarInput.jsx';
 import ThreeViewer from './components/ThreeViewer.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import LarkImporter from './components/LarkImporter.jsx';
 import { packContainers, STANDARD_CONTAINERS } from './utils/binPacking.js';
 import { MOCK_PRESETS } from './utils/mockData.js';
+import { TRANSLATIONS } from './utils/translations.js';
 
 export default function App() {
+  const [lang, setLang] = useState(() => {
+    return new URLSearchParams(window.location.search).get('lang') || 'en';
+  });
+
+  const t = useCallback((key) => {
+    return TRANSLATIONS[lang]?.[key] || TRANSLATIONS['en']?.[key] || key;
+  }, [lang]);
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const urlLang = new URLSearchParams(window.location.search).get('lang');
+      if (urlLang && urlLang !== lang) {
+        setLang(urlLang);
+      }
+    };
+    
+    const handleMessage = (e) => {
+      if (e.data && e.data.type === 'CRAFTON_SET_LANG') {
+        setLang(e.data.lang?.toLowerCase() === 'cn' ? 'cn' : 'en');
+      }
+    };
+
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [lang]);
+
+  const handleToggleLang = () => {
+    const nextLang = lang === 'en' ? 'cn' : 'en';
+    setLang(nextLang);
+    // Send postMessage to parent to keep parent in sync if embedded in iframe
+    try {
+      window.parent.postMessage({ 
+        type: 'CRAFTON_CHILD_LANG_CHANGE', 
+        lang: nextLang === 'cn' ? 'Cn' : 'En' 
+      }, '*');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const [items, setItems] = useState(() => {
     return MOCK_PRESETS.length > 0 ? MOCK_PRESETS[0].items : [];
   });
@@ -171,8 +216,8 @@ export default function App() {
         <div className="logo-section">
           <Layers size={28} className="logo-icon" />
           <div>
-            <h1 className="logo-title">3D 家具智能装柜优化系统</h1>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>Sandra Logistics & Sales Assistant Pro</span>
+            <h1 className="logo-title">{t('title')}</h1>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('subtitle')}</span>
           </div>
           <span className="logo-badge">V1.2 Premium</span>
         </div>
@@ -180,22 +225,22 @@ export default function App() {
         {/* Engine Toggle Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--color-muted)', fontWeight: '600' }}>
-            算法核心引擎:
+            {t('engineTitle')}
           </span>
           <div className="engine-selector">
             <button 
               className={`engine-btn ${engineMode === 'fast' ? 'active fast' : ''}`}
               onClick={() => handleSelectEngineMode('fast')}
-              title="极速装载：秒级出库量评估，适合前端销售报价"
+              title={t('fastDesc')}
             >
-              <Sparkles size={16} /> 极速估算模式 (Fast Mode)
+              <Sparkles size={16} /> {t('fastMode')}
             </button>
             <button 
               className={`engine-btn ${engineMode === 'max' ? 'active max' : ''}`}
               onClick={() => handleSelectEngineMode('max')}
-              title="极限装载：多维遗传启发式算法，榨干集装箱空间"
+              title={t('maxDesc')}
             >
-              <Activity size={16} /> 极限装载模式 (Max Mode)
+              <Activity size={16} /> {t('maxMode')}
             </button>
           </div>
 
@@ -206,23 +251,51 @@ export default function App() {
               disabled={isOptimizing}
               style={{ padding: '8px 16px', fontSize: '0.85rem' }}
             >
-              <Send size={14} /> 重新计算 (Recalculate)
+              <Send size={14} /> {t('recalculate')}
             </button>
           )}
         </div>
 
-        {/* Security / Standard Badges */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-success)' }}>
-          <ShieldCheck size={18} className="glow-text-secondary" />
-          <span style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Stable & Certified
-          </span>
+        {/* Language Switcher and Security / Standard Badges */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {/* Globe Language Switch Button */}
+          <button
+            onClick={handleToggleLang}
+            style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: 'var(--color-text)',
+              padding: '6px 12px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.8rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'; }}
+            title="Switch Language / 切换语言"
+          >
+            <Globe size={14} className="glow-text-primary" style={{ transform: 'translateY(-0.5px)' }} />
+            {lang === 'en' ? 'English (EN)' : '简体中文 (CN)'}
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-success)' }}>
+            <ShieldCheck size={18} className="glow-text-secondary" />
+            <span style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              {t('statusStable')}
+            </span>
+          </div>
         </div>
       </header>
 
       {/* Main Core Layout Grid */}
       {/* 1. Left Input Sidebar */}
       <SidebarInput 
+        lang={lang}
         items={items}
         setItems={handleUpdateItems}
         containerType={containerType}
@@ -235,6 +308,7 @@ export default function App() {
       <main className="main-content">
         {activeContainer ? (
           <ThreeViewer 
+            lang={lang}
             containerData={activeContainer}
             currentStep={effectiveStep}
             setCurrentStep={setCurrentStep}
@@ -244,13 +318,14 @@ export default function App() {
         ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-muted)', gap: '16px', background: '#0b0b10' }}>
             <Box size={48} style={{ opacity: 0.3 }} />
-            <span style={{ fontSize: '1rem' }}>请录入货物或选用预设套件一键计算 3D 载重图</span>
+            <span style={{ fontSize: '1rem' }}>{t('noLoadingResult')}</span>
           </div>
         )}
       </main>
 
       {/* 3. Right Stats Dashboard Sidebar */}
       <Dashboard 
+        lang={lang}
         packedContainers={packedContainers}
         unpackedCount={unpackedItems.length}
         activeContainerIndex={activeContainerIndex}
@@ -265,6 +340,7 @@ export default function App() {
 
       {/* CSV/Excel/Lark Importer Modal */}
       <LarkImporter 
+        lang={lang}
         isOpen={isImporterOpen}
         onClose={() => setIsImporterOpen(false)}
         onImport={handleImportData}

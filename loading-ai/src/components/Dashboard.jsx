@@ -1,6 +1,8 @@
 import { Activity, ShieldAlert, Navigation, Scale, Box } from 'lucide-react';
+import { TRANSLATIONS } from '../utils/translations.js';
 
 export default function Dashboard({
+  lang,
   packedContainers,
   unpackedCount,
   activeContainerIndex,
@@ -9,6 +11,7 @@ export default function Dashboard({
   optimizationProgress,
   optimizationStats
 }) {
+  const t = (key) => TRANSLATIONS[lang]?.[key] || TRANSLATIONS['en']?.[key] || key;
   const activeContainer = packedContainers[activeContainerIndex] || null;
 
   // Render circular SVG utilization meter
@@ -41,7 +44,7 @@ export default function Dashboard({
           <span className="metric-percentage glow-text-primary">
             {percent}%
           </span>
-          <span className="metric-label">空间利用率</span>
+          <span className="metric-label">{t('utilizationTitle')}</span>
         </div>
       </div>
     );
@@ -50,9 +53,9 @@ export default function Dashboard({
   // Helper to check weight distribution
   const getWeightStatusLabel = (shiftX, shiftY) => {
     const shift = Math.sqrt(shiftX * shiftX + shiftY * shiftY);
-    if (shift < 8) return { label: '极度平衡 (Excellent)', color: 'var(--color-success)' };
-    if (shift < 18) return { label: '适度偏离 (Safe)', color: 'var(--color-warning)' };
-    return { label: '严重倾斜 (Unbalanced)', color: 'var(--color-danger)' };
+    if (shift < 8) return { label: t('cogExcellent'), color: 'var(--color-success)' };
+    if (shift < 18) return { label: t('cogSafe'), color: 'var(--color-warning)' };
+    return { label: t('cogDanger'), color: 'var(--color-danger)' };
   };
 
   return (
@@ -61,9 +64,9 @@ export default function Dashboard({
       {packedContainers.length > 0 && (
         <div className="panel-section glass-panel">
           <h3 className="panel-header">
-            <span>4. 货柜选用方案</span>
+            <span>{t('panel4Header')}</span>
             <span className="logo-badge" style={{ background: 'var(--color-primary-glow)', color: '#fff' }}>
-              共 {packedContainers.length} 个柜
+              {t('totalContainers').replace('{count}', packedContainers.length)}
             </span>
           </h3>
           <div className="container-tabs" style={{ marginTop: '8px' }}>
@@ -73,12 +76,12 @@ export default function Dashboard({
                 className={`container-tab ${idx === activeContainerIndex ? 'active' : ''}`}
                 onClick={() => setActiveContainerIndex(idx)}
               >
-                柜 {idx + 1} ({c.stats.utilization}%)
+                {t('tabContainer').replace('{idx}', idx + 1)} ({c.stats.utilization}%)
               </button>
             ))}
           </div>
           <p style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
-            自动分拨：货物超过单柜上限，已依次分拨至后续货柜中。
+            {t('rolloverNotice')}
           </p>
         </div>
       )}
@@ -87,12 +90,12 @@ export default function Dashboard({
       {isOptimizing && (
         <div className="panel-section glass-panel" style={{ borderColor: 'var(--color-primary)' }}>
           <h3 className="panel-header">
-            <span>引擎深度求解中...</span>
+            <span>{t('optimizingHeader')}</span>
             <Activity size={18} className="glow-text-primary" />
           </h3>
           <div style={{ marginTop: '4px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--color-muted)', marginBottom: '4px' }}>
-              <span>正在计算: {optimizationStats.containerName || '装载分析'}</span>
+              <span>{t('calculating')}: {optimizationStats.containerName || '装载分析'}</span>
               <span>{optimizationProgress}%</span>
             </div>
             
@@ -109,8 +112,8 @@ export default function Dashboard({
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.7rem', color: 'var(--color-muted)', marginTop: '8px' }}>
-              <div>最佳利用率: <strong style={{ color: '#fff' }}>{optimizationStats.bestUtilization}%</strong></div>
-              <div>用时: <strong style={{ color: '#fff' }}>{(optimizationStats.elapsedTime / 1000).toFixed(1)}s</strong></div>
+              <div>{t('bestUtilization')}: <strong style={{ color: '#fff' }}>{optimizationStats.bestUtilization}%</strong></div>
+              <div>{t('elapsedTime')}: <strong style={{ color: '#fff' }}>{(optimizationStats.elapsedTime / 1000).toFixed(1)}s</strong></div>
             </div>
           </div>
         </div>
@@ -125,11 +128,11 @@ export default function Dashboard({
             {/* Minor Stats Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '16px', borderTop: '1px solid var(--border-light)', paddingTop: '12px' }}>
               <div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-muted)', display: 'block' }}>已装载体积</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--color-muted)', display: 'block' }}>{t('loadedVol')}</span>
                 <strong style={{ fontSize: '1rem' }}>{(activeContainer.stats.usedVolume / 1e9).toFixed(2)} m³</strong>
               </div>
               <div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-muted)', display: 'block' }}>货柜总体积</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--color-muted)', display: 'block' }}>{t('totalVol')}</span>
                 <strong style={{ fontSize: '1rem' }}>{(activeContainer.stats.totalVolume / 1e9).toFixed(2)} m³</strong>
               </div>
             </div>
@@ -138,14 +141,14 @@ export default function Dashboard({
           {/* Stacking weight safety indicator */}
           <div className="panel-section glass-panel">
             <h3 className="panel-header">
-              <span>5. 载重及配载安全</span>
+              <span>{t('panel5Header')}</span>
               <Scale size={18} className="glow-text-secondary" />
             </h3>
 
             {/* Weight Bar Gauge */}
             <div style={{ marginTop: '6px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '4px' }}>
-                <span>货物载重重量:</span>
+                <span>{t('cargoWeightLabel')}:</span>
                 <strong>{activeContainer.stats.usedWeight} / {activeContainer.maxWeight} kg</strong>
               </div>
               <div className="gauge-bar-container">
@@ -159,7 +162,7 @@ export default function Dashboard({
               </div>
               {activeContainer.stats.usedWeight > activeContainer.maxWeight && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '6px' }}>
-                  <ShieldAlert size={14} /> 警告：已超重！请考虑增加集装箱。
+                  <ShieldAlert size={14} /> {t('overweightWarning')}
                 </div>
               )}
             </div>
@@ -168,11 +171,11 @@ export default function Dashboard({
           {/* Center of Gravity Crosshair Card */}
           <div className="panel-section glass-panel">
             <h3 className="panel-header">
-              <span>6. 货柜重心分布</span>
+              <span>{t('panel6Header')}</span>
               <Navigation size={18} className="glow-text-primary" />
             </h3>
             <p style={{ fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '8px' }}>
-              海运平衡指数 (重心偏离中心点百分比)：
+              {t('seaBalanceIndex')}
             </p>
 
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -196,7 +199,6 @@ export default function Dashboard({
                 <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#fff', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.5 }} />
 
                 {/* Gravity point crosshair (Shift values are range -100 to 100) */}
-                {/* We map -100 to 100 shift value to 0px to 80px */}
                 <div 
                   style={{ 
                     width: '10px', 
@@ -210,14 +212,14 @@ export default function Dashboard({
                     transform: 'translate(-50%, -50%)',
                     boxShadow: '0 0 10px var(--color-secondary-glow)'
                   }} 
-                  title={`X偏离: ${activeContainer.stats.cgXShift}%, Y偏离: ${activeContainer.stats.cgYShift}%`}
+                  title={`X Shift: ${activeContainer.stats.cgXShift}%, Y Shift: ${activeContainer.stats.cgYShift}%`}
                 />
               </div>
 
               {/* COG Metadata */}
               <div style={{ flex: 1, fontSize: '0.8rem' }}>
-                <div>长轴偏离 (X Shift): <strong style={{ color: '#fff' }}>{activeContainer.stats.cgXShift || 0}%</strong></div>
-                <div>横轴偏离 (Y Shift): <strong style={{ color: '#fff' }}>{activeContainer.stats.cgYShift || 0}%</strong></div>
+                <div>{t('xAxisShift')}: <strong style={{ color: '#fff' }}>{activeContainer.stats.cgXShift || 0}%</strong></div>
+                <div>{t('yAxisShift')}: <strong style={{ color: '#fff' }}>{activeContainer.stats.cgYShift || 0}%</strong></div>
                 <div style={{ 
                   fontSize: '0.75rem', 
                   marginTop: '4px', 
@@ -233,7 +235,7 @@ export default function Dashboard({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'var(--color-muted)', gap: '12px' }}>
           <Box size={32} style={{ opacity: 0.4 }} />
-          <span style={{ fontSize: '0.8rem' }}>无可用装载结果</span>
+          <span style={{ fontSize: '0.8rem' }}>{t('noResult')}</span>
         </div>
       )}
 
@@ -241,14 +243,14 @@ export default function Dashboard({
       {unpackedCount > 0 && (
         <div className="panel-section glass-panel" style={{ borderColor: 'var(--color-danger)' }}>
           <h3 className="panel-header" style={{ color: 'var(--color-danger)' }}>
-            <span>待处理未装箱件</span>
+            <span>{t('unpackedHeader')}</span>
             <ShieldAlert size={18} />
           </h3>
           <p style={{ fontSize: '0.8rem', color: '#fda4af', marginTop: '4px' }}>
-            检测到有 <strong>{unpackedCount}</strong> 件货物因重量或极端尺寸超出当前任何集装箱空间限制，无法成功装入。
+            {t('unpackedWarning').replace('{count}', unpackedCount)}
           </p>
           <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--color-muted)', marginTop: '4px' }}>
-            建议：切换为容量更大的 40HQ 柜型，或者调配第二个柜子。
+            {t('unpackedAdvice')}
           </span>
         </div>
       )}

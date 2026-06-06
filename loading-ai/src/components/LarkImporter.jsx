@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Clipboard, RefreshCw, AlertCircle } from 'lucide-react';
+import { TRANSLATIONS } from '../utils/translations.js';
 
 const MAPPING_SCHEMA = {
   sku: 'SKU_Name',
@@ -18,7 +19,9 @@ const getRandomColor = () => {
   return colors[Math.floor(Math.random() * colors.length)];
 };
 
-export default function LarkImporter({ isOpen, onClose, onImport }) {
+export default function LarkImporter({ lang, isOpen, onClose, onImport }) {
+  const t = (key) => TRANSLATIONS[lang]?.[key] || TRANSLATIONS['en']?.[key] || key;
+
   const [activeTab, setActiveTab] = useState('text'); // 'text' or 'lark'
   const [pasteData, setPasteData] = useState('');
   const [larkAppId, setLarkAppId] = useState('cli_a281ff928ef0100d');
@@ -29,8 +32,13 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
   if (!isOpen) return null;
 
   // Sample TSV data to show the user how to paste
-  const tsvPlaceholder = 
-`SKU 名称\t长度(mm)\t宽度(mm)\t高度(mm)\t数量\t重量(kg)\t承重(3重/2中/1轻)
+  const tsvPlaceholder = lang === 'en'
+    ? `SKU Name\tLength(mm)\tWidth(mm)\tHeight(mm)\tQuantity\tWeight(kg)\tStacking(3Heavy/2Medium/1Light)
+Walnut Large Wardrobe\t2000\t600\t800\t4\t45\t3
+Fabric Sofa 3-Seater\t1800\t900\t850\t2\t60\t1
+European Bed Headboard\t1100\t1000\t150\t2\t18\t2
+Mattress Moisture Pad\t2000\t1500\t50\t10\t5\t1`
+    : `SKU 名称\t长度(mm)\t宽度(mm)\t高度(mm)\t数量\t重量(kg)\t承重(3重/2中/1轻)
 胡桃木大衣柜\t2000\t600\t800\t4\t45\t3
 布艺沙发三人座\t1800\t900\t850\t2\t60\t1
 欧式床头架\t1100\t1000\t150\t2\t18\t2
@@ -40,7 +48,7 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
   const handleParseText = () => {
     try {
       if (!pasteData.trim()) {
-        setErrorMessage('请先在文本框中粘贴数据');
+        setErrorMessage(t('emptyError'));
         return;
       }
 
@@ -70,6 +78,7 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
           parsedItems.push({
             id: `tsv-${importCounter++}-${i}`,
             sku,
+            skuEn: sku, // For pasted items, SKU En is the pasted name
             l,
             w,
             h,
@@ -84,14 +93,14 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
       }
 
       if (parsedItems.length === 0) {
-        setErrorMessage('未识别到有效格式数据。请检查每列是否以 Tab (制表符) 分隔，并包含长、宽、高、数量。');
+        setErrorMessage(t('parseError'));
         return;
       }
 
       onImport(parsedItems);
       onClose();
     } catch (e) {
-      setErrorMessage('解析失败: ' + e.message);
+      setErrorMessage(lang === 'en' ? ('Parse failed: ' + e.message) : ('解析失败: ' + e.message));
     }
   };
 
@@ -105,20 +114,26 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
       setIsLarkLoading(false);
       
       // Mock Lark API response items (A high-quality furniture packing dataset)
-      const mockLarkRecords = [
-        { id: 'lk-1', sku: '飞书同步-岩板餐桌 (1.6m)', l: 1600, w: 800, h: 750, qty: 1, weight: 110, stackingGrade: 3, allowSide: false, allowUpsideDown: false, color: '#ef4444' },
-        { id: 'lk-2', sku: '飞书同步-科技皮椅', l: 580, w: 580, h: 900, qty: 6, weight: 10, stackingGrade: 2, allowSide: true, allowUpsideDown: false, color: '#8b5cf6' },
-        { id: 'lk-3', sku: '飞书同步-转角布艺沙发 (A箱)', l: 1500, w: 1000, h: 800, qty: 2, weight: 65, stackingGrade: 1, allowSide: false, allowUpsideDown: false, color: '#f59e0b' },
-        { id: 'lk-4', sku: '飞书同步-转角布艺沙发 (B箱)', l: 1000, w: 1000, h: 800, qty: 1, weight: 45, stackingGrade: 1, allowSide: false, allowUpsideDown: false, color: '#ec4899' },
-        { id: 'lk-5', sku: '飞书同步-中式榆木床底梁', l: 2000, w: 300, h: 250, qty: 4, weight: 28, stackingGrade: 3, allowSide: true, allowUpsideDown: true, color: '#10b981' },
-        { id: 'lk-6', sku: '飞书同步-定制衣柜拼装抽屉板', l: 800, w: 550, h: 400, qty: 8, weight: 14, stackingGrade: 2, allowSide: true, allowUpsideDown: true, color: '#06b6d4' }
+      const mockLarkRecords = lang === 'en' ? [
+        { id: 'lk-1', sku: 'Lark-Sintered Dining Table (1.6m)', skuEn: 'Lark-Sintered Dining Table (1.6m)', l: 1600, w: 800, h: 750, qty: 1, weight: 110, stackingGrade: 3, allowSide: false, allowUpsideDown: false, color: '#ef4444' },
+        { id: 'lk-2', sku: 'Lark-Tech Leather Chair', skuEn: 'Lark-Tech Leather Chair', l: 580, w: 580, h: 900, qty: 6, weight: 10, stackingGrade: 2, allowSide: true, allowUpsideDown: false, color: '#8b5cf6' },
+        { id: 'lk-3', sku: 'Lark-Sectional Sofa Box A', skuEn: 'Lark-Sectional Sofa Box A', l: 1500, w: 1000, h: 800, qty: 2, weight: 65, stackingGrade: 1, allowSide: false, allowUpsideDown: false, color: '#f59e0b' },
+        { id: 'lk-4', sku: 'Lark-Sectional Sofa Box B', skuEn: 'Lark-Sectional Sofa Box B', l: 1000, w: 1000, h: 800, qty: 1, weight: 45, stackingGrade: 1, allowSide: false, allowUpsideDown: false, color: '#ec4899' },
+        { id: 'lk-5', sku: 'Lark-Chinese Elm Bed Support Rails', skuEn: 'Lark-Chinese Elm Bed Support Rails', l: 2000, w: 300, h: 250, qty: 4, weight: 28, stackingGrade: 3, allowSide: true, allowUpsideDown: true, color: '#10b981' },
+        { id: 'lk-6', sku: 'Lark-Bespoke Wardrobe Drawer Board', skuEn: 'Lark-Bespoke Wardrobe Drawer Board', l: 800, w: 550, h: 400, qty: 8, weight: 14, stackingGrade: 2, allowSide: true, allowUpsideDown: true, color: '#06b6d4' }
+      ] : [
+        { id: 'lk-1', sku: '飞书同步-岩板餐桌 (1.6m)', skuEn: 'Lark-Sintered Dining Table (1.6m)', l: 1600, w: 800, h: 750, qty: 1, weight: 110, stackingGrade: 3, allowSide: false, allowUpsideDown: false, color: '#ef4444' },
+        { id: 'lk-2', sku: '飞书同步-科技皮椅', skuEn: 'Lark-Tech Leather Chair', l: 580, w: 580, h: 900, qty: 6, weight: 10, stackingGrade: 2, allowSide: true, allowUpsideDown: false, color: '#8b5cf6' },
+        { id: 'lk-3', sku: '飞书同步-转角布艺沙发 (A箱)', skuEn: 'Lark-Sectional Sofa Box A', l: 1500, w: 1000, h: 800, qty: 2, weight: 65, stackingGrade: 1, allowSide: false, allowUpsideDown: false, color: '#f59e0b' },
+        { id: 'lk-4', sku: '飞书同步-转角布艺沙发 (B箱)', skuEn: 'Lark-Sectional Sofa Box B', l: 1000, w: 1000, h: 800, qty: 1, weight: 45, stackingGrade: 1, allowSide: false, allowUpsideDown: false, color: '#ec4899' },
+        { id: 'lk-5', sku: '飞书同步-中式榆木床底梁', skuEn: 'Lark-Chinese Elm Bed Support Rails', l: 2000, w: 300, h: 250, qty: 4, weight: 28, stackingGrade: 3, allowSide: true, allowUpsideDown: true, color: '#10b981' },
+        { id: 'lk-6', sku: '飞书同步-定制衣柜拼装抽屉板', skuEn: 'Lark-Bespoke Wardrobe Drawer Board', l: 800, w: 550, h: 400, qty: 8, weight: 14, stackingGrade: 2, allowSide: true, allowUpsideDown: true, color: '#06b6d4' }
       ];
 
       onImport(mockLarkRecords);
       onClose();
     }, 1500);
   };
-
 
   return (
     <div 
@@ -152,8 +167,8 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
         {/* Modal Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#fff' }}>批量货物导入系统</h2>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>唯一事实源 (SSOT) 一键同步接入</span>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#fff' }}>{t('importTitle')}</h2>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('importSubtitle')}</span>
           </div>
           <button 
             onClick={onClose}
@@ -180,7 +195,7 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
               transition: 'background var(--transition-fast)'
             }}
           >
-            Excel / 文本剪贴板
+            {t('tabExcel')}
           </button>
           <button 
             onClick={() => setActiveTab('lark')}
@@ -197,7 +212,7 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
               transition: 'background var(--transition-fast)'
             }}
           >
-            飞书多维表格 (Lark Base)
+            {t('tabLark')}
           </button>
         </div>
 
@@ -214,7 +229,7 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <label style={{ fontSize: '0.8rem', color: 'var(--color-muted)' }}>
-                请将 Feishu/Excel 的行数据直接复制并粘贴在下方：
+                {t('pasteLabel')}
               </label>
               <button 
                 onClick={() => setPasteData(tsvPlaceholder)} 
@@ -222,7 +237,7 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
                 style={{ fontSize: '0.7rem', padding: '3px 8px' }}
                 type="button"
               >
-                <Clipboard size={10} /> 载入样例模版
+                <Clipboard size={10} /> {t('loadTemplate')}
               </button>
             </div>
             
@@ -239,20 +254,20 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
                 fontFamily: 'var(--font-mono)',
                 resize: 'none'
               }}
-              placeholder={`格式示例：\nSKU_名称\\t长(mm)\\t宽(mm)\\t高(mm)\\t数量\\t重量(kg)\\n胡桃木柜\\t2000\\t600\\t800\\t4\\t45`}
+              placeholder={t('pastePlaceholder')}
               value={pasteData}
               onChange={(e) => setPasteData(e.target.value)}
             />
             
             <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: 'var(--color-muted)', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
               <span>💡</span>
-              <span>数据列必须用 Tab (即在 Excel 中复制一行的默认分隔符) 分隔，列顺序：<b>SKU名称、长、宽、高、数量、重量、承重。</b></span>
+              <span>{t('importNote')}</span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
-              <button className="btn-secondary" onClick={onClose} type="button">取消</button>
+              <button className="btn-secondary" onClick={onClose} type="button">{t('cancel')}</button>
               <button className="btn-primary" onClick={handleParseText} type="button">
-                确认解析导入
+                {t('confirmImport')}
               </button>
             </div>
           </div>
@@ -262,11 +277,11 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
         {activeTab === 'lark' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <p style={{ fontSize: '0.8rem', color: 'var(--color-muted)' }}>
-              直接对接 Sandra 老师的企业级飞书多维表格数据库。以下接口参数已通过沙箱验证：
+              {t('larkNotice')}
             </p>
 
             <div className="form-group">
-              <label>飞书应用凭证 (App ID)</label>
+              <label>{t('appIdLabel')}</label>
               <input 
                 type="text" 
                 className="form-input" 
@@ -277,7 +292,7 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
             </div>
 
             <div className="form-group">
-              <label>多维数据表 (Table ID)</label>
+              <label>{t('tableIdLabel')}</label>
               <input 
                 type="text" 
                 className="form-input" 
@@ -289,7 +304,7 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
 
             <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '12px', background: 'rgba(0,0,0,0.2)' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--color-text)', display: 'block', marginBottom: '8px' }}>
-                📖 Feishu 字段映射架构 (Schema Mapping):
+                📖 {t('schemaMapping')}
               </span>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>
                 {Object.entries(MAPPING_SCHEMA).map(([key, value]) => (
@@ -302,7 +317,7 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
-              <button className="btn-secondary" onClick={onClose} disabled={isLarkLoading} type="button">取消</button>
+              <button className="btn-secondary" onClick={onClose} disabled={isLarkLoading} type="button">{t('cancel')}</button>
               <button 
                 className="btn-primary" 
                 onClick={handleLarkFetch} 
@@ -313,12 +328,12 @@ export default function LarkImporter({ isOpen, onClose, onImport }) {
                 {isLarkLoading ? (
                   <>
                     <RefreshCw size={14} className="spin" style={{ animation: 'spin 1.5s linear infinite' }} />
-                    同步拉取中...
+                    {t('larkFetchLoading')}
                   </>
                 ) : (
                   <>
                     <RefreshCw size={14} />
-                    一键拉取 Lark 事实源
+                    {t('larkFetchBtn')}
                   </>
                 )}
               </button>
