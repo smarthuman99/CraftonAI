@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crafton AI: Your Virtual AI Factory & 1-Week Blueprint</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --bg-dark: #030712;
+            --bg-deep: #090d1f;
+            --accent-cyan: #00f2fe;
+            --accent-emerald: #10b981;
+            --accent-orange: #f97316;
+            --accent-purple: #8b5cf6;
+            --accent-pink: #ec4899;
+            --accent-yellow: #eab308;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --glass-card: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.07);
+            --font-main: 'Outfit', sans-serif;
+            --font-tech: 'Orbitron', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background: radial-gradient(circle at 50% 50%, var(--bg-deep) 0%, var(--bg-dark) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Nav Header */
+        header {
+            padding: 1.2rem 3rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--glass-border);
+            z-index: 10;
+        }
+
+        .brand {
+            font-family: var(--font-tech);
+            font-weight: 900;
+            font-size: 1.3rem;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, #fff 0%, var(--accent-cyan) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .deck-badge {
+            background: rgba(0, 242, 254, 0.1);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(0, 242, 254, 0.2);
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-family: var(--font-tech);
+            letter-spacing: 1px;
+        }
+
+        /* Slide Deck Container */
+        .presentation-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1.5rem;
+        }
+
+        .slide {
+            position: absolute;
+            width: 100%;
+            max-width: 1200px;
+            height: 640px;
+            background: rgba(11, 15, 30, 0.65);
+            backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 2.5rem 3rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            opacity: 0;
+            transform: scale(0.96) translateY(15px);
+            pointer-events: none;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+        }
+
+        .slide.active {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            pointer-events: auto;
+            z-index: 5;
+        }
+
+        /* Slide Elements */
+        .slide-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .slide-title-area h2 {
+            font-family: var(--font-tech);
+            font-size: 2rem;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .slide-title-area h2 span.glow {
+            color: var(--accent-cyan);
+            text-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+        }
+
+        .slide-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 0.2rem;
+        }
+
+        .slide-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            overflow-y: auto;
+            padding: 0.5rem 0;
+        }
+
+        /* Slide 1: Cover Layout */
+        .cover-layout {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            width: 100%;
+        }
+
+        .cover-title {
+            font-family: var(--font-tech);
+            font-size: 3.8rem;
+            font-weight: 900;
+            line-height: 1.1;
+            background: linear-gradient(135deg, #fff 30%, var(--accent-cyan) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1px;
+            animation: textGlow 3s infinite alternate;
+        }
+
+        .cover-desc {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            max-width: 750px;
+            margin: 0 auto;
+            line-height: 1.6;
+            font-weight: 300;
+        }
+
+        .cover-meta {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            font-family: var(--font-tech);
+        }
+
+        .cover-meta span {
+            background: rgba(255,255,255,0.02);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--glass-border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Slide 2: Virtual Office Model */
+        .office-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            width: 100%;
+        }
+
+        .office-card {
+            background: var(--glass-card);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .office-card:hover {
+            border-color: rgba(255,255,255,0.15);
+            transform: translateY(-4px);
+        }
+
+        .office-icon {
+            font-size: 2.2rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .office-card.cyan h3 { color: var(--accent-cyan); font-family: var(--font-tech); font-size: 1.2rem; }
+        .office-card.purple h3 { color: var(--accent-purple); font-family: var(--font-tech); font-size: 1.2rem; }
+        .office-card.orange h3 { color: var(--accent-orange); font-family: var(--font-tech); font-size: 1.2rem; }
+
+        .office-card h4 {
+            font-size: 0.75rem;
+            font-family: var(--font-tech);
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .office-card p {
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: var(--text-secondary);
+        }
+
+        .office-card ul {
+            font-size: 0.8rem;
+            color: var(--text-primary);
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            margin-top: auto;
+            border-top: 1px solid rgba(255,255,255,0.04);
+            padding-top: 0.8rem;
+        }
+
+        .office-card ul li {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .office-card ul li i {
+            font-size: 0.75rem;
+        }
+
+        .office-card.cyan ul li i { color: var(--accent-cyan); }
+        .office-card.purple ul li i { color: var(--accent-purple); }
+        .office-card.orange ul li i { color: var(--accent-orange); }
+
+        /* Slide 3: 10 Specialized Agents Grid */
+        .agents-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 0.8rem;
+            width: 100%;
+            height: 100%;
+        }
+
+        .agent-microcard {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            transition: all 0.3s;
+        }
+
+        .agent-microcard:hover {
+            background: rgba(255, 255, 255, 0.04);
+            transform: translateY(-2px);
+        }
+
+        .agent-micro-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .agent-micro-header i {
+            font-size: 1.1rem;
+        }
+
+        .agent-micro-header span {
+            font-family: var(--font-tech);
+            font-size: 0.8rem;
+            font-weight: bold;
+            letter-spacing: -0.2px;
+            white-space: nowrap;
+        }
+
+        .agent-microcard h5 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .agent-microcard p {
+            font-size: 0.75rem;
+            line-height: 1.4;
+            color: var(--text-secondary);
+        }
+
+        /* Color variations for 10 agents */
+        .ag-cyan { border-left: 2px solid var(--accent-cyan); }
+        .ag-cyan i { color: var(--accent-cyan); }
+        .ag-cyan span { color: var(--accent-cyan); }
+
+        .ag-emerald { border-left: 2px solid var(--accent-emerald); }
+        .ag-emerald i { color: var(--accent-emerald); }
+        .ag-emerald span { color: var(--accent-emerald); }
+
+        .ag-purple { border-left: 2px solid var(--accent-purple); }
+        .ag-purple i { color: var(--accent-purple); }
+        .ag-purple span { color: var(--accent-purple); }
+
+        .ag-orange { border-left: 2px solid var(--accent-orange); }
+        .ag-orange i { color: var(--accent-orange); }
+        .ag-orange span { color: var(--accent-orange); }
+
+        .ag-pink { border-left: 2px solid var(--accent-pink); }
+        .ag-pink i { color: var(--accent-pink); }
+        .ag-pink span { color: var(--accent-pink); }
+
+        .ag-yellow { border-left: 2px solid var(--accent-yellow); }
+        .ag-yellow i { color: var(--accent-yellow); }
+        .ag-yellow span { color: var(--accent-yellow); }
+
+        /* Slide 4: 17 Stage Pathway Flowchart */
+        .pathway-flow {
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+            width: 100%;
+        }
+
+        .pathway-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: stretch;
+            gap: 0.8rem;
+        }
+
+        .pathway-box {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px dashed var(--glass-border);
+            border-radius: 12px;
+            padding: 0.8rem 1rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 0.4rem;
+            position: relative;
+        }
+
+        .pathway-box.active-agents {
+            border-style: solid;
+            background: rgba(0, 242, 254, 0.02);
+            border-color: rgba(0, 242, 254, 0.25);
+        }
+
+        .pathway-box.human-gate {
+            border-style: solid;
+            background: rgba(139, 92, 246, 0.04);
+            border-color: rgba(139, 92, 246, 0.4);
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.1);
+        }
+
+        .p-stages {
+            font-family: var(--font-tech);
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-weight: bold;
+        }
+
+        .pathway-box.active-agents .p-stages {
+            color: var(--accent-cyan);
+        }
+
+        .pathway-box.human-gate .p-stages {
+            color: var(--accent-purple);
+        }
+
+        .p-title {
+            font-family: var(--font-tech);
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .pathway-box.human-gate .p-title {
+            color: var(--accent-purple);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .p-desc {
+            font-size: 0.72rem;
+            line-height: 1.4;
+            color: var(--text-secondary);
+        }
+
+        .p-agent-tag {
+            font-size: 0.65rem;
+            font-family: var(--font-tech);
+            color: var(--accent-cyan);
+            background: rgba(0, 242, 254, 0.08);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            align-self: flex-start;
+            margin-top: auto;
+            border: 1px solid rgba(0, 242, 254, 0.15);
+        }
+
+        .p-gate-badge {
+            font-size: 0.65rem;
+            font-family: var(--font-tech);
+            color: var(--accent-purple);
+            background: rgba(139, 92, 246, 0.1);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            align-self: flex-start;
+            margin-top: auto;
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            font-weight: bold;
+        }
+
+        .flow-connector {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+        }
+
+        /* Slide 5: My Role - SOP Design */
+        .sop-container {
+            display: flex;
+            gap: 2rem;
+            width: 100%;
+        }
+
+        .sop-intro {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 1rem;
+            padding-right: 1.5rem;
+        }
+
+        .sop-intro h3 {
+            font-family: var(--font-tech);
+            font-size: 1.5rem;
+            color: var(--accent-emerald);
+        }
+
+        .sop-intro p {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .sop-cards {
+            flex: 1.5;
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+
+        .sop-row {
+            background: var(--glass-card);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+            transition: all 0.3s;
+        }
+
+        .sop-row:hover {
+            border-color: var(--accent-emerald);
+            transform: translateX(4px);
+        }
+
+        .sop-badge {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--accent-emerald);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 0.4rem 0.8rem;
+            border-radius: 8px;
+            font-family: var(--font-tech);
+            font-weight: 700;
+            font-size: 0.8rem;
+            min-width: 110px;
+            text-align: center;
+        }
+
+        .sop-desc h5 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 0.15rem;
+        }
+
+        .sop-desc p {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+        }
+
+        /* Slide 6: Timeline */
+        .timeline-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            width: 100%;
+        }
+
+        .timeline-flow {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+            padding: 1rem 0;
+            margin-top: 1rem;
+        }
+
+        .timeline-flow::before {
+            content: '';
+            position: absolute;
+            top: 45px;
+            left: 5%;
+            right: 5%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-cyan) 0%, var(--accent-purple) 50%, var(--accent-emerald) 100%);
+            z-index: 1;
+        }
+
+        .timeline-step {
+            width: 28%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            z-index: 2;
+        }
+
+        .step-node {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--bg-deep);
+            border: 3px solid var(--accent-cyan);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.2);
+            transition: all 0.3s;
+        }
+
+        .timeline-step:nth-child(2) .step-node {
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.2);
+        }
+
+        .timeline-step:nth-child(3) .step-node {
+            border-color: var(--accent-emerald);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+        }
+
+        .step-node h4 {
+            font-family: var(--font-tech);
+            font-size: 0.95rem;
+        }
+
+        .timeline-step h3 {
+            font-family: var(--font-tech);
+            font-size: 1.05rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .timeline-step h3 span {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.2rem;
+            font-family: var(--font-main);
+        }
+
+        .timeline-step p {
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: var(--text-secondary);
+            padding: 0 0.5rem;
+        }
+
+        /* Slide 7: Benefits Grid */
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            width: 100%;
+        }
+
+        .benefit-card {
+            background: var(--glass-card);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            position: relative;
+        }
+
+        .benefit-card h4 {
+            font-family: var(--font-tech);
+            font-size: 1.1rem;
+            color: #fff;
+        }
+
+        .benefit-card p {
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .benefit-tag {
+            align-self: flex-start;
+            font-size: 0.7rem;
+            font-family: var(--font-tech);
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .tag-green { background: rgba(16, 185, 129, 0.1); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.2); }
+        .tag-blue { background: rgba(0, 242, 254, 0.1); color: var(--accent-cyan); border: 1px solid rgba(0, 242, 254, 0.2); }
+        .tag-orange { background: rgba(249, 115, 22, 0.1); color: var(--accent-orange); border: 1px solid rgba(249, 115, 22, 0.2); }
+
+        /* Controls Footer */
+        footer {
+            padding: 1.2rem 3rem;
+            border-top: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .slide-counter {
+            font-family: var(--font-tech);
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            letter-spacing: 1px;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .nav-btn {
+            background: var(--glass-card);
+            border: 1px solid var(--glass-border);
+            color: var(--text-primary);
+            padding: 0.5rem 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: var(--font-tech);
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s;
+        }
+
+        .nav-btn:hover {
+            background: var(--accent-cyan);
+            border-color: var(--accent-cyan);
+            color: var(--bg-dark);
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+        }
+
+        @keyframes textGlow {
+            from { text-shadow: 0 0 10px rgba(255,255,255,0.1); }
+            to { text-shadow: 0 0 20px rgba(0, 242, 254, 0.35); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Nav Header -->
+    <header>
+        <div class="brand">CRAFTON AI</div>
+        <div class="deck-badge">1-WEEK PROJECT BLUEPRINT</div>
+    </header>
+
+    <!-- Slide Deck Window -->
+    <div class="presentation-container">
+
+        <!-- Slide 1: Cover -->
+        <div class="slide active" id="slide-1">
+            <div class="slide-header">
+                <div></div>
+                <div class="slide-subtitle">INTRODUCING THE VIRTUAL FACTORY CORE</div>
+            </div>
+            <div class="slide-content">
+                <div class="cover-layout">
+                    <h1 class="cover-title">Crafton AI</h1>
+                    <p class="cover-desc">How we combine intuitive digital storage with a specialized team of AI Agents to safeguard, streamline, and fully automate our bespoke furniture business.</p>
+                    <div class="cover-meta">
+                        <span><i class="fa-solid fa-box-archive"></i> CENTRAL CABINET</span>
+                        <span><i class="fa-solid fa-users-gear"></i> 10 SPECIALIZED AGENTS</span>
+                        <span><i class="fa-solid fa-route"></i> 17-STAGE PATHWAY</span>
+                        <span><i class="fa-solid fa-file-contract"></i> WRITTEN SOPs</span>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Prepared for Cho</span>
+                <span>Press Space or Arrow keys to navigate</span>
+            </div>
+        </div>
+
+        <!-- Slide 2: Virtual Office Model -->
+        <div class="slide" id="slide-2">
+            <div class="slide-header">
+                <div class="slide-title-area">
+                    <h2><i class="fa-solid fa-hotel"></i> Our <span class="glow">Virtual Office Model</span></h2>
+                    <div class="slide-subtitle">Understanding how our technology forms a seamless, automated office</div>
+                </div>
+            </div>
+            <div class="slide-content">
+                <div class="office-grid">
+                    
+                    <div class="office-card cyan">
+                        <div class="office-icon"><i class="fa-solid fa-box-archive"></i></div>
+                        <h3>The Central Cabinet</h3>
+                        <h4>Supabase Database</h4>
+                        <p>Stores 100% of our business memory in one highly secure place. Keeps every drawing, material swatch, factory bid, and client chat in real-time sync.</p>
+                        <ul>
+                            <li><li><i class="fa-solid fa-check"></i> Single source of truth</li></li>
+                            <li><li><i class="fa-solid fa-check"></i> Real-time auto synchronization</li></li>
+                        </ul>
+                    </div>
+
+                    <div class="office-card purple">
+                        <div class="office-icon"><i class="fa-solid fa-users-gear"></i></div>
+                        <h3>The Virtual Staff Team</h3>
+                        <h4>10 Specialized AI Agents</h4>
+                        <p>Instead of one basic chatbot, we build a department of specialized digital assistants. Each agent runs automatically when their step in the 17-stage pathway is triggered.</p>
+                        <ul>
+                            <li><li><i class="fa-solid fa-check"></i> Dedicated job descriptions</li></li>
+                            <li><li><i class="fa-solid fa-check"></i> Hands-free automation</li></li>
+                        </ul>
+                    </div>
+
+                    <div class="office-card orange">
+                        <div class="office-icon"><i class="fa-solid fa-person-shelter"></i></div>
+                        <h3>The SOP Director (Sam)</h3>
+                        <h4>Operations Configuration</h4>
+                        <p>My role is to write the strict standard rulebooks (SOPs) for the agents, defining how they extract data, when to block illegal materials, and when to ask Cho for approval.</p>
+                        <ul>
+                            <li><li><i class="fa-solid fa-check"></i> Precise, error-free execution</li></li>
+                            <li><li><i class="fa-solid fa-check"></i> Human-in-the-loop control</li></li>
+                        </ul>
+                    </div>
+
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>The Core Concept</span>
+                <span>Slide 2 of 7</span>
+            </div>
+        </div>
+
+        <!-- Slide 3: 10 Specialized Agents Grid -->
+        <div class="slide" id="slide-3">
+            <div class="slide-header">
+                <div class="slide-title-area">
+                    <h2><i class="fa-solid fa-users-rectangle"></i> Meet Your <span class="glow">Virtual AI Staff</span></h2>
+                    <div class="slide-subtitle">A team of 10 specialized agents trained to manage specific parts of our workflow</div>
+                </div>
+            </div>
+            <div class="slide-content">
+                <div class="agents-grid">
+                    
+                    <div class="agent-microcard ag-cyan">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-comment-dots"></i>
+                            <span>01. Intake Agent</span>
+                        </div>
+                        <h5>Receptionist</h5>
+                        <p>Welcomes clients on portal, parses requirements, drafts initial orders.</p>
+                    </div>
+
+                    <div class="agent-microcard ag-cyan">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-language"></i>
+                            <span>02. Spec Agent</span>
+                        </div>
+                        <h5>Technical Writer</h5>
+                        <p>Converts chats & hand-drawn sketches into professional bilingual specs & BOMs.</p>
+                    </div>
+
+                    <div class="agent-microcard ag-emerald">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-shield-halved"></i>
+                            <span>03. Safety Agent</span>
+                        </div>
+                        <h5>Compliance Officer</h5>
+                        <p>Validates selected fabrics against British Fire Safety (Crib 5) rules.</p>
+                    </div>
+
+                    <div class="agent-microcard ag-emerald">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-file-invoice-dollar"></i>
+                            <span>04. Sourcing Agent</span>
+                        </div>
+                        <h5>Procurement</h5>
+                        <p>Generates RFQs, emails factories, compiles price comparison tables.</p>
+                    </div>
+
+                    <div class="agent-microcard ag-purple">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-qrcode"></i>
+                            <span>05. Liaison Agent</span>
+                        </div>
+                        <h5>Factory Link</h5>
+                        <p>Creates component QR tracking tags, monitors workshop progress.</p>
+                    </div>
+
+                    <div class="agent-microcard ag-purple">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-camera"></i>
+                            <span>06. Quality Agent</span>
+                        </div>
+                        <h5>Quality Inspector</h5>
+                        <p>Uses CV to check workshop photos against CAD blueprint sizes/finishes.</p>
+                    </div>
+
+                    <div class="agent-microcard ag-pink">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-cubes"></i>
+                            <span>07. Stacking Agent</span>
+                        </div>
+                        <h5>Cargo Optimizer</h5>
+                        <p>Runs 3D box packing algorithms to maximize container space utilization.</p>
+                    </div>
+
+                    <div class="agent-microcard ag-pink">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-file-shield"></i>
+                            <span>08. Customs Agent</span>
+                        </div>
+                        <h5>Doc Inspector</h5>
+                        <p>Audits IPPC fumigation, commercial invoices, and export paper consistency.</p>
+                    </div>
+
+                    <div class="agent-microcard ag-orange">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-calculator"></i>
+                            <span>09. Auditor Agent</span>
+                        </div>
+                        <h5>Automated Accountant</h5>
+                        <p>Handles split deliveries and recalculates strike-through cancellations.</p>
+                    </div>
+
+                    <div class="agent-microcard ag-yellow">
+                        <div class="agent-micro-header">
+                            <i class="fa-solid fa-lock"></i>
+                            <span>10. Archive Agent</span>
+                        </div>
+                        <h5>Secure Archivist</h5>
+                        <p>Seals complete project memory folder with encrypted security hash.</p>
+                    </div>
+
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Meet the Staff</span>
+                <span>Slide 3 of 7</span>
+            </div>
+        </div>
+
+        <!-- Slide 4: 17 Stage Pathway Flowchart -->
+        <div class="slide" id="slide-4">
+            <div class="slide-header">
+                <div class="slide-title-area">
+                    <h2><i class="fa-solid fa-route"></i> The <span class="glow">17-Stage Assembly Line</span></h2>
+                    <div class="slide-subtitle">Where each specialized agent operates, and where Cho approves progress</div>
+                </div>
+            </div>
+            <div class="slide-content">
+                <div class="pathway-flow">
+                    
+                    <!-- Row 1: Steps 1-4 -->
+                    <div class="pathway-row">
+                        <div class="pathway-box active-agents">
+                            <div class="p-stages">STAGES 01 - 03</div>
+                            <div class="p-title">Client Intake & Tech Spec</div>
+                            <div class="p-desc">Client uploads sketch & chat; specs are structured.</div>
+                            <div class="p-agent-tag">Intake & Spec Agents</div>
+                        </div>
+                        <div class="flow-connector"><i class="fa-solid fa-chevron-right"></i></div>
+                        
+                        <div class="pathway-box human-gate">
+                            <div class="p-stages">STAGE 04</div>
+                            <div class="p-title"><i class="fa-solid fa-user-check"></i> Design Approval Gate</div>
+                            <div class="p-desc"><strong>Cho reviews</strong> the bilingual spec and material swatch choices. MANUFACTURING OFFICIALLY LOCKED.</div>
+                            <div class="p-gate-badge">Human Check 1 (Cho)</div>
+                        </div>
+                        <div class="flow-connector"><i class="fa-solid fa-chevron-right"></i></div>
+
+                        <div class="pathway-box active-agents">
+                            <div class="p-stages">STAGES 05 - 08</div>
+                            <div class="p-title">Crib 5 Check & Bidding</div>
+                            <div class="p-desc">Safety checks run; RFQs are sent to factories.</div>
+                            <div class="p-agent-tag">Safety & Sourcing Agents</div>
+                        </div>
+                        <div class="flow-connector"><i class="fa-solid fa-chevron-right"></i></div>
+
+                        <div class="pathway-box human-gate">
+                            <div class="p-stages">STAGE 09</div>
+                            <div class="p-title"><i class="fa-solid fa-industry"></i> Factory Award Gate</div>
+                            <div class="p-desc"><strong>Cho reviews</strong> price bids & awards contract, locking the procurement cost.</div>
+                            <div class="p-gate-badge">Human Check 2 (Cho)</div>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Steps 10-17 -->
+                    <div class="pathway-row" style="margin-top: 0.5rem;">
+                        <div class="pathway-box active-agents">
+                            <div class="p-stages">STAGES 10 - 11</div>
+                            <div class="p-title">Production & AI Quality</div>
+                            <div class="p-desc">QR codes tracking; AI compares wood/specs using photos.</div>
+                            <div class="p-agent-tag">Liaison & Quality Agents</div>
+                        </div>
+                        <div class="flow-connector"><i class="fa-solid fa-chevron-right"></i></div>
+
+                        <div class="pathway-box active-agents">
+                            <div class="p-stages">STAGES 12 - 13</div>
+                            <div class="p-title">Logistics & Document Audit</div>
+                            <div class="p-desc">3D stacking optimization; packing lists audit.</div>
+                            <div class="p-agent-tag">Stacking & Customs Agents</div>
+                        </div>
+                        <div class="flow-connector"><i class="fa-solid fa-chevron-right"></i></div>
+
+                        <div class="pathway-box active-agents">
+                            <div class="p-stages">STAGES 14 - 15</div>
+                            <div class="p-title">In-Transit & Recalculation</div>
+                            <div class="p-desc">Vessel tracking; auto balance recalculation.</div>
+                            <div class="p-agent-tag">Auditor Agent</div>
+                        </div>
+                        <div class="flow-connector"><i class="fa-solid fa-chevron-right"></i></div>
+
+                        <div class="pathway-box human-gate">
+                            <div class="p-stages">STAGE 16 - 17</div>
+                            <div class="p-title"><i class="fa-solid fa-signature"></i> Handover & Archive</div>
+                            <div class="p-desc"><strong>Client inspects</strong> & signs portal. Complete project records encrypted and archived.</div>
+                            <div class="p-gate-badge">Human Check 3 (Client)</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>The 17-Stage Pathway Map</span>
+                <span>Slide 4 of 7</span>
+            </div>
+        </div>
+
+        <!-- Slide 5: My Role - SOP Design -->
+        <div class="slide" id="slide-5">
+            <div class="slide-header">
+                <div class="slide-title-area">
+                    <h2><i class="fa-solid fa-book-bookmark"></i> My Role: <span class="glow">Designing SOPs</span></h2>
+                    <div class="slide-subtitle">Translating our bespoke furniture experience into automated rules for our agents</div>
+                </div>
+            </div>
+            <div class="slide-content">
+                <div class="sop-container">
+                    <div class="sop-intro">
+                        <h3>Guiding Our Virtual Staff Step-by-Step</h3>
+                        <p>Virtual agents are highly competent but require a playbook. I design the Standard Operating Procedures (SOPs) to ensure every agent follows our business objectives flawlessly, preventing any AI errors.</p>
+                        <p style="font-size: 0.85rem; color: var(--accent-emerald);">
+                            <i class="fa-solid fa-shield-halved"></i> Keeping our operations secure, consistent, and fully transparent.
+                        </p>
+                    </div>
+                    <div class="sop-cards">
+                        
+                        <div class="sop-row">
+                            <span class="sop-badge">INTAKE SOP</span>
+                            <div class="sop-desc">
+                                <h5>Extract & Organize Requirements</h5>
+                                <p>Instructs Intake Agent to parse client portal chats and automatically draft bilingual BOMs with precise items and quantities.</p>
+                            </div>
+                        </div>
+
+                        <div class="sop-row">
+                            <span class="sop-badge" style="background:rgba(139, 92, 246,0.1); color:var(--accent-purple); border-color:rgba(139, 92, 246,0.2);">SAFETY SOP</span>
+                            <div class="sop-desc">
+                                <h5>British Fire Code Hard Gate</h5>
+                                <p>Instructs Safety Agent to immediately block non-compliant fabrics (e.g. Pure Silk) and alert us if Crib 5 certification is missing.</p>
+                            </div>
+                        </div>
+
+                        <div class="sop-row">
+                            <span class="sop-badge" style="background:rgba(249, 115, 22,0.1); color:var(--accent-orange); border-color:rgba(249, 115, 22,0.2);">FINANCIAL SOP</span>
+                            <div class="sop-desc">
+                                <h5>Strike-through Recalculation</h5>
+                                <p>Instructs Auditor Agent to instantly recalculate and cross-out canceled items in the payment schedules in case of mid-production changes.</p>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>The Director's Role</span>
+                <span>Slide 5 of 7</span>
+            </div>
+        </div>
+
+        <!-- Slide 6: Timeline -->
+        <div class="slide" id="slide-6">
+            <div class="slide-header">
+                <div class="slide-title-area">
+                    <h2><i class="fa-solid fa-calendar-days"></i> Our <span class="glow">1-Week Action Plan</span></h2>
+                    <div class="slide-subtitle">A simple, transparent timeline with zero technical jargon</div>
+                </div>
+            </div>
+            <div class="slide-content">
+                <div class="timeline-container">
+                    <div class="timeline-flow">
+                        
+                        <div class="timeline-step">
+                            <div class="step-node"><h4>01</h4></div>
+                            <h3>Organize Cabinet<span>Days 1 - 3 (Design)</span></h3>
+                            <p>Map out folders and drawers in our Supabase cabinet. Set up fields for fabrics, order quantities, bidding rows, and strike-out cancel states so database is perfectly structured.</p>
+                        </div>
+
+                        <div class="timeline-step">
+                            <div class="step-node" style="border-color:var(--accent-purple);"><h4>02</h4></div>
+                            <h3>Assemble AI Staff<span>Days 4 - 5 (Integrate)</span></h3>
+                            <p>Program the rules, workflows, and communication links for our first 3 core virtual staff: the Intake, Tech Spec, and Fire Safety Agents.</p>
+                        </div>
+
+                        <div class="timeline-step">
+                            <div class="step-node" style="border-color:var(--accent-emerald);"><h4>03</h4></div>
+                            <h3>First Live Demo!<span>Days 6 - 7 (Test Run)</span></h3>
+                            <p>Conduct our first full sandbox test. You can log into our dashboard, modify a requirement, and watch our virtual agents route data and trigger alerts instantly.</p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Project Timeline</span>
+                <span>Slide 6 of 7</span>
+            </div>
+        </div>
+
+        <!-- Slide 7: Strategic Protections -->
+        <div class="slide" id="slide-7">
+            <div class="slide-header">
+                <div class="slide-title-area">
+                    <h2><i class="fa-solid fa-shield-heart"></i> Why This Plan <span class="glow">Protects Us</span></h2>
+                    <div class="slide-subtitle">Smart business safeguards and operational safety</div>
+                </div>
+            </div>
+            <div class="slide-content">
+                <div class="benefits-grid">
+                    
+                    <div class="benefit-card">
+                        <span class="benefit-tag tag-green"><i class="fa-solid fa-ban"></i> Zero Ban Risk</span>
+                        <h4>No WhatsApp Bans</h4>
+                        <p>By shifting core client chats to our secure internal Portal, we completely bypass Meta's strict automated anti-spam number bans. WhatsApp is used only for outbox notifications.</p>
+                    </div>
+
+                    <div class="benefit-card">
+                        <span class="benefit-tag tag-blue"><i class="fa-solid fa-fingerprint"></i> Identity Lock</span>
+                        <h4>Strict Data Isolation</h4>
+                        <p>Because clients must register and log into our portal, every action is locked to their secure ID, completely preventing order crosstalk or database leaks.</p>
+                    </div>
+
+                    <div class="benefit-card">
+                        <span class="benefit-tag tag-orange"><i class="fa-solid fa-receipt"></i> High Margin</span>
+                        <h4>Save Transaction Fees</h4>
+                        <p>Using our custom native web-sockets for core customer intake rather than third-party WhatsApp API meters saves us thousands of dollars in bulk messaging fees.</p>
+                    </div>
+
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Strategic Protections</span>
+                <span>Slide 7 of 7</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Controls Footer -->
+    <footer>
+        <div class="slide-counter" id="counter">Slide 1 of 7</div>
+        <div class="nav-buttons">
+            <button class="nav-btn" id="prev-btn"><i class="fa-solid fa-arrow-left"></i> Prev</button>
+            <button class="nav-btn" id="next-btn">Next <i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+    </footer>
+
+    <script>
+        const slides = document.querySelectorAll('.slide');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const counter = document.getElementById('counter');
+        let currentSlide = 0;
+
+        function updateSlide(index) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (index + slides.length) % slides.length;
+            slides[currentSlide].classList.add('active');
+            counter.textContent = `Slide ${currentSlide + 1} of ${slides.length}`;
+        }
+
+        prevBtn.addEventListener('click', () => {
+            updateSlide(currentSlide - 1);
+        });
+
+        nextBtn.addEventListener('click', () => {
+            updateSlide(currentSlide + 1);
+        });
+
+        // Keyboard Navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'Space' || e.keyCode === 32) {
+                e.preventDefault();
+                updateSlide(currentSlide + 1);
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                updateSlide(currentSlide - 1);
+            }
+        });
+    </script>
+</body>
+</html>
