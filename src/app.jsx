@@ -23,6 +23,48 @@ if (savedUrl && savedKey && window.supabase) {
   }
 }
 
+const getLogActionEn = (cnText) => {
+  if (!cnText) return "";
+  
+  // 1. Check exact match in mockData.changeLogs
+  const match = mockData.changeLogs.find(cl => cl.action === cnText);
+  if (match && match.actionEn) return match.actionEn;
+  
+  // 2. Check other known exact matches
+  const exactTranslations = {
+    "技术规格书與BOM審核通過，簽名發布。": "Tech specifications and BOM approved, signed off.",
+    "技術規格書與BOM審核通過，簽名發布。": "Tech specifications and BOM approved, signed off.",
+    "現場反饋：因客戶硬裝現場變動，取消2把扶手椅與1張茶几。啟動劃線財務自動重算，餘款已核銷更新。": "Site feedback: Cancelled 2 Armchairs & 1 Table due to fitout changes. Auto strike-through recalculation initiated.",
+    "CRIB 5 燃燒檢測失敗：純絲綢緞阻燃塗層收縮率/變色率超差（CRIB 5 BLOCKED）": "CRIB 5 Flammability Test Failed: Pure Silk Satin fire-retardant coating shrinkage and discoloration rate out of tolerance (CRIB 5 BLOCKED)",
+    "CRIB 5 燃燒檢測合格：火焰暴露10秒內物理自熄（CRIB 5 PASSED）": "CRIB 5 Flammability Test Passed: Flame self-extinguished physically within 10 seconds of exposure (CRIB 5 PASSED)",
+    "四大出口單證校驗成功：IPPC熏蒸證明、海關申報單、裝箱單序列號一致（100% MATCH）": "Four export compliance documents verified successfully: IPPC fumigation certificate, Customs declaration, Packing lists match perfectly (100% MATCH)",
+    "項目資料哈希打包完畢：SHA-256: 8f5c90b6a7d18721c4b2e70e17631bd4fb6029cf8e11a2f4219b16752d586b51": "Project archive hashed and packaged: SHA-256: 8f5c90b6a7d18721c4b2e70e17631bd4fb6029cf8e11a2f4219b16752d586b51",
+    "檢測到絲綢硬性不合規，一鍵替換面料為：L-4410 (海軍藍亞麻)": "Detected critical non-compliance on Silk. Swapped fabric to: L-4410 (Navy Classic Linen) with one click.",
+    "生成PDF規格書，全自動調用 SMTP 郵件群發至 3 家意向工廠。": "Generated PDF specification sheet, automatically calling SMTP to dispatch RFQs to 3 target factories."
+  };
+  
+  if (exactTranslations[cnText]) {
+    return exactTranslations[cnText];
+  }
+  
+  // 3. Dynamic templates (Crib 5 Override and supplier selections)
+  if (cnText.includes("修改物料合规：替换面料为")) {
+    const matchFabric = cnText.match(/替换面料为\s*(\S+)/);
+    const code = matchFabric ? matchFabric[1] : "FAB-02";
+    return `Bypassed Crib 5: Changed fabric to ${code} (Navy Classic Linen), successfully overriding gate.`;
+  }
+  
+  if (cnText.includes("比价完成。最终选定代工厂:")) {
+    const matchSupplier = cnText.match(/最终选定代工厂:\s*([^，]+)/);
+    const matchPrice = cnText.match(/单价核定为\s*\$?([0-9.]+)/);
+    const sName = matchSupplier ? matchSupplier[1] : "selected supplier";
+    const sPrice = matchPrice ? matchPrice[1] : "195";
+    return `Supplier bidding finalized. Factory selected: ${sName}. Lobby Armchair set to $${sPrice}/pc.`;
+  }
+  
+  return cnText; // Fallback
+};
+
 function App() {
   const [currentView, setCurrentStageView] = useState("Marketing"); // Views: "Marketing", "Backoffice", "ClientPortal"
   const [lang, setLang] = useState("Cn"); // Language: "Cn" or "En"
@@ -235,10 +277,10 @@ function App() {
           clearInterval(interval);
           if (selectedFabric === "FAB-03") {
             setCrib5TestStatus("failed");
-            addLog("System", "CRIB 5 燃燒檢測失敗：純絲綢緞阻燃塗層收縮率/變色率超差（CRIB 5 BLOCKED）");
+            addLog("System", "CRIB 5 燃燒檢測失敗：純絲綢緞阻燃塗層收縮率/變色率超差（CRIB 5 BLOCKED）", "CRIB 5 Flammability Test Failed: Pure Silk Satin fire-retardant coating shrinkage and discoloration rate out of tolerance (CRIB 5 BLOCKED)");
           } else {
             setCrib5TestStatus("passed");
-            addLog("System", "CRIB 5 燃燒檢測合格：火焰暴露10秒內物理自熄（CRIB 5 PASSED）");
+            addLog("System", "CRIB 5 燃燒檢測合格：火焰暴露10秒內物理自熄（CRIB 5 PASSED）", "CRIB 5 Flammability Test Passed: Flame self-extinguished physically within 10 seconds of exposure (CRIB 5 PASSED)");
           }
           return 100;
         }
@@ -249,12 +291,12 @@ function App() {
 
   const handleDocumentAudit = () => {
     setDocAudited(true);
-    addLog("System", "四大出口單證校驗成功：IPPC熏蒸證明、海關申報單、裝箱單序列號一致（100% MATCH）");
+    addLog("System", "四大出口單證校驗成功：IPPC熏蒸證明、海關申報單、裝箱單序列號一致（100% MATCH）", "Four export compliance documents verified successfully: IPPC fumigation certificate, Customs declaration, Packing lists match perfectly (100% MATCH)");
   };
 
   const handleCryptographicArchive = () => {
     setArchiveHashed(true);
-    addLog("System", "項目資料哈希打包完畢：SHA-256: 8f5c90b6a7d18721c4b2e70e17631bd4fb6029cf8e11a2f4219b16752d586b51");
+    addLog("System", "項目資料哈希打包完畢：SHA-256: 8f5c90b6a7d18721c4b2e70e17631bd4fb6029cf8e11a2f4219b16752d586b51", "Project archive hashed and packaged: SHA-256: 8f5c90b6a7d18721c4b2e70e17631bd4fb6029cf8e11a2f4219b16752d586b51");
   };
 
   const renderInteractivePlayground = () => {
@@ -395,7 +437,7 @@ function App() {
                       setSelectedFabric("FAB-02"); // auto replace with safe Linen
                       setCrib5TestStatus("idle");
                       setCrib5Progress(0);
-                      addLog("Cho", "檢測到絲綢硬性不合規，一鍵替換面料為：L-4410 (海軍藍亞麻)");
+                      addLog("Cho", "檢測到絲綢硬性不合規，一鍵替換面料為：L-4410 (海軍藍亞麻)", "Detected critical non-compliance on Silk. Swapped fabric to: L-4410 (Navy Classic Linen) with one click.");
                     }}
                   >
                     🔄 {lang === "Cn" ? "一鍵降級替換" : "Bypass with Linen"}
@@ -434,7 +476,7 @@ function App() {
               </div>
 
               {!rfqDispatched ? (
-                <button className="btn-premium" style={{ justifyContent: 'center' }} onClick={() => { setRfqDispatched(true); addLog("OpenClaw QuotationAgent", "生成PDF規格書，全自動調用 SMTP 郵件群發至 3 家意向工廠。"); }}>
+                <button className="btn-premium" style={{ justifyContent: 'center' }} onClick={() => { setRfqDispatched(true); addLog("OpenClaw QuotationAgent", "生成PDF規格書，全自動調用 SMTP 郵件群發至 3 家意向工廠。", "Generated PDF specification sheet, automatically calling SMTP to dispatch RFQs to 3 target factories."); }}>
                   📤 {lang === "Cn" ? "自動群發詢價郵件" : "Compile & Dispatch RFQs"}
                 </button>
               ) : (
@@ -989,7 +1031,7 @@ function App() {
                 stage_id: stageId,
                 role: line.role,
                 log_text_cn: line.text,
-                log_text_en: line.text
+                log_text_en: line.textEn || line.text
               });
             });
           });
@@ -1042,18 +1084,38 @@ function App() {
 
         if (thoughtsErr) throw thoughtsErr;
 
-        // Apply dbThoughtLogs to in-memory mockData.agentThoughtLogs
+        // Apply dbThoughtLogs to in-memory mockData.agentThoughtLogs with English healing
         if (dbThoughtLogs && dbThoughtLogs.length > 0) {
           const newThoughtLogs = {};
-          dbThoughtLogs.forEach(row => {
+          
+          // Sort or group by stage_id, and preserve insertion order
+          const sortedDbThoughtLogs = [...dbThoughtLogs].sort((a, b) => {
+            if (a.stage_id !== b.stage_id) return a.stage_id.localeCompare(b.stage_id);
+            return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+          });
+
+          sortedDbThoughtLogs.forEach(row => {
             if (!newThoughtLogs[row.stage_id]) {
               newThoughtLogs[row.stage_id] = [];
             }
+            
+            const currentIdx = newThoughtLogs[row.stage_id].length;
+            const localLines = mockData.agentThoughtLogs[row.stage_id];
+            const localLine = localLines ? localLines[currentIdx] : null;
+            
+            let textEn = row.log_text_en || row.log_text_cn;
+            // If DB English text is missing or contains Chinese, but we have a clean local English text, use local
+            if (localLine && localLine.textEn && (!row.log_text_en || row.log_text_en === row.log_text_cn || /[\u4e00-\u9fa5]/.test(row.log_text_en))) {
+              textEn = localLine.textEn;
+            }
+
             newThoughtLogs[row.stage_id].push({
               role: row.role,
-              text: lang === "Cn" ? row.log_text_cn : row.log_text_en
+              text: row.log_text_cn || row.log_text_en,
+              textEn: textEn
             });
           });
+          
           Object.assign(mockData.agentThoughtLogs, newThoughtLogs);
         }
 
@@ -1109,13 +1171,20 @@ function App() {
           setCurrentStageIndex(stageIdx);
         }
         
-        // Update logs if tables have data
         if (logsData && logsData.length > 0) {
-          setLogs(logsData.map(log => ({
-            time: log.created_at ? new Date(log.created_at).toLocaleString() : "2026-05-25 10:15:20",
-            user: log.operator || "OpenClaw",
-            action: lang === "Cn" ? (log.action_desc_cn || log.action_desc_en) : (log.action_desc_en || log.action_desc_cn)
-          })));
+          setLogs(logsData.map(log => {
+            const actionCn = log.action_desc_cn || log.action_desc_en;
+            let actionEn = log.action_desc_en || log.action_desc_cn;
+            if (!actionEn || actionEn === actionCn || /[\u4e00-\u9fa5]/.test(actionEn)) {
+              actionEn = getLogActionEn(actionCn) || actionEn;
+            }
+            return {
+              time: log.created_at ? new Date(log.created_at).toLocaleString() : "2026-05-25 10:15:20",
+              user: log.operator || "OpenClaw",
+              action: actionCn,
+              actionEn: actionEn
+            };
+          }));
         }
       }
     } catch (err) {
@@ -1400,7 +1469,7 @@ function App() {
   const handleChoApproval = async () => {
     const nextIndex = currentStageIndex + 1;
     setCurrentStageIndex(nextIndex);
-    addLog("Cho", "技术规格书與BOM審核通過，簽名發布。");
+     addLog("Cho", "技术规格书與BOM審核通過，簽名發布。", "Technical specifications and BOM approved, signature released.");
 
     if (dbConnected && order.id) {
       try {
@@ -1425,7 +1494,7 @@ function App() {
     setFabricCompatibilityTest("passed");
     setIsCrib5Blocked(false);
     setCurrentStageIndex(5); // Move to next stage S06
-    addLog("Cho", `修改物料合规：替换面料为 ${fabricCode} (海军蓝亚麻)，成功通过 Crib 5 安全拦截门禁。`);
+    addLog("Cho", `修改物料合规：替换面料为 ${fabricCode} (海军蓝亚麻)，成功通过 Crib 5 安全拦截门禁。`, `Modified material compliance: Swapped fabric to ${fabricCode} (Navy Classic Linen), successfully passing the Crib 5 safety compliance gate.`);
 
     if (dbConnected && order.id) {
       try {
@@ -1469,7 +1538,7 @@ function App() {
     });
 
     setOrder(prev => ({ ...prev, items: updatedItems, payments: updatedPayments }));
-    addLog("Cho", `比价完成。最终选定代工厂: ${supplier.name}，大堂扶手椅单价核定为 $${supplier.pricePerChair}/把。`);
+    addLog("Cho", `比价完成。最终选定代工厂: ${supplier.name}，大堂扶手椅单价核定为 $${supplier.pricePerChair}/把。`, `Bidding completed. Selected final supplier: ${supplier.name}. Lobby armchair unit price approved at $${supplier.pricePerChair}/pc.`);
     setCurrentStageIndex(8); // Move to production stage S09
 
     if (dbConnected && order.id) {
@@ -1523,7 +1592,7 @@ function App() {
     ];
 
     setOrder(prev => ({ ...prev, items: updatedItems, payments: updatedPayments }));
-    addLog("Client", "現場反饋：因客戶硬裝現場變動，取消2把扶手椅與1張茶几。啟動劃線財務自動重算，餘款已核銷更新。");
+    addLog("Client", "現場反饋：因客戶硬裝現場變動，取消2把扶手椅與1張茶几。啟動劃線財務自動重算，餘款已核銷更新。", "On-site feedback: Due to site changes, 2 armchairs and 1 coffee table were canceled. Initiated automatic strike-through financial recalculation; remaining balance updated.");
 
     if (dbConnected && order.id) {
       try {
@@ -1571,9 +1640,14 @@ function App() {
     }
   };
 
-  const addLog = (user, action) => {
+  const addLog = (user, actionCn, actionEn) => {
     const time = new Date().toLocaleTimeString();
-    setLogs(prev => [{ time: `2026-05-25 ${time}`, user, action }, ...prev]);
+    setLogs(prev => [{ 
+      time: `2026-05-25 ${time}`, 
+      user, 
+      action: actionCn, 
+      actionEn: actionEn || actionCn 
+    }, ...prev]);
   };
 
   // Calculate order total
@@ -2115,16 +2189,27 @@ function App() {
                 {/* Change Tracker Log Panel */}
                 <div className="glass-card">
                   <div className="panel-header">
-                    <div className="panel-title">🛡️ 变更审计日志 (Change Tracker Log)</div>
+                    <div className="panel-title">
+                      {lang === "Cn" ? "🛡️ 变更审计日志 (Change Tracker Log)" : "🛡️ Change Tracker Log"}
+                    </div>
                   </div>
                   <div className="panel-body" style={{ maxHeight: '180px', overflowY: 'auto' }}>
-                    {logs.map((log, lidx) => (
-                      <div key={lidx} className="log-item">
-                        <span className="log-time">{log.time}</span>
-                        <span className="log-user">{log.user}:</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>{log.action}</span>
-                      </div>
-                    ))}
+                    {logs.map((log, lidx) => {
+                      const displayAction = lang === "Cn" 
+                        ? log.action 
+                        : (log.actionEn && !/[\u4e00-\u9fa5]/.test(log.actionEn) 
+                            ? log.actionEn 
+                            : (getLogActionEn(log.action) || log.actionEn || log.action));
+                      return (
+                        <div key={lidx} className="log-item">
+                          <span className="log-time">{log.time}</span>
+                          <span className="log-user">{log.user}:</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            {displayAction}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -2140,21 +2225,28 @@ function App() {
                   <div className="panel-header" style={{ background: "rgba(124, 114, 103, 0.03)" }}>
                     <div className="panel-title">
                       <span className="stage-badge-dot dot-ai" style={{ animation: "scanEffect 2s infinite alternate", background: "var(--accent-primary)" }}></span>
-                      OpenClaw 智能体思考轨迹控制台 (Thought-Process Terminal)
+                      {lang === "Cn" ? "OpenClaw 智能体思考轨迹控制台 (Thought-Process Terminal)" : "OpenClaw Thought-Process Terminal"}
                     </div>
                   </div>
                   <div className="panel-body">
                     <div className="terminal-console">
                       {mockData.agentThoughtLogs[currentStage.id] ? (
-                        mockData.agentThoughtLogs[currentStage.id].map((tlog, tidx) => (
-                          <div key={tidx} className={`terminal-line line-${tlog.role}`}>
-                            <span>&gt; {tlog.role === "thought" ? "【AI THOUGHT】" : tlog.role === "action" ? "【ACTION CALL】" : tlog.role === "observation" ? "【OBSERVATION】" : "【SYSTEM】"} </span>
-                            {tlog.text}
-                          </div>
-                        ))
+                        mockData.agentThoughtLogs[currentStage.id].map((tlog, tidx) => {
+                          const roleLabel = lang === "Cn"
+                            ? (tlog.role === "thought" ? "【AI THOUGHT】" : tlog.role === "action" ? "【ACTION CALL】" : tlog.role === "observation" ? "【OBSERVATION】" : "【SYSTEM】")
+                            : (tlog.role === "thought" ? "[AI THOUGHT] " : tlog.role === "action" ? "[ACTION CALL] " : tlog.role === "observation" ? "[OBSERVATION] " : "[SYSTEM] ");
+                          return (
+                            <div key={tidx} className={`terminal-line line-${tlog.role}`}>
+                              <span>&gt; {roleLabel}</span>
+                              {lang === "Cn" ? tlog.text : (tlog.textEn || tlog.text)}
+                            </div>
+                          );
+                        })
                       ) : (
                         <div className="terminal-line line-system">
-                          &gt; 【SYSTEM】OpenClaw Daemon v2.1 挂机待命。当前阶段未绑定主动自动化任务。正在监听 Supabase Webhook 触发。
+                          &gt; {lang === "Cn" 
+                            ? "【SYSTEM】OpenClaw Daemon v2.1 挂机待命。当前阶段未绑定主动自动化任务。正在监听 Supabase Webhook 触发。" 
+                            : "[SYSTEM] OpenClaw Daemon v2.1 Standby. No active automated task is bound to the current stage. Listening for Supabase Webhook triggers."}
                         </div>
                       )}
                       <div ref={terminalEndRef}></div>
