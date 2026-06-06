@@ -1673,7 +1673,6 @@ function App() {
       <nav className="navbar">
         <div className="logo-container">
           <span className="logo-logo">CRAFTON AI</span>
-          <span className="logo-badge">OpenClaw Engine</span>
         </div>
 
         <div className="nav-links">
