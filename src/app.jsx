@@ -2264,41 +2264,10 @@ function App() {
 
       {/* High-End Glassmorphism Volumetric 3D Packing Simulation Modal */}
       {showVolumetricSimulation && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          backgroundColor: 'rgba(28, 27, 24, 0.65)',
-          backdropFilter: 'blur(10px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 9999,
-          padding: '1rem',
-        }}>
-          <div style={{
-            width: '95vw',
-            maxWidth: '1500px',
-            height: '92vh',
-            background: 'rgba(250, 249, 246, 0.98)',
-            border: '1px solid var(--text-primary)',
-            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.25)',
-            display: 'flex',
-            flexDirection: 'column',
-            borderRadius: '4px',
-            overflow: 'hidden',
-          }}>
+        <div className="volumetric-modal-overlay">
+          <div className="volumetric-modal-card">
             {/* Modal Header */}
-            <div style={{
-              padding: '1rem 1.5rem',
-              borderBottom: '1px solid var(--glass-border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              background: 'rgba(124, 114, 103, 0.05)',
-            }}>
+            <div className="volumetric-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ fontSize: '1.4rem' }}>📦</span>
                 <div>
@@ -2311,7 +2280,7 @@ function App() {
                 </div>
               </div>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
                 {/* Open in New Tab Button */}
                 <button 
                   onClick={() => window.open(`/loading-ai/?lang=${lang === "Cn" ? "cn" : "en"}`, '_blank')}
@@ -2362,7 +2331,7 @@ function App() {
             </div>
 
             {/* Modal Body / Iframe Container (Perfect 100% Height Fill) */}
-            <div style={{ flex: 1, padding: '0.8rem', background: '#F4F2EE', display: 'flex', flexDirection: 'column' }}>
+            <div className="volumetric-modal-body">
               <iframe 
                 src={`/loading-ai/?lang=${lang === "Cn" ? "cn" : "en"}`} 
                 style={{
@@ -2380,14 +2349,7 @@ function App() {
             </div>
 
             {/* Modal Footer */}
-            <div style={{
-              padding: '0.8rem 1.5rem',
-              borderTop: '1px solid var(--glass-border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              background: '#FAF9F6'
-            }}>
+            <div className="volumetric-modal-footer">
               <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                 {lang === "Cn" ? "💡 提示：滑鼠滾輪可縮放視角，按住左鍵可旋轉貨櫃，按右鍵拖曳可平移視角。" : "💡 Controls: Scroll wheel to zoom, left click & drag to rotate, right click to pan."}
               </span>

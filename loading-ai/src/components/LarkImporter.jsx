@@ -154,7 +154,8 @@ Mattress Moisture Pad\t2000\t1500\t50\t10\t5\t1`
       <div 
         className="glass-panel" 
         style={{ 
-          width: '560px', 
+          width: '92vw',
+          maxWidth: '560px', 
           padding: '24px', 
           display: 'flex', 
           flexDirection: 'column', 
