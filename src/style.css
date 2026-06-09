@@ -1156,6 +1156,21 @@ body {
   background: #FAF9F6;
 }
 
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.payments-grid {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--glass-border);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
 /* =====================================================================
    CRAFTON AI - RESPONSIVE & MOBILE ADAPTATION STYLING
    ===================================================================== */
@@ -1163,14 +1178,21 @@ body {
 @media (max-width: 991px) {
   /* Layout - Backoffice 17-Stage Tracker */
   .dashboard-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) !important;
     min-height: auto;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
   }
   
   .sidebar {
     border-right: none;
     border-bottom: 1px solid var(--glass-border);
     padding: 1.5rem;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
   }
   
   .stage-timeline-vertical {
@@ -1180,6 +1202,7 @@ body {
     overflow-x: auto;
     max-height: none;
     padding-bottom: 0.8rem;
+    width: 100%;
     -webkit-overflow-scrolling: touch;
   }
   
@@ -1202,12 +1225,25 @@ body {
   .main-content {
     padding: 1.5rem 1rem;
     max-height: none;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
   }
 
   /* Member Portal Panels */
   .dashboard-panels {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 1.5rem;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .payments-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.8rem;
+    width: 100%;
   }
 
   .swatch-configurator-box {

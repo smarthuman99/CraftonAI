@@ -2128,52 +2128,54 @@ function App() {
                     <div className="panel-title">📋 Supabase 共享主数据库 (Master Sheet)</div>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ID: {order.orderId}</span>
                   </div>
-                  <div className="panel-body">
-                    <table className="order-table">
-                      <thead>
-                        <tr>
-                          <th>{lang === "Cn" ? "项目类型" : "Item"}</th>
-                          <th>{lang === "Cn" ? "数量" : "Qty"}</th>
-                          <th>{lang === "Cn" ? "材质规格 (双语)" : "Bilingual Material"}</th>
-                          <th>{lang === "Cn" ? "合同单价" : "Unit Price"}</th>
-                          <th>{lang === "Cn" ? "小计" : "Subtotal"}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {order.items.map(item => (
-                          <tr key={item.id}>
-                            <td style={{ fontWeight: '600' }}>
-                              {lang === "Cn" ? item.typeCn : item.typeEn}
-                            </td>
-                            <td>
-                              {splitDeliveryActive && item.id === "ITEM-01" ? (
-                                <span><span style={{ textDecoration: 'line-through', color: 'var(--accent-red)' }}>40</span> ➔ <strong style={{ color: 'var(--accent-green)' }}>38</strong></span>
-                              ) : splitDeliveryActive && item.id === "ITEM-03" ? (
-                                <span><span style={{ textDecoration: 'line-through', color: 'var(--accent-red)' }}>5</span> ➔ <strong style={{ color: 'var(--accent-green)' }}>4</strong></span>
-                              ) : (
-                                item.qty
-                              )}
-                            </td>
-                            <td style={{ fontSize: '0.8rem' }}>
-                              <div style={{ color: 'var(--accent-cyan)' }}>{item.materialEn}</div>
-                              <div style={{ color: 'var(--text-secondary)' }}>{item.materialCn}</div>
-                              {item.note && <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginTop: '3px' }}>{item.note}</div>}
-                            </td>
-                            <td>
-                              {selectedSupplier ? (
-                                <span><span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.75rem' }}>${item.originalUnitPrice}</span> ${item.unitPrice}</span>
-                              ) : (
-                                `$${item.unitPrice}`
-                              )}
-                            </td>
-                            <td style={{ fontWeight: 'bold' }}>${(item.unitPrice * item.qty).toLocaleString()}</td>
+                  <div className="panel-body" style={{ padding: '1.5rem 0' }}>
+                    <div className="table-container" style={{ padding: '0 1.5rem' }}>
+                      <table className="order-table" style={{ minWidth: '650px' }}>
+                        <thead>
+                          <tr>
+                            <th>{lang === "Cn" ? "项目类型" : "Item"}</th>
+                            <th>{lang === "Cn" ? "数量" : "Qty"}</th>
+                            <th>{lang === "Cn" ? "材质规格 (双语)" : "Bilingual Material"}</th>
+                            <th>{lang === "Cn" ? "合同单价" : "Unit Price"}</th>
+                            <th>{lang === "Cn" ? "小计" : "Subtotal"}</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {order.items.map(item => (
+                            <tr key={item.id}>
+                              <td style={{ fontWeight: '600' }}>
+                                {lang === "Cn" ? item.typeCn : item.typeEn}
+                              </td>
+                              <td>
+                                {splitDeliveryActive && item.id === "ITEM-01" ? (
+                                  <span><span style={{ textDecoration: 'line-through', color: 'var(--accent-red)' }}>40</span> ➔ <strong style={{ color: 'var(--accent-green)' }}>38</strong></span>
+                                ) : splitDeliveryActive && item.id === "ITEM-03" ? (
+                                  <span><span style={{ textDecoration: 'line-through', color: 'var(--accent-red)' }}>5</span> ➔ <strong style={{ color: 'var(--accent-green)' }}>4</strong></span>
+                                ) : (
+                                  item.qty
+                                )}
+                              </td>
+                              <td style={{ fontSize: '0.8rem' }}>
+                                <div style={{ color: 'var(--accent-cyan)' }}>{item.materialEn}</div>
+                                <div style={{ color: 'var(--text-secondary)' }}>{item.materialCn}</div>
+                                {item.note && <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginTop: '3px' }}>{item.note}</div>}
+                              </td>
+                              <td>
+                                {selectedSupplier ? (
+                                  <span><span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.75rem' }}>${item.originalUnitPrice}</span> ${item.unitPrice}</span>
+                                ) : (
+                                  `$${item.unitPrice}`
+                                )}
+                              </td>
+                              <td style={{ fontWeight: 'bold' }}>${(item.unitPrice * item.qty).toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
                     {/* Recalculated Payments at bottom of Master Sheet */}
-                    <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--glass-border)', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                    <div className="payments-grid" style={{ padding: '0 1.5rem' }}>
                       {order.payments.map((p, pidx) => (
                         <div key={pidx} style={{ background: 'var(--bg-secondary)', padding: '0.8rem 0.6rem', borderRadius: '2px', border: '1px solid var(--glass-border)' }}>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p.milestone}</div>
