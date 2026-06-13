@@ -7,6 +7,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import mockData from './mockData';
 
+const IMAGES = {
+  heroChair: "https://images.unsplash.com/photo-1592078615290-033ee584e267?q=80&w=800&auto=format&fit=crop", // 侘寂奢華皮質單椅 (取代 image1)
+  workflowPhases: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?q=80&w=800&auto=format&fit=crop", // 手作工坊布樣與尺規 (取代 image2)
+  masterShowwall: "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?q=80&w=1200&auto=format&fit=crop", // 意式奢華客廳實景 (取代 image3)
+  wabiTextures: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800&auto=format&fit=crop", // 暖沙天然洞石幾何特寫 (取代 image4)
+  blueprintIntake: "https://images.unsplash.com/photo-1503387762-592deb58ef4e?q=80&w=800&auto=format&fit=crop", // 設計手繪手稿與墨線圖 (取代 image5)
+  caseGeneva: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?q=80&w=600&auto=format&fit=crop", // Westlake Penthouse 瑞士日內瓦豪宅 (案例 1)
+  caseMayfair: "https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=600&auto=format&fit=crop", // Portal Hedge Fund 倫敦對沖基金辦公室 (案例 2)
+  caseBermondsey: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?q=80&w=600&auto=format&fit=crop", // Bermondsey Lofts 工業風公寓 (案例 3)
+  caseBathHotel: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=600&auto=format&fit=crop", // The Stow Boutique Hotel 精品客房 (案例 4)
+  caseCamden: "https://images.unsplash.com/photo-1524758631624-e2822e304c36?q=80&w=600&auto=format&fit=crop" // Camden Creative Studios 創意共享空間 (案例 5)
+};
+
 // Inject into window for backward compatibility with legacy prototype code
 window.supabase = { createClient };
 
@@ -68,6 +81,30 @@ const getLogActionEn = (cnText) => {
 function App() {
   const [currentView, setCurrentStageView] = useState("Marketing"); // Views: "Marketing", "Backoffice", "ClientPortal"
   const [lang, setLang] = useState("Cn"); // Language: "Cn" or "En"
+  const [marketingTab, setMarketingTab] = useState("Overview"); // "Overview", "CaseStudies", "OurStory", "Contact"
+  const [clientPortalTab, setClientPortalTab] = useState("Tracker"); // "Tracker", "Intake"
+  const [openFaq, setOpenFaq] = useState(null); // Accordion FAQ toggle
+  const [isIntakeUploading, setIsIntakeUploading] = useState(false); // For upload animation
+  const [parsingLogs, setParsingLogs] = useState([]); // Real-time parsing logs
+
+  // Premium Auth Gate States
+  const [user, setUser] = useState(null);
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const [authMode, setAuthMode] = useState("login"); // "login" or "signup"
+  
+  // Custom Registration Input States
+  const [signupName, setSignupName] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupCompany, setSignupCompany] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupMessenger, setSignupCompanyMessenger] = useState("WeChat");
+  const [signupMessengerId, setSignupMessengerId] = useState("");
+
+  // B2B Client Intake Form States
+  const [intakeProjectName, setIntakeProjectName] = useState("St Albans Boutique Hotel Lobby");
+  const [intakeDestination, setIntakeDestination] = useState("London, UK");
+  const [intakeQuantity, setIntakeQuantity] = useState("40 Lobby Armchairs, 20 Club Chairs");
+
   const [currentStageIndex, setCurrentStageIndex] = useState(0); // S01 to S17
   const [order, setOrder] = useState(JSON.parse(JSON.stringify(mockData.initialOrder)));
   const [logs, setLogs] = useState(JSON.parse(JSON.stringify(mockData.changeLogs)));
@@ -96,6 +133,118 @@ function App() {
   const [archiveHashed, setArchiveHashed] = useState(false);
   const [showVolumetricSimulation, setShowVolumetricSimulation] = useState(false);
 
+  // =====================================================================
+  // THE CRAFTON - SESSION & AUTHENTICATION HANDLERS
+  // =====================================================================
+  const handleLogin = (e) => {
+    if (e) e.preventDefault();
+    if (!signupEmail) {
+      alert(lang === "Cn" ? "請輸入電子郵件！" : "Please enter your email!");
+      return;
+    }
+    const nameFromEmail = signupEmail.split('@')[0];
+    const formattedName = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+    setUser({
+      name: formattedName,
+      email: signupEmail,
+      company: "Contract Design Ltd",
+      messenger: "WhatsApp",
+      messengerId: "+44 7700 900077"
+    });
+    setShowAuthGate(false);
+  };
+
+  const handleSignUp = (e) => {
+    if (e) e.preventDefault();
+    if (!signupEmail || !signupName) {
+      alert(lang === "Cn" ? "請填寫電子郵件與姓名！" : "Please fill in email and name!");
+      return;
+    }
+    setUser({
+      name: signupName,
+      email: signupEmail,
+      company: signupCompany || "Independent Designer",
+      messenger: signupMessenger,
+      messengerId: signupMessengerId || "N/A"
+    });
+    setShowAuthGate(false);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setCurrentStageView("Marketing");
+    setMarketingTab("Overview");
+  };
+
+  const loginAsDemo = (role) => {
+    if (role === 'client') {
+      setUser({
+        name: "Sarah Jenkins",
+        email: "sarah@jenkins-design.co.uk",
+        company: "Jenkins Contract Interior Studio",
+        messenger: "WhatsApp",
+        messengerId: "+44 7700 900077"
+      });
+    } else if (role === 'cho') {
+      setUser({
+        name: "Cho (Manager)",
+        email: "cho@crafton.com",
+        company: "The Crafton Ltd",
+        messenger: "WeChat",
+        messengerId: "cho_crafton"
+      });
+    }
+    setShowAuthGate(false);
+  };
+
+  const handleIntakeSubmit = (e) => {
+    if (e) e.preventDefault();
+    setIsIntakeUploading(true);
+    setParsingLogs([]);
+    
+    // Simulate real-time parsing logs
+    const simulatedLogs = [
+      { delay: 400, cn: "🔄 [OpenClaw Daemon] 成功連線至智能體管道解析端口...", en: "🔄 [OpenClaw Daemon] Connected to agent parsing pipe..." },
+      { delay: 1000, cn: "🔍 [Intake Agent] 正在讀取上傳設計草圖幾何線條...", en: "🔍 [Intake Agent] Analysing uploaded sketch geometry..." },
+      { delay: 1600, cn: "📐 [Spec Agent] 自動推導扶手椅與休閒椅比例及公差限制 (W:65cm, D:60cm, H:85cm)...", en: "📐 [Spec Agent] Extrapolating chair dimensions and tolerances (W:65cm, D:60cm, H:85cm)..." },
+      { delay: 2200, cn: "🔥 [Compliance Agent] 比對英國 BS 5852 Crib 5 消防安全性：面料耐燃性相符...", en: "🔥 [Compliance Agent] Auditing British BS 5852 Crib 5 compliance: Swatch flammability compatible..." },
+      { delay: 2800, cn: "📝 [BOM Agent] 自動生成雙語技術 BOM 清單與圖紙歸檔...", en: "📝 [BOM Agent] Compiling bilingual technical BOM spreadsheet & blueprint archives..." },
+      { delay: 3400, cn: "✅ [OpenClaw Engine] 項目主數據成功導入數據庫！自動解鎖 Tracker 進度面板。", en: "✅ [OpenClaw Engine] Project successfully synchronized! Unlocking active Tracker dashboard." }
+    ];
+
+    simulatedLogs.forEach(log => {
+      setTimeout(() => {
+        setParsingLogs(prev => [...prev, log]);
+      }, log.delay);
+    });
+
+    setTimeout(() => {
+      // Create bespoke items based on user inputs
+      const qty1 = parseInt(intakeQuantity) || 40;
+      const newItems = [
+        { id: "ITEM-01", typeCn: "大堂定製扶手椅", typeEn: "Custom Lobby Armchair", qty: qty1, materialCn: "海軍藍亞麻 (FAB-02)", materialEn: "Navy Classic Linen (FAB-02)", originalUnitPrice: 210, unitPrice: 210, status: "Active" },
+        { id: "ITEM-02", typeCn: "貴賓單人休閒沙發", typeEn: "VIP Club Chair", qty: 20, materialCn: "皇家藍絲絨 (FAB-01)", materialEn: "Royal Velvet (FAB-01)", originalUnitPrice: 280, unitPrice: 280, status: "Active" }
+      ];
+      
+      setOrder({
+        orderId: "CRAFT-" + new Date().getFullYear() + ("0" + (new Date().getMonth() + 1)).slice(-2) + "-BESPOKE",
+        clientName: user ? user.company : "Bespoke Partner",
+        projectLocation: intakeDestination,
+        createdDate: new Date().toISOString().split('T')[0],
+        currentStageId: "S03",
+        items: newItems,
+        payments: [
+          { milestone: "50% Deposit (50% 首期定金)", amount: ((210 * qty1) + 280 * 20) * 0.5, date: new Date().toISOString().split('T')[0], status: "Paid" },
+          { milestone: "40% Shipping Release (40% 出货中款)", amount: ((210 * qty1) + 280 * 20) * 0.4, date: "Pending", status: "Pending" },
+          { milestone: "10% Handover Balance (10% 交付尾款)", amount: ((210 * qty1) + 280 * 20) * 0.1, date: "Pending", status: "Pending" }
+        ]
+      });
+
+      setCurrentStageIndex(2); // S03
+      setIsIntakeUploading(false);
+      setClientPortalTab("Tracker");
+    }, 4000);
+  };
 
   // =====================================================================
   // CRAFTON AI - LOW SATURATION VECTOR RENDERS & STAGE PLAYGROUNDS
@@ -307,7 +456,13 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(124,114,103,0.03)' }}>
-            <div className="panel-title">📐 {lang === "Cn" ? "中英雙語 CAD 技術藍圖規格書" : "Bilingual CAD Technical Specs"}</div>
+            <div className="panel-title">
+              <svg style={{ width: '16px', height: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 22L2 2v20h20z" />
+                <path d="M18 18L6 6v12h12z" />
+              </svg>
+              {lang === "Cn" ? "中英雙語 CAD 技術藍圖規格書" : "Bilingual CAD Technical Specs"}
+            </div>
             <span className="logo-badge" style={{ color: 'var(--accent-primary)' }}>AUTO-DRAFTED</span>
           </div>
           <div className="panel-body" style={{ padding: '1rem' }}>
@@ -363,8 +518,11 @@ function App() {
             </div>
 
             {stageId === "S04" && !signatureApproved && (
-              <button className="btn-premium" style={{ width: '100%', marginTop: '0.8rem', justifyContent: 'center' }} onClick={() => { setSignatureApproved(true); handleChoApproval(); }}>
-                ✍️ {lang === "Cn" ? "我已確認規格無誤，签字放行" : "Review Specs & Sign-Off Block"}
+              <button className="btn-premium" style={{ width: '100%', marginTop: '0.8rem', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={() => { setSignatureApproved(true); handleChoApproval(); }}>
+                <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+                <span>{lang === "Cn" ? "我已確認規格無誤，签字放行" : "Review Specs & Sign-Off Block"}</span>
               </button>
             )}
           </div>
@@ -378,7 +536,12 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(166, 132, 128, 0.03)' }}>
-            <div className="panel-title">🔥 {lang === "Cn" ? "英國 Crib 5 消防燃燒阻燃測試艙" : "UK Crib 5 Fire Ignition Testing Rig"}</div>
+            <div className="panel-title">
+              <svg style={{ width: '16px', height: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', color: 'var(--accent-red)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.657 16.657c2.12-2.121 2.29-5.467.51-7.78L13 13l-4-4-2.28 4.28c-1.78 2.313-1.61 5.659.51 7.78a8 8 0 1010.417 0z" />
+              </svg>
+              {lang === "Cn" ? "英國 Crib 5 消防燃燒阻燃測試艙" : "UK Crib 5 Fire Ignition Testing Rig"}
+            </div>
             <span className="logo-badge" style={{ color: 'var(--accent-red)' }}>COMPLIANCE GATE</span>
           </div>
           <div className="panel-body" style={{ padding: '1rem' }}>
@@ -423,16 +586,19 @@ function App() {
               <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.8rem' }}>
                 <button 
                   className="btn-premium" 
-                  style={{ flex: 1, justifyContent: 'center' }} 
+                  style={{ flex: 1, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }} 
                   onClick={handleStartCrib5Test}
                   disabled={crib5TestStatus === "running"}
                 >
-                  🚀 {lang === "Cn" ? "執行物理燃燒校驗" : "Trigger Crib 5 Burn"}
+                  <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4.5 16.5c-1.5 1.25-2.5 3.5-2.5 3.5s2.25-1 3.5-2.5M20 4a2 2 0 00-2.83 0L10 11.17l-1.41-1.41a1 1 0 00-1.42 0L3.5 13.5a1 1 0 000 1.42l4.24 4.24a1 1 0 001.42 0L12.92 15l1.41 1.41a1 1 0 001.42-1.42l7.17-7.17A2 2 0 0020 4z" />
+                  </svg>
+                  <span>{lang === "Cn" ? "執行物理燃燒校驗" : "Trigger Crib 5 Burn"}</span>
                 </button>
                 {crib5TestStatus === "failed" && (
                   <button 
                     className="btn-secondary" 
-                    style={{ borderColor: 'var(--accent-green)', color: 'var(--accent-green)' }}
+                    style={{ borderColor: 'var(--accent-green)', color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: '6px' }}
                     onClick={() => {
                       setSelectedFabric("FAB-02"); // auto replace with safe Linen
                       setCrib5TestStatus("idle");
@@ -440,7 +606,10 @@ function App() {
                       addLog("Cho", "檢測到絲綢硬性不合規，一鍵替換面料為：L-4410 (海軍藍亞麻)", "Detected critical non-compliance on Silk. Swapped fabric to: L-4410 (Navy Classic Linen) with one click.");
                     }}
                   >
-                    🔄 {lang === "Cn" ? "一鍵降級替換" : "Bypass with Linen"}
+                    <svg style={{ width: '14px', height: '14px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+                    </svg>
+                    <span>{lang === "Cn" ? "一鍵降級替換" : "Bypass with Linen"}</span>
                   </button>
                 )}
               </div>
@@ -455,7 +624,13 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(255,159,67,0.03)' }}>
-            <div className="panel-title">✉️ {lang === "Cn" ? "自動化 RFQ 郵件詢價發送中心" : "Automated RFQ Mailer Daemon"}</div>
+            <div className="panel-title">
+              <svg style={{ width: '16px', height: '16px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px', color: 'var(--accent-orange)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                <polyline points="22,6 12,13 2,6" />
+              </svg>
+              {lang === "Cn" ? "自動化 RFQ 郵件詢價發送中心" : "Automated RFQ Mailer Daemon"}
+            </div>
           </div>
           <div className="panel-body" style={{ padding: '1rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
@@ -476,8 +651,11 @@ function App() {
               </div>
 
               {!rfqDispatched ? (
-                <button className="btn-premium" style={{ justifyContent: 'center' }} onClick={() => { setRfqDispatched(true); addLog("OpenClaw QuotationAgent", "生成PDF規格書，全自動調用 SMTP 郵件群發至 3 家意向工廠。", "Generated PDF specification sheet, automatically calling SMTP to dispatch RFQs to 3 target factories."); }}>
-                  📤 {lang === "Cn" ? "自動群發詢價郵件" : "Compile & Dispatch RFQs"}
+                <button className="btn-premium" style={{ justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={() => { setRfqDispatched(true); addLog("OpenClaw QuotationAgent", "生成PDF規格書，全自動調用 SMTP 郵件群發至 3 家意向工廠。", "Generated PDF specification sheet, automatically calling SMTP to dispatch RFQs to 3 target factories."); }}>
+                  <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
+                  </svg>
+                  <span>{lang === "Cn" ? "自動群發詢價郵件" : "Compile & Dispatch RFQs"}</span>
                 </button>
               ) : (
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', borderTop: '1px dashed var(--glass-border)', paddingTop: '0.8rem' }}>
@@ -507,7 +685,15 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(255,159,67,0.05)' }}>
-            <div className="panel-title" style={{ color: 'var(--accent-orange)' }}>⚖️ {lang === "Cn" ? "三家合作代工廠智能比價分析" : "Supplier Bid Matrix & AI Analysis"}</div>
+            <div className="panel-title" style={{ color: 'var(--accent-orange)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg style={{ width: '16px', height: '16px', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="2" x2="12" y2="22" />
+                <line x1="5" y1="5" x2="19" y2="5" />
+                <path d="M12 22a4 4 0 008-4H4a4 4 0 008 0z" />
+                <path d="M19 5l-3 9H8l-3-9" />
+              </svg>
+              <span>{lang === "Cn" ? "三家合作代工廠智能比價分析" : "Supplier Bid Matrix & AI Analysis"}</span>
+            </div>
           </div>
           <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
             {mockData.supplierBids.map((bid, bidx) => (
@@ -548,7 +734,13 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(124,114,103,0.03)' }}>
-            <div className="panel-title">🏭 {lang === "Cn" ? "車間現場物料掃碼與生產實時跟進" : "Factory QR Flow & Realtime Progress"}</div>
+            <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg style={{ width: '16px', height: '16px', flexShrink: 0, color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 22V4a2 2 0 00-2-2H4a2 2 0 00-2 2v18M20 22V8a2 2 0 00-2-2h-4" />
+                <path d="M6 12h4M6 16h4M17 12h2" />
+              </svg>
+              <span>{lang === "Cn" ? "車間現場物料掃碼與生產實時跟進" : "Factory QR Flow & Realtime Progress"}</span>
+            </div>
           </div>
           <div className="panel-body" style={{ padding: '1rem' }}>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -581,8 +773,11 @@ function App() {
             </div>
 
             <div style={{ marginTop: '1rem', padding: '0.8rem', background: '#F4F2EE', border: '1px solid var(--glass-border)', borderRadius: '2px', fontSize: '0.75rem' }}>
-              <div style={{ fontWeight: 'bold', color: 'var(--accent-orange)' }}>
-                🚨 {lang === "Cn" ? "交期剩餘 15 天 - 黃色風險警告" : "Delivery Warning: 15 Days Remaining"}
+              <div style={{ fontWeight: 'bold', color: 'var(--accent-orange)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg style={{ width: '14px', height: '14px', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />
+                </svg>
+                <span>{lang === "Cn" ? "交期剩餘 15 天 - 黃色風險警告" : "Delivery Warning: 15 Days Remaining"}</span>
               </div>
               <div style={{ color: 'var(--text-secondary)', marginTop: '2px' }}>
                 {lang === "Cn" ? "AI 每日計算發現金陽工廠未按時上傳本週進度，系統將自動啟動 WhatsApp 催詢鏈路。" : "AI model detected delays on Nansha dock scheduling. Automated WhatsApp inquiry is triggered."}
@@ -598,7 +793,13 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(125, 143, 123, 0.05)' }}>
-            <div className="panel-title" style={{ color: 'var(--accent-green)' }}>👁️ {lang === "Cn" ? "AI CV 智能圖紙與實物重合比對" : "AI CV Photo-to-CAD Overlap Inspection"}</div>
+            <div className="panel-title" style={{ color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg style={{ width: '16px', height: '16px', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <span>{lang === "Cn" ? "AI CV 智能圖紙與實物重合比對" : "AI CV Photo-to-CAD Overlap Inspection"}</span>
+            </div>
             <span className="logo-badge" style={{ color: 'var(--accent-green)' }}>PASS 98.2%</span>
           </div>
           <div className="panel-body" style={{ padding: '1rem' }}>
@@ -621,7 +822,13 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(124,114,103,0.03)' }}>
-            <div className="panel-title">📦 {lang === "Cn" ? "集裝箱體積排櫃優化算法" : "3D Volumetric Container Packing Optimizer"}</div>
+            <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg style={{ width: '16px', height: '16px', flexShrink: 0, color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+                <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
+              </svg>
+              <span>{lang === "Cn" ? "集裝箱體積排櫃優化算法" : "3D Volumetric Container Packing Optimizer"}</span>
+            </div>
           </div>
           <div className="panel-body" style={{ padding: '1rem' }}>
             <div className="cube-container">
@@ -644,7 +851,10 @@ function App() {
               style={{ width: '100%', marginTop: '1rem', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px' }} 
               onClick={() => setShowVolumetricSimulation(true)}
             >
-              📊 {lang === "Cn" ? "啟動 3D 排櫃三維立體仿真" : "Launch Interactive 3D Packing Simulation"}
+              <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 20V10M12 20V4M6 20v-6" />
+              </svg>
+              <span>{lang === "Cn" ? "啟動 3D 排櫃三維立體仿真" : "Launch Interactive 3D Packing Simulation"}</span>
             </button>
           </div>
         </div>
@@ -656,7 +866,14 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(124,114,103,0.03)' }}>
-            <div className="panel-title">📋 {lang === "Cn" ? "出港四大合規單證自動核驗" : "Customs Credentials Ledger Verification"}</div>
+            <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg style={{ width: '16px', height: '16px', flexShrink: 0, color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" />
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                <path d="M9 14l2 2 4-4" />
+              </svg>
+              <span>{lang === "Cn" ? "出港四大合規單證自動核驗" : "Customs Credentials Ledger Verification"}</span>
+            </div>
             <span className="logo-badge" style={{ color: 'var(--accent-orange)' }}>COMPLIANCE</span>
           </div>
           <div className="panel-body" style={{ padding: '1rem' }}>
@@ -687,8 +904,12 @@ function App() {
               )}
 
               {!docAudited && (
-                <button className="btn-premium" style={{ width: '100%', marginTop: '0.4rem', justifyContent: 'center' }} onClick={handleDocumentAudit}>
-                  🛡️ {lang === "Cn" ? "執行四大單證自動審計" : "Audit Export Documents"}
+                <button className="btn-premium" style={{ width: '100%', marginTop: '0.4rem', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={handleDocumentAudit}>
+                  <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <path d="M9 11l2 2 4-4" />
+                  </svg>
+                  <span>{lang === "Cn" ? "執行四大單證自動審計" : "Audit Export Documents"}</span>
                 </button>
               )}
             </div>
@@ -702,7 +923,14 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(124,114,103,0.03)' }}>
-            <div className="panel-title">🌐 {lang === "Cn" ? "貨船在途軌跡 (馬士基實時 API)" : "Maersk Maritime API Tracking"}</div>
+            <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg style={{ width: '16px', height: '16px', flexShrink: 0, color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                <path d="M2 12h20" />
+              </svg>
+              <span>{lang === "Cn" ? "貨船在途軌跡 (馬士基實時 API)" : "Maersk Maritime API Tracking"}</span>
+            </div>
           </div>
           <div className="panel-body" style={{ padding: '0.8rem' }}>
             <div className="maritime-map">
@@ -742,7 +970,14 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(166,132,128,0.03)' }}>
-            <div className="panel-title" style={{ color: 'var(--accent-red)' }}>💸 {lang === "Cn" ? "財務自動對賬與分批到貨核銷" : "Strike-through Accounting Audit"}</div>
+            <div className="panel-title" style={{ color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg style={{ width: '16px', height: '16px', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="5" width="20" height="14" rx="2" ry="2" />
+                <line x1="12" y1="11" x2="12" y2="13" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <span>{lang === "Cn" ? "財務自動對賬與分批到貨核銷" : "Strike-through Accounting Audit"}</span>
+            </div>
           </div>
           <div className="panel-body" style={{ padding: '1rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
@@ -751,8 +986,11 @@ function App() {
               </div>
 
               {!splitDeliveryActive ? (
-                <button className="btn-premium" style={{ background: 'var(--accent-red)', color: 'white', justifyContent: 'center' }} onClick={triggerSplitDelivery}>
-                  ⚡ {lang === "Cn" ? "執行分批到貨劃線銷賬" : "Execute Split strike recalculation"}
+                <button className="btn-premium" style={{ background: 'var(--accent-red)', color: 'white', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={triggerSplitDelivery}>
+                  <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                  </svg>
+                  <span>{lang === "Cn" ? "執行分批到貨劃線銷賬" : "Execute Split strike recalculation"}</span>
                 </button>
               ) : (
                 <div style={{ padding: '0.8rem', background: 'rgba(125, 143, 123, 0.08)', border: '1px solid var(--accent-green)', borderRadius: '2px', fontSize: '0.75rem', color: 'var(--accent-green)', fontWeight: '600' }}>
@@ -770,7 +1008,13 @@ function App() {
       return (
         <div className="glass-card animate-fade-in" style={{ marginBottom: '1rem' }}>
           <div className="panel-header" style={{ background: 'rgba(124,114,103,0.03)' }}>
-            <div className="panel-title">🔒 {lang === "Cn" ? "安全歸檔與密碼學審計" : "Secure Handover & Archive Lock"}</div>
+            <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg style={{ width: '16px', height: '16px', flexShrink: 0, color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
+              <span>{lang === "Cn" ? "安全歸檔與密碼學審計" : "Secure Handover & Archive Lock"}</span>
+            </div>
           </div>
           <div className="panel-body" style={{ padding: '1rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
@@ -791,11 +1035,15 @@ function App() {
               ) : (
                 <button 
                   className="btn-premium" 
-                  style={{ justifyContent: 'center' }} 
+                  style={{ justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }} 
                   onClick={handleCryptographicArchive}
                   disabled={stageId !== "S17"}
                 >
-                  🔒 {lang === "Cn" ? "密封存檔並生成加密哈希" : "Archive & Lock Ledger dossier"}
+                  <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                  </svg>
+                  <span>{lang === "Cn" ? "密封存檔並生成加密哈希" : "Archive & Lock Ledger dossier"}</span>
                 </button>
               )}
             </div>
@@ -1655,6 +1903,869 @@ function App() {
     return order.items.reduce((acc, item) => acc + (item.unitPrice * item.qty), 0);
   };
 
+  // =====================================================================
+  // THE CRAFTON - PREMIUM EDITORIAL MODULES
+  // =====================================================================
+  const renderAuthGate = () => {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(28, 27, 24, 0.65)',
+        backdropFilter: 'blur(12px)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px',
+      }} className="animate-fade-in">
+        <div style={{
+          width: '100%',
+          maxWidth: '900px',
+          background: '#FAF9F6',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
+          display: 'flex',
+          flexDirection: 'row',
+          border: '1px solid rgba(124, 114, 103, 0.15)',
+          minHeight: '550px'
+        }}>
+          {/* Left Column: Premium Editorial Visuals */}
+          <div style={{
+            flex: '1',
+            background: '#F3F1ED',
+            padding: '40px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            borderRight: '1px solid rgba(124, 114, 103, 0.1)',
+            position: 'relative'
+          }} className="hidden-mobile">
+            <div>
+              <div style={{
+                fontSize: '24px',
+                fontWeight: '600',
+                color: '#1C1B18',
+                letterSpacing: '0.05em',
+                marginBottom: '8px',
+                fontFamily: "'Outfit', 'Inter', sans-serif"
+              }}>
+                THE CRAFTON
+              </div>
+              <div style={{
+                fontSize: '12px',
+                color: '#7C7267',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                marginBottom: '40px'
+              }}>
+                {lang === "Cn" ? "倫敦工作室 × 智能製造" : "London Studio × Intelligent Manufacture"}
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', margin: '20px 0' }}>
+              {renderChairSVG("FAB-02", "matte-black")}
+            </div>
+
+            <div>
+              <p style={{
+                fontStyle: 'italic',
+                fontSize: '15px',
+                color: '#7C7267',
+                lineHeight: '1.6',
+                fontFamily: "'Georgia', serif",
+                marginBottom: '0'
+              }}>
+                {lang === "Cn" 
+                  ? "「您提需求，剩下的交給我們。圖紙為每件作品自動生成。」" 
+                  : "“You bring the requirements, we handle the rest. Blueprints auto-generate for every piece we build.”"}
+              </p>
+              <div style={{
+                fontSize: '11px',
+                color: '#9C9287',
+                marginTop: '12px',
+                letterSpacing: '0.05em'
+              }}>
+                THE CRAFTON B2B PORTAL
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Dynamic Form */}
+          <div style={{
+            flex: '1.2',
+            padding: '40px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            position: 'relative'
+          }}>
+            {/* Close Button */}
+            <button 
+              onClick={() => setShowAuthGate(false)}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                color: '#7C7267',
+                cursor: 'pointer',
+                padding: '5px',
+                lineHeight: '1'
+              }}
+              aria-label="Close"
+            >
+              ×
+            </button>
+
+            <div style={{ marginBottom: '30px' }}>
+              <h3 style={{
+                fontSize: '24px',
+                fontWeight: '600',
+                color: '#1C1B18',
+                marginBottom: '8px',
+                letterSpacing: '0.02em',
+                fontFamily: "'Outfit', 'Inter', sans-serif"
+              }}>
+                {authMode === "login" 
+                  ? (lang === "Cn" ? "尊貴會員登入" : "Partner Sign In") 
+                  : (lang === "Cn" ? "註冊尊貴會員" : "Partner Registration")}
+              </h3>
+              <p style={{ fontSize: '13px', color: '#7C7267', margin: 0, lineHeight: '1.4' }}>
+                {lang === "Cn" 
+                  ? "由於定制圖紙、BOM及工廠報價涉及商業機密，項目中心需帳戶驗證保護。" 
+                  : "As drawings, BOMs & factory bids involve B2B trade secrets, access is gated to registered clients."}
+              </p>
+            </div>
+
+            <form onSubmit={authMode === "login" ? handleLogin : handleSignUp} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {authMode === "signup" && (
+                <>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#7C7267', marginBottom: '4px', fontWeight: '500' }}>
+                      {lang === "Cn" ? "姓名" : "Your Name"}
+                    </label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="e.g. Sarah Jenkins"
+                      value={signupName}
+                      onChange={(e) => setSignupName(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(124, 114, 103, 0.2)',
+                        background: '#FAF9F6',
+                        fontSize: '14px',
+                        color: '#1C1B18'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#7C7267', marginBottom: '4px', fontWeight: '500' }}>
+                      {lang === "Cn" ? "公司名稱" : "Company Name"}
+                    </label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="e.g. Jenkins Contract Interior Studio"
+                      value={signupCompany}
+                      onChange={(e) => setSignupCompany(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(124, 114, 103, 0.2)',
+                        background: '#FAF9F6',
+                        fontSize: '14px',
+                        color: '#1C1B18'
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#7C7267', marginBottom: '4px', fontWeight: '500' }}>
+                  {lang === "Cn" ? "電子郵件" : "Email Address"}
+                </label>
+                <input 
+                  type="email" 
+                  required
+                  placeholder="e.g. client@designstudio.co.uk"
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(124, 114, 103, 0.2)',
+                    background: '#FAF9F6',
+                    fontSize: '14px',
+                    color: '#1C1B18'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#7C7267', marginBottom: '4px', fontWeight: '500' }}>
+                  {lang === "Cn" ? "密碼" : "Password"}
+                </label>
+                <input 
+                  type="password" 
+                  required
+                  placeholder="••••••••"
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(124, 114, 103, 0.2)',
+                    background: '#FAF9F6',
+                    fontSize: '14px',
+                    color: '#1C1B18'
+                  }}
+                />
+              </div>
+
+              {authMode === "signup" && (
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{ flex: '1' }}>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#7C7267', marginBottom: '4px', fontWeight: '500' }}>
+                      {lang === "Cn" ? "首選即時通訊" : "Preferred Messenger"}
+                    </label>
+                    <select
+                      value={signupMessenger}
+                      onChange={(e) => setSignupCompanyMessenger(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(124, 114, 103, 0.2)',
+                        background: '#FAF9F6',
+                        fontSize: '14px',
+                        color: '#1C1B18'
+                      }}
+                    >
+                      <option value="WhatsApp">WhatsApp</option>
+                      <option value="WeChat">WeChat (微信)</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: '1.5' }}>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#7C7267', marginBottom: '4px', fontWeight: '500' }}>
+                      {lang === "Cn" ? "通訊ID / 手機號" : "Messenger ID / Number"}
+                    </label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder={signupMessenger === "WhatsApp" ? "e.g. +44 7700 900077" : "e.g. wechat_id"}
+                      value={signupMessengerId}
+                      onChange={(e) => setSignupMessengerId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(124, 114, 103, 0.2)',
+                        background: '#FAF9F6',
+                        fontSize: '14px',
+                        color: '#1C1B18'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button 
+                type="submit"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: '#7C7267',
+                  color: '#FAF9F6',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  letterSpacing: '0.05em',
+                  transition: 'background 0.3s',
+                  marginTop: '10px'
+                }}
+                onMouseOver={(e) => e.target.style.background = '#63594F'}
+                onMouseOut={(e) => e.target.style.background = '#7C7267'}
+              >
+                {authMode === "login" 
+                  ? (lang === "Cn" ? "安全登入" : "Authenticate Session") 
+                  : (lang === "Cn" ? "完成註冊並開通" : "Register Partner Account")}
+              </button>
+            </form>
+
+            {/* Quick Demo Access Header */}
+            <div style={{
+              margin: '24px 0 12px 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px'
+            }}>
+              <div style={{ flex: '1', height: '1px', background: 'rgba(124, 114, 103, 0.15)' }}></div>
+              <span style={{ fontSize: '11px', color: '#9C9287', letterSpacing: '0.05em' }}>
+                {lang === "Cn" ? "快捷免密通道 (Demo)" : "QUICK DEMO LOGINS"}
+              </span>
+              <div style={{ flex: '1', height: '1px', background: 'rgba(124, 114, 103, 0.15)' }}></div>
+            </div>
+
+            {/* Quick Demo Login Buttons */}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => loginAsDemo('client')}
+                style={{
+                  flex: '1',
+                  padding: '10px',
+                  background: 'rgba(124, 114, 103, 0.08)',
+                  border: '1px solid rgba(124, 114, 103, 0.15)',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  color: '#7C7267',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  fontWeight: '500'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.background = 'rgba(124, 114, 103, 0.12)';
+                  e.target.style.borderColor = 'rgba(124, 114, 103, 0.3)';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.background = 'rgba(124, 114, 103, 0.08)';
+                  e.target.style.borderColor = 'rgba(124, 114, 103, 0.15)';
+                }}
+              >
+                📱 {lang === "Cn" ? "Sarah Jenkins (客戶)" : "Sarah (Client View)"}
+              </button>
+              <button
+                onClick={() => loginAsDemo('cho')}
+                style={{
+                  flex: '1',
+                  padding: '10px',
+                  background: 'rgba(124, 114, 103, 0.08)',
+                  border: '1px solid rgba(124, 114, 103, 0.15)',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  color: '#7C7267',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  fontWeight: '500'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.background = 'rgba(124, 114, 103, 0.12)';
+                  e.target.style.borderColor = 'rgba(124, 114, 103, 0.3)';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.background = 'rgba(124, 114, 103, 0.08)';
+                  e.target.style.borderColor = 'rgba(124, 114, 103, 0.15)';
+                }}
+              >
+                🛠️ {lang === "Cn" ? "Cho (設計師/經理)" : "Cho (Manager View)"}
+              </button>
+            </div>
+
+            {/* Toggle Mode */}
+            <div style={{ marginTop: '20px', textAlign: 'center' }}>
+              <span style={{ fontSize: '13px', color: '#9C9287' }}>
+                {authMode === "login" 
+                  ? (lang === "Cn" ? "還沒有帳戶？ " : "New to the platform? ") 
+                  : (lang === "Cn" ? "已有註冊帳戶？ " : "Already have an account? ")}
+              </span>
+              <button
+                onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '13px',
+                  color: '#7C7267',
+                  fontWeight: '600',
+                  textDecoration: 'underline',
+                  cursor: 'pointer',
+                  padding: 0
+                }}
+              >
+                {authMode === "login" 
+                  ? (lang === "Cn" ? "申請加入" : "Register Partner") 
+                  : (lang === "Cn" ? "登入帳戶" : "Sign In")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderHowItWorksBlock = () => {
+    const steps = [
+      {
+        num: "01",
+        titleCn: "Brief · 項目對接與手稿導入",
+        titleEn: "Project Intake & AI Parser",
+        descCn: "客戶於會員中心上傳設計手稿、幾何尺寸或文字需求。後台 OpenClaw 自動解析、識別比例、導入主數據。",
+        descEn: "Clients upload sketch drafts, dimensions, or text briefs. The background OpenClaw engine extracts files and initializes order entries."
+      },
+      {
+        num: "02",
+        titleCn: "Quote · 多廠實時比價與透明招標",
+        titleEn: "B2B Bid Comparison & Sourcing",
+        descCn: "AI 全自動翻譯並生成 RFQ 技術文件，分發至 3 家頂級合約代工廠，聚合單價與工期進行最優推薦。",
+        descEn: "AI auto-generates RFQ packages and emails 3 premier contract mills. Price, lead-time, and mill rating are aggregated."
+      },
+      {
+        num: "03",
+        titleCn: "Spec · 技術圖紙與BOM自動生成",
+        titleEn: "Automated CAD specs & BOMs",
+        descCn: "根據確定的物料，算法自動生成幾何三視圖、公差邊界與完整的雙語 BOM 列表，提供給客戶及 Cho 審批簽發。",
+        descEn: "Based on confirmed specifications, custom CAD elevations and bilingual BOM lists are auto-generated for sign-off."
+      },
+      {
+        num: "04",
+        titleCn: "Production · 掃碼動態監測與進度追蹤",
+        titleEn: "QR Progress Scan & Tracking",
+        descCn: "物料到廠粘貼唯一二維碼，工匠車間掃碼隨時查看 3D 三視圖，每日進度同步更新至客戶平台與 WhatsApp。",
+        descEn: "Mill materials are labeled with QR codes. Craftsmen scan to view 3D assemblies, logging daily progress live."
+      },
+      {
+        num: "05",
+        titleCn: "Compliance · 英國 Crib 5 消防與CV驗證",
+        titleEn: "Crib 5 Gate & CV Verification",
+        descCn: "硬性防火及環保攔截門檻。配備 AI 視覺比對算法，自動驗證大貨相片與設計 CAD，確保零色差與零公差失誤。",
+        descEn: "Inherently gated for UK Crib 5 fire resistance. AI CV algorithm compares physical photos against CAD contours."
+      },
+      {
+        num: "06",
+        titleCn: "Delivery · 集裝箱排櫃優化與在途追踪",
+        titleEn: "3D Cargo Stacking & Shipping",
+        descCn: "根據大貨尺寸自動運算 3D 箱體容積最大化排櫃圖。實時追蹤馬士基船運 ETA 進度，直至倫敦或 St Albans 交付簽字。",
+        descEn: "Calculates optimal 3D container stacking plans. MAERSK marine APIs track shipping positions until final site handover."
+      }
+    ];
+
+    return (
+      <div id="how-it-works" style={{ padding: '80px 0', borderTop: '1px solid rgba(124, 114, 103, 0.15)' }}>
+        <div style={{ textAlign: 'center', marginBottom: '50px' }}>
+          <span style={{ fontSize: '12px', color: '#7C7267', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+            {lang === "Cn" ? "製造生命週期" : "MANUFACTURING LIFE-CYCLE"}
+          </span>
+          <h2 style={{
+            fontSize: '32px',
+            color: '#1C1B18',
+            fontWeight: '600',
+            marginTop: '10px',
+            letterSpacing: '0.05em',
+            fontFamily: "'Outfit', 'Inter', sans-serif"
+          }}>
+            {lang === "Cn" ? "六大核心交付階段" : "Six Pillars of Seamless B2B Delivery"}
+          </h2>
+          <div style={{ width: '40px', height: '2px', background: '#7C7267', margin: '20px auto 0 auto' }}></div>
+        </div>
+
+        <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '30px' }}>
+          {steps.map((st, idx) => (
+            <div 
+              key={idx}
+              className="case-study-card"
+              style={{
+                background: '#FAF9F6',
+                border: '1px solid rgba(124, 114, 103, 0.1)',
+                borderRadius: '12px',
+                padding: '30px',
+                transition: 'all 0.3s ease',
+                position: 'relative',
+                overflow: 'hidden'
+              }}
+            >
+              <div style={{
+                position: 'absolute',
+                top: '-10px',
+                right: '15px',
+                fontSize: '80px',
+                fontWeight: '900',
+                color: 'rgba(124, 114, 103, 0.05)',
+                userSelect: 'none',
+                fontFamily: "'Outfit', sans-serif"
+              }}>
+                {st.num}
+              </div>
+              
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: '#7C7267',
+                color: '#FAF9F6',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                marginBottom: '20px'
+              }}>
+                {st.num}
+              </div>
+
+              <h4 style={{
+                fontSize: '18px',
+                fontWeight: '600',
+                color: '#1C1B18',
+                marginBottom: '10px',
+                fontFamily: "'Outfit', sans-serif"
+              }}>
+                {lang === "Cn" ? st.titleCn : st.titleEn}
+              </h4>
+              
+              <p style={{
+                fontSize: '13.5px',
+                color: '#7C7267',
+                lineHeight: '1.6',
+                margin: 0
+              }}>
+                {lang === "Cn" ? st.descCn : st.descEn}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderOurStoryBlock = () => {
+    return (
+      <div style={{ padding: '60px 0' }} className="animate-fade-in">
+        {/* Banner Section */}
+        <div style={{
+          background: '#F3F1ED',
+          borderRadius: '16px',
+          padding: '60px 40px',
+          marginBottom: '60px',
+          textAlign: 'center',
+          border: '1px solid rgba(124, 114, 103, 0.1)'
+        }}>
+          <span style={{ fontSize: '12px', color: '#7C7267', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+            {lang === "Cn" ? "我們的傳承" : "OUR HERITAGE"}
+          </span>
+          <h2 style={{
+            fontSize: '36px',
+            color: '#1C1B18',
+            fontWeight: '600',
+            marginTop: '12px',
+            marginBottom: '20px',
+            fontFamily: "'Cormorant Garamond', Georgia, serif",
+            letterSpacing: '0.05em'
+          }}>
+            {lang === "Cn" ? "倫敦思維與極致工藝的全球協同" : "London Design Synergized with Chinese Craftsmanship"}
+          </h2>
+          <p style={{
+            maxWidth: '700px',
+            margin: '0 auto',
+            fontSize: '15px',
+            color: '#7C7267',
+            lineHeight: '1.7',
+            fontFamily: "'Georgia', serif",
+            fontStyle: 'italic'
+          }}>
+            {lang === "Cn"
+              ? "「我們在倫敦定義美學、融匯法規；我們在中國精工落地、精確量產。這不是簡單的代工，而是將高端設計與多智能體圖紙解析技術結合的未來之路。」"
+              : "“We define premium aesthetics and ensure UK/EU compliance in London; we execute custom engineering and scale production seamlessly in China. A flawless union of classic craft and multi-agent automations.”"}
+          </p>
+        </div>
+
+        {/* Dual Column Synergy Details - Interlaced with Images */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', marginBottom: '60px' }}>
+          {/* Row 1: London (Text Left, Image Right) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '40px', alignItems: 'center' }}>
+            <div style={{ background: '#FAF9F6', borderRadius: '12px', padding: '40px', border: '1px solid rgba(124, 114, 103, 0.1)', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#7C7267', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg style={{ width: '16px', height: '16px', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <span>LONDON HEADQUARTERS</span>
+              </div>
+              <h3 style={{ fontSize: '22px', color: '#1C1B18', fontWeight: '600', marginBottom: '15px', fontFamily: "'Cormorant Garamond', serif" }}>
+                {lang === "Cn" ? "倫敦設計工作室與體驗廳" : "London Design & Client Hub"}
+              </h3>
+              <p style={{ fontSize: '14px', color: '#7C7267', lineHeight: '1.6', marginBottom: '20px' }}>
+                {lang === "Cn"
+                  ? "座落於倫敦核心設計街區，負責全球合約傢俱 (Contract Furniture) 的前期概念策劃、物料板定案及歐洲嚴苛的消防法規（如 BS 5852 Crib 5）對接。我們是客戶與智能工廠之間的靈魂紐帶。"
+                  : "Located in London's premier design district, coordinates custom material selection, FF&E consulting, and stringent European fire code compliance (BS 5852 Crib 5). The creative and compliance soul linking clients with engineering."}
+              </p>
+              <div style={{ fontSize: '12px', color: '#7C7267', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg style={{ width: '14px', height: '14px', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span>56 Clerkenwell Road, London, EC1M 5PX</span>
+              </div>
+            </div>
+            <div className="hero-image-container glass-card" style={{ height: '380px', overflow: 'hidden', borderRadius: '12px' }}>
+              <img 
+                src={IMAGES.blueprintIntake} 
+                alt="London Design Sketch" 
+                className="hero-image-zoom" 
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+          </div>
+
+          {/* Row 2: China (Image Left, Text Right) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '40px', alignItems: 'center' }}>
+            <div className="hero-image-container glass-card" style={{ height: '380px', overflow: 'hidden', borderRadius: '12px', order: window.innerWidth < 768 ? 2 : 0 }}>
+              <img 
+                src={IMAGES.workflowPhases} 
+                alt="High Precision Manufacturing" 
+                className="hero-image-zoom" 
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+            <div style={{ background: '#FAF9F6', borderRadius: '12px', padding: '40px', border: '1px solid rgba(124, 114, 103, 0.1)', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#7C7267', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg style={{ width: '16px', height: '16px', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span>INTELLIGENT MANUFACTURING</span>
+              </div>
+              <h3 style={{ fontSize: '22px', color: '#1C1B18', fontWeight: '600', marginBottom: '15px', fontFamily: "'Cormorant Garamond', serif" }}>
+                {lang === "Cn" ? "中國高精尖製造合作基地" : "High-Precision Manufacturing base"}
+              </h3>
+              <p style={{ fontSize: '14px', color: '#7C7267', lineHeight: '1.6', marginBottom: '20px' }}>
+                {lang === "Cn"
+                  ? "分佈於廣東佛山與東莞的頂級合約家具製造基地，配備先進的多智能體圖紙解析技術（OpenClaw）。老師傅們的卓越手工與高精密 CNC 二維碼定位技術結合，讓每件成品與 CAD 圖紙精確吻合。"
+                  : "Base in Foshan and Dongguan, equipped with advanced OpenClaw agents. Elite craftsmen synergize with CNC automation and QR precision labeling, ensuring every piece matches its CAD blueprint down to ±1mm tolerance."}
+              </p>
+              <div style={{ fontSize: '12px', color: '#7C7267', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg style={{ width: '14px', height: '14px', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span>Longjiang Furniture Hub, Shunde, Guangdong, China</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Values and Global Logistics Network */}
+        <div style={{ background: '#FAF9F6', borderRadius: '12px', padding: '40px', border: '1px solid rgba(124, 114, 103, 0.1)' }}>
+          <h3 style={{ fontSize: '24px', color: '#1C1B18', fontWeight: '600', marginBottom: '20px', textAlign: 'center', fontFamily: "'Cormorant Garamond', serif", letterSpacing: '1px' }}>
+            {lang === "Cn" ? "我們的核心承諾" : "Our B2B Commitments"}
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '30px', marginTop: '30px' }}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <svg style={{ width: '32px', height: '32px', color: 'var(--accent-primary)', marginBottom: '15px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              <h4 style={{ fontSize: '16px', fontWeight: '600', color: '#1C1B18', marginBottom: '8px' }}>
+                {lang === "Cn" ? "商業機密安全" : "IP & Commercial Security"}
+              </h4>
+              <p style={{ fontSize: '13px', color: '#7C7267', margin: 0, lineHeight: '1.5' }}>
+                {lang === "Cn" ? "所有定製藍圖、BOM表與詢價細節受帳號 hard-gated 門檻保護，嚴防設計外洩。" : "All drawings, BOMs and bids are hard-gated to prevent commercial leaks."}
+              </p>
+            </div>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <svg style={{ width: '32px', height: '32px', color: 'var(--accent-primary)', marginBottom: '15px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 16.121A3 3 0 1012.01 11c0 1.11-.277 3.06-1.552 4.121z" />
+              </svg>
+              <h4 style={{ fontSize: '16px', fontWeight: '600', color: '#1C1B18', marginBottom: '8px' }}>
+                {lang === "Cn" ? "100% 英國 Crib 5 合規" : "100% Crib 5 Fire Compliance"}
+              </h4>
+              <p style={{ fontSize: '13px', color: '#7C7267', margin: 0, lineHeight: '1.5' }}>
+                {lang === "Cn" ? "智能識別材料消防資質，全自動卡點硬阻攔不合規物料，護航商業交付。" : "Automated material compliance checks prevent non-compliant materials from being shipped."}
+              </p>
+            </div>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <svg style={{ width: '32px', height: '32px', color: 'var(--accent-primary)', marginBottom: '15px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              <h4 style={{ fontSize: '16px', fontWeight: '600', color: '#1C1B18', marginBottom: '8px' }}>
+                {lang === "Cn" ? "自動生成圖紙" : "Auto Blueprint Generation"}
+              </h4>
+              <p style={{ fontSize: '13px', color: '#7C7267', margin: 0, lineHeight: '1.5' }}>
+                {lang === "Cn" ? "深度解析草圖，平面/立面/剖面圖紙為每一件產品自動精確生成與歸檔。" : "Sketches are auto-parsed into geometric CAD specs and archived."}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderContactBlock = () => {
+    const faqs = [
+      {
+        qCn: "為什麼 The Crafton 平台的項目中心需要註冊登入才能查看？",
+        qEn: "Why is the Client Portal gated with account registration?",
+        aCn: "作為高端 B2B 合約家具製造商，我們經手的項目圖紙、CAD 三視圖、英國 Crib 5 阻燃檢測報告以及多個工廠的比價定製 BOM，均涉及極度敏感的商業機密與專利設計。為了保障設計師和業主（Hotels & Developers）的利益，我們採取了硬性安全門檻（Hard Gate）。",
+        aEn: "As a premium contract furniture specialist, the custom drawings, CAD models, Crib 5 certificates, and competitive mill BOM sheets represent sensitive B2B trade secrets. Gating protects design copyright and pricing confidentiality."
+      },
+      {
+        qCn: "我們的家具如何滿足英國 Crib 5（Source 5）消防阻燃標準？",
+        qEn: "How does The Crafton ensure compliance with British Crib 5 fire codes?",
+        aCn: "所有大貨面料在選型阶段即通過系統的 Compliance Gate 自動比對資料庫。如 Royal Velvet 或 Navy Linen，出廠前均進行阻燃塗層處理；對於絲綢等天然不合規物料，系統將強行攔截並提供替代建議，成品均出具第三方物理燃燒合格報告。",
+        aEn: "All fabrics undergo automated compliance database screening. Approved fabrics (like Royal Velvet) receive fire-retardant coating treatments. Unsuited fabrics (like silk) are auto-blocked, ensuring the final output gets authorized certificates."
+      },
+      {
+        qCn: "如果項目現場發生變更，支持分批送貨和預算劃線重新計算嗎？",
+        qEn: "Do you support split delivery and total recalculation on site changes?",
+        aCn: "支持。在 Phase VI (S15 階段)，如果因現場裝修變動需要取消部分單品，系統的財務模組（Split Delivery Auditor）將會對已取消項目進行劃線（Strike-through）標註，自動從總帳單中扣除，並重新分配尾款，支持分批靈活交付。",
+        aEn: "Yes. During Stage 15, if site changes require item cancellation, the accounting module automatically triggers strike-throughs on canceled pieces, recalculates remaining balances instantly, and schedules split logistics."
+      },
+      {
+        qCn: "我沒有自己的 CAD 圖紙，只有手繪草圖或照片，系統可以工作嗎？",
+        qEn: "Can the system work with hand-drawn sketches or simple photos?",
+        aCn: "完全可以。您只需在 Start the Project 的 Intake 表單中上傳手繪草圖或實景照片，後台 OpenClaw 多模態 AI 智能體將自動識別線條、拉伸尺寸公差，為您精確生成可用於工廠生產的平面、立面和剖面圖紙。",
+        aEn: "Absolutely. Simply upload hand-drawn sketches or reference photos to our Intake Form. The background OpenClaw multimodal engine automatically traces contours and generates factory-ready 3D/2D blueprints."
+      }
+    ];
+
+    return (
+      <div style={{ padding: '60px 0' }} className="animate-fade-in">
+        <div style={{ display: 'flex', gap: '40px', flexWrap: 'wrap', marginBottom: '60px' }}>
+          {/* Left Column: Hubs and Form */}
+          <div style={{ flex: '1.2', minWidth: '320px' }}>
+            <h3 style={{ fontSize: '24px', fontWeight: '600', color: '#1C1B18', marginBottom: '20px', fontFamily: "'Outfit', sans-serif" }}>
+              {lang === "Cn" ? "聯絡全球工作室" : "Contact Global Hubs"}
+            </h3>
+            
+            <p style={{ fontSize: '14.5px', color: '#7C7267', lineHeight: '1.6', marginBottom: '30px' }}>
+              {lang === "Cn"
+                ? "不論您是需要諮詢高端合約家具設計、送審 Crib 5 阻燃資質、或是導入新的 B2B 量產項目，我們的倫敦和中國團隊隨時為您提供支持。"
+                : "Whether consult on contract furniture designs, verify Crib 5 flammability certifications, or initialize high-volume B2B manufacturing, our global team is ready to assist."}
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '40px' }}>
+              <div style={{ background: '#FAF9F6', padding: '20px', borderRadius: '8px', border: '1px solid rgba(124, 114, 103, 0.1)' }}>
+                <div style={{ fontSize: '11px', color: '#9C9287', letterSpacing: '0.1em', fontWeight: 'bold' }}>🇬🇧 UNITED KINGDOM</div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#1C1B18', margin: '6px 0' }}>London Studio</div>
+                <div style={{ fontSize: '12px', color: '#7C7267', lineHeight: '1.4' }}>
+                  +44 20 7946 0192<br />
+                  london@crafton.com
+                </div>
+              </div>
+              <div style={{ background: '#FAF9F6', padding: '20px', borderRadius: '8px', border: '1px solid rgba(124, 114, 103, 0.1)' }}>
+                <div style={{ fontSize: '11px', color: '#9C9287', letterSpacing: '0.1em', fontWeight: 'bold' }}>🇨🇳 CHINA</div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#1C1B18', margin: '6px 0' }}>Manufacturing HQ</div>
+                <div style={{ fontSize: '12px', color: '#7C7267', lineHeight: '1.4' }}>
+                  +86 757 2388 9988<br />
+                  factory@crafton.com
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Contact Form */}
+            <div style={{ background: '#FAF9F6', padding: '30px', borderRadius: '12px', border: '1px solid rgba(124, 114, 103, 0.1)' }}>
+              <h4 style={{ fontSize: '16px', fontWeight: '600', color: '#1C1B18', marginBottom: '15px' }}>
+                {lang === "Cn" ? "快速提交諮詢" : "Submit a Quick Inquiry"}
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div style={{ display: 'flex', gap: '15px' }}>
+                  <input type="text" placeholder={lang === "Cn" ? "姓名" : "Name"} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid rgba(124, 114, 103, 0.15)', background: '#FAF9F6' }} />
+                  <input type="email" placeholder={lang === "Cn" ? "郵箱" : "Email"} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid rgba(124, 114, 103, 0.15)', background: '#FAF9F6' }} />
+                </div>
+                <textarea rows="3" placeholder={lang === "Cn" ? "描述您的項目需求..." : "Describe your project requirements..."} style={{ padding: '10px', borderRadius: '6px', border: '1px solid rgba(124, 114, 103, 0.15)', background: '#FAF9F6', resize: 'none' }}></textarea>
+                <button 
+                  onClick={() => alert(lang === "Cn" ? "諮詢已提交，我們將通過郵件與 WhatsApp 儘速聯繫您！" : "Inquiry submitted! We will reach out via email/WhatsApp shortly.")}
+                  style={{ padding: '10px', background: '#7C7267', color: '#FAF9F6', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', letterSpacing: '0.05em' }}
+                >
+                  {lang === "Cn" ? "發送訊息" : "Send Message"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: FAQ Accordion */}
+          <div style={{ flex: '1', minWidth: '320px' }}>
+            <h3 style={{ fontSize: '24px', fontWeight: '600', color: '#1C1B18', marginBottom: '25px', fontFamily: "'Cormorant Garamond', serif", letterSpacing: '0.5px' }}>
+              {lang === "Cn" ? "常見問題 (FAQ)" : "Frequently Asked Questions"}
+            </h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              {faqs.map((faq, idx) => {
+                const isOpen = openFaq === idx;
+                return (
+                  <div 
+                    key={idx} 
+                    style={{ 
+                      background: '#FAF9F6', 
+                      borderRadius: '8px', 
+                      border: '1px solid rgba(124, 114, 103, 0.1)',
+                      overflow: 'hidden',
+                      transition: 'border-color 0.3s'
+                    }}
+                  >
+                    <button
+                      onClick={() => setOpenFaq(isOpen ? null : idx)}
+                      style={{
+                        width: '100%',
+                        padding: '16px 20px',
+                        background: 'none',
+                        border: 'none',
+                        textAlign: 'left',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        cursor: 'pointer',
+                        fontWeight: '600',
+                        fontSize: '14.5px',
+                        color: '#1C1B18'
+                      }}
+                    >
+                      <span>{lang === "Cn" ? faq.qCn : faq.qEn}</span>
+                      <svg 
+                        style={{ 
+                          width: '16px', 
+                          height: '16px', 
+                          transition: 'transform 0.45s cubic-bezier(0.16, 1, 0.3, 1)', 
+                          transform: isOpen ? 'rotate(180deg)' : 'none', 
+                          color: '#7C7267' 
+                        }} 
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        stroke="currentColor" 
+                        strokeWidth="1.8"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    <div style={{
+                      maxHeight: isOpen ? '500px' : '0px',
+                      opacity: isOpen ? 1 : 0,
+                      overflow: 'hidden',
+                      transition: 'max-height 500ms cubic-bezier(0.16, 1, 0.3, 1), opacity 450ms cubic-bezier(0.16, 1, 0.3, 1)',
+                      borderTop: isOpen ? '1px solid rgba(124, 114, 103, 0.05)' : '1px solid transparent'
+                    }}>
+                      <div style={{ 
+                        padding: '16px 20px 20px 20px', 
+                        fontSize: '13.5px', 
+                        color: '#7C7267', 
+                        lineHeight: '1.6' 
+                      }}>
+                        {lang === "Cn" ? faq.aCn : faq.aEn}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
       {/* Supabase Connection Drawer */}
@@ -1764,47 +2875,141 @@ function App() {
 
       {/* Navbar Header */}
       <nav className="navbar">
-        <div className="logo-container">
-          <span className="logo-logo">CRAFTON AI</span>
+        <div className="logo-container" onClick={() => {
+          setCurrentStageView("Marketing");
+          setMarketingTab("Overview");
+        }} style={{ cursor: 'pointer' }}>
+          <span className="logo-logo" style={{ letterSpacing: '0.15em', fontWeight: '700' }}>THE CRAFTON</span>
         </div>
 
         <div className="nav-links">
-          <span className={`nav-link ${currentView === "Marketing" ? "active" : ""}`} onClick={() => setCurrentStageView("Marketing")}>
-            {lang === "Cn" ? "企业官网" : "Homepage"}
+          <span 
+            className={`nav-link ${currentView === "Marketing" && marketingTab === "Overview" ? "active" : ""}`} 
+            onClick={() => {
+              setCurrentStageView("Marketing");
+              setMarketingTab("Overview");
+            }}
+          >
+            {lang === "Cn" ? "首頁" : "Home"}
           </span>
-          <span className={`nav-link ${currentView === "ClientPortal" ? "active" : ""}`} onClick={() => setCurrentStageView("ClientPortal")}>
-            {lang === "Cn" ? "客户会员中心" : "Client Portal"}
+          <span 
+            className="nav-link" 
+            onClick={(e) => {
+              e.preventDefault();
+              setCurrentStageView("Marketing");
+              setMarketingTab("Overview");
+              setTimeout(() => {
+                const el = document.getElementById("how-it-works");
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 100);
+            }}
+          >
+            {lang === "Cn" ? "合作流程" : "How It Works"}
           </span>
-          <span className={`nav-link ${currentView === "Backoffice" ? "active" : ""}`} onClick={() => setCurrentStageView("Backoffice")}>
-            {lang === "Cn" ? "内网控制台 (Cho/客户)" : "Backoffice (Cho/Client)"}
+          <span 
+            className={`nav-link ${currentView === "Marketing" && marketingTab === "CaseStudies" ? "active" : ""}`} 
+            onClick={() => {
+              setCurrentStageView("Marketing");
+              setMarketingTab("CaseStudies");
+            }}
+          >
+            {lang === "Cn" ? "經典案例" : "Case Study"}
+          </span>
+          <span 
+            className={`nav-link ${currentView === "Marketing" && marketingTab === "OurStory" ? "active" : ""}`} 
+            onClick={() => {
+              setCurrentStageView("Marketing");
+              setMarketingTab("OurStory");
+            }}
+          >
+            {lang === "Cn" ? "品牌故事" : "Our Story"}
+          </span>
+          <span 
+            className={`nav-link ${currentView === "Marketing" && marketingTab === "Contact" ? "active" : ""}`} 
+            onClick={() => {
+              setCurrentStageView("Marketing");
+              setMarketingTab("Contact");
+            }}
+          >
+            {lang === "Cn" ? "聯絡我們" : "Contact"}
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
-          {/* Supabase Status Button */}
-          <button 
-            className="btn-secondary" 
-            style={{ 
-              borderColor: dbConnected ? "var(--accent-green)" : "rgba(255,255,255,0.1)", 
-              color: dbConnected ? "var(--accent-green)" : "var(--text-secondary)",
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              fontSize: '0.8rem',
-              padding: '0.4rem 0.8rem'
-            }}
-            onClick={() => setShowDbConfig(!showDbConfig)}
-          >
-            <span className={`stage-badge-dot dot-${dbConnected ? 'ai' : 'gate'}`} style={{ margin: 0, width: '8px', height: '8px', display: 'inline-block' }}></span>
-            {dbConnected ? "Supabase Connected" : "Connect Supabase"}
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <button className="btn-secondary" onClick={handleLangToggle} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <svg style={{ width: '14px', height: '14px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+              <path d="M2 12h20" />
+            </svg>
+            <span>{lang === "Cn" ? "English" : "繁體中文"}</span>
           </button>
 
-          <button className="btn-secondary" onClick={handleLangToggle}>
-            🌐 {lang === "Cn" ? "English" : "繁體中文"}
-          </button>
-          <button className="btn-premium" onClick={() => setCurrentStageView("ClientPortal")}>
-            {lang === "Cn" ? "登录 / 注册" : "Sign In"}
-          </button>
+          {user ? (
+            <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                {lang === "Cn" ? `歡迎，${user.name}` : `Welcome, ${user.name}`}
+              </span>
+              <span 
+                className={`nav-link ${currentView === "ClientPortal" ? "active" : ""}`} 
+                onClick={() => setCurrentStageView("ClientPortal")}
+                style={{ fontSize: '0.85rem', cursor: 'pointer' }}
+              >
+                {lang === "Cn" ? "客戶中心" : "Client Portal"}
+              </span>
+              {user.email === 'cho@crafton.com' && (
+                <span 
+                  className={`nav-link ${currentView === "Backoffice" ? "active" : ""}`} 
+                  onClick={() => setCurrentStageView("Backoffice")}
+                  style={{ fontSize: '0.85rem', cursor: 'pointer' }}
+                >
+                  {lang === "Cn" ? "管理控制台" : "Backoffice"}
+                </span>
+              )}
+              <button 
+                onClick={handleLogout}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '0.85rem',
+                  color: 'var(--accent-red)',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0
+                }}
+              >
+                {lang === "Cn" ? "登出" : "Sign Out"}
+              </button>
+            </div>
+          ) : (
+            <>
+              <button 
+                className="nav-link" 
+                onClick={() => {
+                  setAuthMode("login");
+                  setShowAuthGate(true);
+                }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
+                {lang === "Cn" ? "登入" : "Sign In"}
+              </button>
+              <button 
+                className="btn-premium animate-pulse" 
+                onClick={() => {
+                  if (user) {
+                    setCurrentStageView("ClientPortal");
+                    setClientPortalTab("Intake");
+                  } else {
+                    setAuthMode("signup");
+                    setShowAuthGate(true);
+                  }
+                }}
+                style={{ padding: '0.5rem 1.2rem', fontSize: '0.85rem', fontWeight: '600' }}
+              >
+                {lang === "Cn" ? "啟動項目" : "Start the Project"}
+              </button>
+            </>
+          )}
         </div>
       </nav>
 
@@ -1848,194 +3053,850 @@ function App() {
       {/* VIEW 1: Web Marketing Portal */}
       {currentView === "Marketing" && (
         <div className="animate-fade-in" style={{ paddingBottom: "4rem" }}>
-          <div className="portal-hero">
-            <h1>
-              {lang === "Cn" ? "高档定制家具，AI 多智能体全自动跟产平台" : "High-End Bespoke Furniture, Driven by Autonomous Multi-Agent Workflows."}
-            </h1>
-            <p>
-              {lang === "Cn" 
-                ? "Crafton AI 完美对接英国 Crib 5 消防标准。从您在会员中心输入的一笔定制需求及设计手稿，到最终入户，AI 协助设计、全自动询价比价、CV视觉差质检重合比对，通关无忧。" 
-                : "Crafton AI bridges the gap between premium design and factory floor. Integrating UK Crib 5 flame codes, dual-language BOM generation, automatic pricing bids, and Computer Vision inspections."}
-            </p>
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-              <button className="btn-premium" style={{ padding: '0.8rem 2rem', fontSize: '1rem' }} onClick={() => setCurrentStageView("ClientPortal")}>
-                {lang === "Cn" ? "注册成为会员 ＋ AI选品" : "Join Membership & Design with AI"}
-              </button>
-              <button className="btn-secondary" style={{ padding: '0.8rem 2rem', fontSize: '1rem' }} onClick={() => setCurrentStageView("Backoffice")}>
-                {lang === "Cn" ? "进入内部 17 阶段跟踪" : "Simulate 17-Stage Tracker"}
-              </button>
-            </div>
-          </div>
+          {marketingTab === "Overview" && (
+            <>
+              {/* Asymmetrical Editorial Split-Screen Magazine Hero */}
+              <div className="animate-editorial-slide-up" style={{ 
+                display: 'grid', 
+                gridTemplateColumns: '1.2fr 1fr', 
+                gap: '4rem', 
+                alignItems: 'center', 
+                maxWidth: '1200px', 
+                margin: '0 auto', 
+                padding: '6rem 2rem 4rem 2rem' 
+              }}>
+                {/* Left: Typography Editorial Block */}
+                <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+                  <div style={{ 
+                    fontSize: '0.75rem', 
+                    fontWeight: '600', 
+                    letterSpacing: '2px', 
+                    color: 'var(--accent-muted)', 
+                    textTransform: 'uppercase', 
+                    marginBottom: '1rem', 
+                    fontFamily: 'var(--font-sans)' 
+                  }}>
+                    EST. 2021 | BESPOKE B2B CONTRACT ATELIER
+                  </div>
+                  
+                  {lang === "Cn" ? (
+                    <h1 style={{ 
+                      fontFamily: 'var(--font-tech)', 
+                      fontSize: '3.2rem', 
+                      fontWeight: '300', 
+                      lineHeight: '1.15', 
+                      color: 'var(--text-primary)', 
+                      marginBottom: '1.8rem',
+                      letterSpacing: '-0.5px'
+                    }}>
+                      THE CRAFTON <br />
+                      <span style={{ fontSize: '1.8rem', color: 'var(--text-secondary)', fontStyle: 'italic', fontFamily: 'var(--font-tech)' }}>
+                        意式極簡 · 專屬高端合約家具與軟裝製造
+                      </span>
+                    </h1>
+                  ) : (
+                    <h1 style={{ 
+                      fontFamily: 'var(--font-tech)', 
+                      fontSize: '3.4rem', 
+                      fontWeight: '300', 
+                      lineHeight: '1.15', 
+                      color: 'var(--text-primary)', 
+                      marginBottom: '1.8rem', 
+                      textTransform: 'uppercase', 
+                      letterSpacing: '-1px' 
+                    }}>
+                      THE CRAFTON <br />
+                      <span style={{ fontSize: '2rem', textTransform: 'none', color: 'var(--text-secondary)', fontStyle: 'italic', fontFamily: 'var(--font-tech)' }}>
+                        Makers of High-End Contract Furniture
+                      </span>
+                    </h1>
+                  )}
 
-          {/* Integration: Material Studio Configurator */}
-          <div style={{ maxWidth: '1200px', margin: '0 auto 3rem auto', padding: '0 2rem' }}>
-            {renderMaterialStudio()}
-          </div>
+                  <p style={{ 
+                    fontSize: '1.02rem', 
+                    color: 'var(--text-secondary)', 
+                    marginBottom: '2.5rem', 
+                    lineHeight: '1.8', 
+                    fontWeight: '300', 
+                    fontFamily: 'var(--font-sans)' 
+                  }}>
+                    {lang === "Cn" 
+                      ? "我們為全球高端商業項目與頂奢豪宅量身定製、設計並製造 B2B 合約家具。精準圖紙與自動化工程規格書在您的專屬雲端工作坊（Client Portal）中實時同步，以匠人匠心與阻尼動效致敬意式極簡美學。" 
+                      : "We engineer, refine and manufacture bespoke contract furniture to your exact specifications. Autogenous engineering blueprints, real-time bid evaluations, and strict Crib 5 fire compliances sync dynamically in your digital Client Portal."}
+                  </p>
 
-          <div className="portal-features-grid">
-            <div className="glass-card feature-box">
-              <div className="feature-icon">🛡️</div>
-              <div className="feature-title">{lang === "Cn" ? "Crib 5 自动消防拦截" : "Crib 5 Anti-Fire Hard Gate"}</div>
-              <div className="feature-desc">
-                {lang === "Cn" 
-                  ? "系统实时比对比料、木皮阻燃合规数据库。凡不支持物理防火涂层的精细面料一律在询价前红字拦截，杜绝特大货运纠纷。" 
-                  : "Automatic material check against British fire databases. Delicate fabrics (like silk) that shrink under flame coating are flagged and blocked before production."}
+                  <div style={{ display: 'flex', gap: '1.2rem', justifyContent: 'flex-start' }}>
+                    <button className="btn-premium" style={{ padding: '0.8rem 2rem', fontSize: '0.85rem', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase' }} onClick={() => {
+                      if (user) {
+                        setCurrentStageView("ClientPortal");
+                        setClientPortalTab("Intake");
+                      } else {
+                        setAuthMode("signup");
+                        setShowAuthGate(true);
+                      }
+                    }}>
+                      {lang === "Cn" ? "啟動項目 ＋ AI規格解析" : "Start Project & Parse"}
+                    </button>
+                    <button className="btn-secondary" style={{ padding: '0.8rem 2rem', fontSize: '0.85rem', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase' }} onClick={() => setCurrentStageView("Backoffice")}>
+                      {lang === "Cn" ? "進入 17 階段進度" : "Simulate 17-Stages"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right: Asymmetric Showroom Image Card backed by a Travertine panel */}
+                <div className="hero-image-container" style={{ position: 'relative', paddingRight: '15px', paddingBottom: '15px', display: 'flex', justifyContent: 'center' }}>
+                  {/* Travertine-stone offset background panel */}
+                  <div style={{
+                    position: 'absolute',
+                    right: '0',
+                    bottom: '0',
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    zIndex: 1,
+                    borderRadius: '6px',
+                    transform: 'translate(10px, 10px)'
+                  }}></div>
+                  {/* Actual image container with border and zoom */}
+                  <div className="glass-card" style={{
+                    position: 'relative',
+                    zIndex: 2,
+                    overflow: 'hidden',
+                    borderRadius: '6px',
+                    aspectRatio: '1/1.1',
+                    width: '100%',
+                    border: '1px solid var(--glass-border)',
+                    boxShadow: 'var(--glass-shadow)',
+                    transform: 'translateY(0px)'
+                  }}>
+                    <img 
+                      className="hero-image-zoom"
+                      src={IMAGES.heroChair} 
+                      alt="The Crafton Luxury Contract Armchair" 
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                    {/* Editorial Model Tag */}
+                    <div style={{
+                      position: 'absolute',
+                      top: '20px',
+                      left: '20px',
+                      background: 'rgba(250, 247, 242, 0.9)',
+                      backdropFilter: 'blur(10px)',
+                      padding: '0.4rem 0.8rem',
+                      fontSize: '0.65rem',
+                      fontWeight: '600',
+                      letterSpacing: '1.5px',
+                      textTransform: 'uppercase',
+                      color: 'var(--accent-primary)',
+                      borderRadius: '2px',
+                      border: '1px solid var(--glass-border)'
+                    }}>
+                      MODEL: L-CR04
+                    </div>
+                    {/* Subtext info overlay at bottom of image */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '0',
+                      left: '0',
+                      right: '0',
+                      background: 'linear-gradient(to top, rgba(26,25,24,0.85) 0%, rgba(26,25,24,0) 100%)',
+                      padding: '2.5rem 1.5rem 1.5rem 1.5rem',
+                      color: '#ffffff',
+                      textAlign: 'left'
+                    }}>
+                      <div style={{ fontFamily: 'var(--font-tech)', fontSize: '1.35rem', fontWeight: '400', letterSpacing: '0.5px' }}>
+                        Tuscan Minimalist Lounge Armchair
+                      </div>
+                      <div style={{ fontSize: '0.65rem', opacity: '0.8', marginTop: '5px', letterSpacing: '1px', textTransform: 'uppercase', fontFamily: 'var(--font-sans)' }}>
+                        Specs: W: 650mm / D: 600mm / H: 850mm
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Integration: Material Studio Configurator */}
+              <div style={{ maxWidth: '1200px', margin: '0 auto 4rem auto', padding: '0 2rem' }}>
+                {renderMaterialStudio()}
+              </div>
+
+              {/* High-end Features Grid with Vector SVGs */}
+              <div className="portal-features-grid">
+                <div className="glass-card feature-box" style={{ borderRadius: '6px' }}>
+                  <div className="feature-icon" style={{ display: 'flex', alignItems: 'center' }}>
+                    <svg style={{ width: '2.2rem', height: '2.2rem', color: 'var(--accent-primary)', marginBottom: '1.5rem' }} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.959 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                    </svg>
+                  </div>
+                  <div className="feature-title">{lang === "Cn" ? "Crib 5 自动消防拦截" : "Crib 5 Anti-Fire Hard Gate"}</div>
+                  <div className="feature-desc">
+                    {lang === "Cn" 
+                      ? "系統實時比對物料、木皮阻燃合規數據庫。凡不支持物理防火塗層的精細面料一律在詢價前紅字攔截，杜絕特大貨運糾紛。" 
+                      : "Automatic material check against British fire databases. Delicate fabrics (like silk) that shrink under flame coating are flagged and blocked before production."}
+                  </div>
+                </div>
+
+                <div className="glass-card feature-box" style={{ borderRadius: '6px' }}>
+                  <div className="feature-icon" style={{ display: 'flex', alignItems: 'center' }}>
+                    <svg style={{ width: '2.2rem', height: '2.2rem', color: 'var(--accent-primary)', marginBottom: '1.5rem' }} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <div className="feature-title">{lang === "Cn" ? "AI 视觉质检重合比对" : "AI CV Inspection"}</div>
+                  <div className="feature-desc">
+                    {lang === "Cn" 
+                      ? "利用計算機視覺（OpenCV），自動將工廠每日拍照與原始 CAD 設計圖紙重合比對，金屬椅腳顏色做錯、尺寸超差，出貨前自動攔截報警。" 
+                      : "Utilizing Computer Vision to overlap worker site photographs with raw CAD drawings. Detecting color or angle discrepancies before cargo leaves the factory floor."}
+                  </div>
+                </div>
+
+                <div className="glass-card feature-box" style={{ borderRadius: '6px' }}>
+                  <div className="feature-icon" style={{ display: 'flex', alignItems: 'center' }}>
+                    <svg style={{ width: '2.2rem', height: '2.2rem', color: 'var(--accent-primary)', marginBottom: '1.5rem' }} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25M12 9v3.75m0 0a1.5 1.5 0 110-3m0 3a1.5 1.5 0 100-3m-4.875 3h1.375m6.375 0h1.375" />
+                    </svg>
+                  </div>
+                  <div className="feature-title">{lang === "Cn" ? "OpenClaw 智能体自动跟单" : "OpenClaw Daemon Follow-up"}</div>
+                  <div className="feature-desc">
+                    {lang === "Cn" 
+                      ? "無需反覆人工確認。24 小時掛機 AI 自動給工廠發送 WhatsApp 中文催催信，跟進質檢照，狀態即時回寫，Cho 隨時掌控全局。" 
+                      : "No manual nagging. The OpenClaw Daemon queries production states from Supabase, automatically messaging factories in Chinese on WhatsApp to fetch updates."}
+                  </div>
+                </div>
+              </div>
+
+              {/* Append renderHowItWorksBlock() to the bottom of the overview tab content */}
+              <div style={{ maxWidth: '1200px', margin: '4rem auto 0 auto', padding: '0 2rem' }} id="how-it-works">
+                {renderHowItWorksBlock()}
+              </div>
+            </>
+          )}
+
+          {marketingTab === "CaseStudies" && (
+            <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 2rem' }}>
+              {/* Full-bleed Header Banner */}
+              <div style={{
+                position: 'relative',
+                height: '350px',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                marginBottom: '3rem',
+                border: '1px solid var(--glass-border)',
+                boxShadow: '0 15px 30px rgba(0,0,0,0.08)'
+              }}>
+                <img 
+                  src={IMAGES.masterShowwall} 
+                  alt="THE CRAFTON Luxury Showwall" 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+                <div style={{
+                  position: 'absolute',
+                  top: 0, left: 0, right: 0, bottom: 0,
+                  background: 'linear-gradient(to right, rgba(26,25,24,0.95) 0%, rgba(26,25,24,0.3) 100%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  padding: '3rem'
+                }}>
+                  <span style={{ 
+                    fontFamily: 'var(--font-tech)', 
+                    fontSize: '0.85rem', 
+                    letterSpacing: '3px', 
+                    textTransform: 'uppercase', 
+                    color: 'var(--accent-primary)',
+                    marginBottom: '0.8rem',
+                    display: 'block'
+                  }}>
+                    {lang === "Cn" ? "全球高奢經典案卷" : "GLOBAL BESPOKE CASE ARCHIVES"}
+                  </span>
+                  <h2 style={{ fontSize: '2.2rem', color: '#FAF7F2', marginBottom: '1rem', fontWeight: '300', textAlign: 'left' }}>
+                    {lang === "Cn" ? "將極致設計轉譯為不凡實景" : "Translating Extraordinary Visions into Living Realities"}
+                  </h2>
+                  <p style={{ color: 'var(--text-muted)', maxWidth: '600px', fontSize: '0.95rem', lineHeight: '1.6', textAlign: 'left' }}>
+                    {lang === "Cn" 
+                      ? "從倫敦梅費爾的對沖基金頂層沙發，到日內瓦落地窗前的極簡休閒椅。每一個經典項目均通過 THE CRAFTON 的全鏈路智能追溯，在物理阻燃、幾何精度與材料美學上達到極致融合。" 
+                      : "From Geneva's full-bleed glass facades to Mayfair's executive lounges. Every signature case study is fully tracked and optimized by THE CRAFTON's workflows, guaranteeing structural safety and timeless styling."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Case Studies Grid - Asymmetrical Editorial Layout */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+                gap: '2.5rem',
+                marginBottom: '4rem'
+              }}>
+                {[
+                  {
+                    id: "CASE-01",
+                    titleCn: "Westlake Penthouse",
+                    titleEn: "Westlake Penthouse",
+                    locationCn: "瑞士 日內瓦",
+                    locationEn: "Geneva, Switzerland",
+                    descCn: "為日內瓦湖畔私人豪宅定製奢華休閒椅。高定純亞麻面料配合深木色椅腿，完美融合意式極簡與寂靜之美。",
+                    descEn: "Bespoke lounge seating for a lakeside penthouse. Premium organic linen and dark oak finishes combining Italian minimalism with wabi-sabi stillness.",
+                    img: IMAGES.caseGeneva,
+                    tagCn: "私人住宅",
+                    tagEn: "Private Residence",
+                    initials: "WP",
+                    specsCn: "規格: Crib 5 合規 / 面料: 450 TC 頂級亞麻 / 產地: 廣東佛山工坊",
+                    specsEn: "Specs: Crib 5 Compliant / Fabric: 450 TC Premium Linen / Origin: Foshan Atelier"
+                  },
+                  {
+                    id: "CASE-02",
+                    titleCn: "Portal Hedge Fund",
+                    titleEn: "Portal Hedge Fund",
+                    locationCn: "英國 倫敦梅費爾",
+                    locationEn: "Mayfair, London",
+                    descCn: "對沖基金高定行政套房。40把高定皮質大堂椅及沙發區，兼顧高端辦公的商務質感與Crib 5阻燃標準的極致合規。",
+                    descEn: "Executive office lounges for a premier hedge fund. 40 leather lobby armchairs and custom sofas achieving perfect UK Crib 5 compliance.",
+                    img: IMAGES.caseMayfair,
+                    tagCn: "商務辦公",
+                    tagEn: "Commercial Office",
+                    initials: "PH",
+                    specsCn: "規格: Crib 5 合規 / 面料: 全粒面高定真皮 / 產地: 廣東東莞精工廠",
+                    specsEn: "Specs: Crib 5 Compliant / Fabric: Full-Grain Leather / Origin: Dongguan Mill"
+                  },
+                  {
+                    id: "CASE-03",
+                    titleCn: "Bermondsey Lofts",
+                    titleEn: "Bermondsey Lofts",
+                    locationCn: "英國 倫敦",
+                    locationEn: "Bermondsey, London",
+                    descCn: "工業風Loft公寓。將裸磚牆面與胡桃木餐椅無縫契合，營造出具有豐富觸感和悠久歲月質感的空間體驗。",
+                    descEn: "Industrial loft apartments. Seamlessly pairing exposed red brick with tactile walnut wood dining chairs, creating a textured historic patina.",
+                    img: IMAGES.caseBermondsey,
+                    tagCn: "高尚公寓",
+                    tagEn: "High-end Apartments",
+                    initials: "BL",
+                    specsCn: "規格: Crib 5 合規 / 面料: 500 TC 絲光精梳棉 / 產地: 廣東佛山工坊",
+                    specsEn: "Specs: Crib 5 Compliant / Fabric: 500 TC Mercerized Cotton / Origin: Foshan Atelier"
+                  },
+                  {
+                    id: "CASE-04",
+                    titleCn: "The Stow Boutique Hotel",
+                    titleEn: "The Stow Boutique Hotel",
+                    locationCn: "英國 巴斯",
+                    locationEn: "Bath, UK",
+                    descCn: "古典精品酒店客房。為20間精品客房量身定製休閒椅與床榻套裝，暖沙色天然洞石材質與意式低調奢華相得益彰。",
+                    descEn: "Historic boutique hotel suites. Tailor-making relaxing chairs and solid oak frames for 20 luxury rooms, emphasizing warm travertine stones.",
+                    img: IMAGES.caseBathHotel,
+                    tagCn: "奢華酒店",
+                    tagEn: "Luxury Hospitality",
+                    initials: "TS",
+                    specsCn: "規格: Crib 5 合規 / 面料: 皇家高密阻燃絲絨 / 產地: 廣東順德製造基地",
+                    specsEn: "Specs: Crib 5 Compliant / Fabric: Royal Fire-Retardant Velvet / Origin: Shunde Mill"
+                  },
+                  {
+                    id: "CASE-05",
+                    titleCn: "Camden Creative Studios",
+                    titleEn: "Camden Creative Studios",
+                    locationCn: "英國 倫敦卡姆登",
+                    locationEn: "Camden, London",
+                    descCn: "極簡創意共享空間。定制彩色現代休閒單椅，為前衛創意人提供高靈敏度的微型微交互物理辦公藝術品。",
+                    descEn: "Avant-garde creative co-working spaces. Custom colorful geometric lounge chairs acting as mini physical sculptures for designer pods.",
+                    img: IMAGES.caseCamden,
+                    tagCn: "創意空間",
+                    tagEn: "Creative Hub",
+                    initials: "CC",
+                    specsCn: "規格: Crib 5 合規 / 面料: Waves of Silk 浪漫蠶絲 / 產地: 廣東佛山設計工坊",
+                    specsEn: "Specs: Crib 5 Compliant / Fabric: Waves of Silk Premium / Origin: Foshan Atelier"
+                  }
+                ].map((c, idx) => (
+                  <div 
+                    key={c.id} 
+                    className="case-study-card glass-card"
+                    style={{
+                      padding: 0,
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      borderRadius: '8px',
+                      border: '1px solid var(--glass-border)',
+                      cursor: 'pointer',
+                      gridColumn: (idx === 0 || idx === 3) ? 'span 2' : 'span 1'
+                    }}
+                  >
+                    <div style={{ height: (idx === 0 || idx === 3) ? '320px' : '220px', overflow: 'hidden', position: 'relative' }}>
+                      <img 
+                        src={c.img} 
+                        style={{ 
+                          width: '100%', 
+                          height: '100%', 
+                          objectFit: 'cover'
+                        }} 
+                        alt={c.titleEn} 
+                      />
+                      <div style={{
+                        position: 'absolute',
+                        top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(26,25,24,0.6) 100%)',
+                        zIndex: 1
+                      }}></div>
+                      <span style={{ 
+                        position: 'absolute', 
+                        left: '1.2rem', 
+                        bottom: '1rem', 
+                        zIndex: 2, 
+                        fontFamily: 'var(--font-tech)', 
+                        color: '#FAF7F2', 
+                        fontSize: '1.4rem', 
+                        fontWeight: '300',
+                        letterSpacing: '1px',
+                        textShadow: '0 2px 4px rgba(0,0,0,0.4)'
+                      }}>{c.initials}</span>
+                      <span style={{
+                        position: 'absolute',
+                        top: '1rem',
+                        right: '1rem',
+                        background: 'rgba(26, 25, 24, 0.75)',
+                        color: 'var(--accent-primary)',
+                        padding: '0.3rem 0.6rem',
+                        fontSize: '0.7rem',
+                        borderRadius: '3px',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        zIndex: 2,
+                        textTransform: 'uppercase',
+                        fontFamily: 'var(--font-tech)'
+                      }}>{lang === "Cn" ? c.tagCn : c.tagEn}</span>
+                    </div>
+                    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', flexGrow: 1 }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <h4 style={{ margin: 0, fontSize: '1.15rem', color: 'var(--text-primary)', fontWeight: '500', fontFamily: "var(--font-tech)" }}>
+                            {lang === "Cn" ? c.titleCn : c.titleEn}
+                          </h4>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-tech)' }}>
+                            {lang === "Cn" ? c.locationCn : c.locationEn}
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.6', textAlign: 'left' }}>
+                          {lang === "Cn" ? c.descCn : c.descEn}
+                        </p>
+                      </div>
+                      <div style={{
+                        marginTop: '1.2rem',
+                        paddingTop: '0.8rem',
+                        borderTop: '1px dashed var(--glass-border)',
+                        fontSize: '0.72rem',
+                        color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-sans)',
+                        letterSpacing: '0.5px',
+                        textTransform: 'uppercase'
+                      }}>
+                        {lang === "Cn" ? c.specsCn : c.specsEn}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
+          )}
 
-            <div className="glass-card feature-box">
-              <div className="feature-icon">👁️</div>
-              <div className="feature-title">{lang === "Cn" ? "AI 视觉质检重合比对" : "AI CV Inspection"}</div>
-              <div className="feature-desc">
-                {lang === "Cn" 
-                  ? "利用计算机视觉（OpenCV），自动将工厂每日拍照与原始 CAD 设计图纸重合比对，金属椅脚颜色做错、尺寸超差，出厂前自动拦截报警。" 
-                  : "Utilizing Computer Vision to overlap worker site photographs with raw CAD drawings. Detecting color or angle discrepancies before cargo leaves the factory floor."}
-              </div>
+          {marketingTab === "OurStory" && (
+            <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 2rem' }}>
+              {renderOurStoryBlock()}
             </div>
+          )}
 
-            <div className="glass-card feature-box">
-              <div className="feature-icon">🤖</div>
-              <div className="feature-title">{lang === "Cn" ? "OpenClaw 智能体自动跟单" : "OpenClaw Daemon Follow-up"}</div>
-              <div className="feature-desc">
-                {lang === "Cn" 
-                  ? "无需反复人工确认。24 小时挂机 AI 自动给工厂发送 WhatsApp 中文催催信，跟进质检照，状态即时回写，Cho 随时掌控全局。" 
-                  : "No manual nagging. The OpenClaw Daemon queries production states from Supabase, automatically messaging factories in Chinese on WhatsApp to fetch updates."}
-              </div>
+          {marketingTab === "Contact" && (
+            <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 2rem' }}>
+              {renderContactBlock()}
             </div>
-          </div>
+          )}
         </div>
       )}
 
       {/* VIEW 2: Client Portal (Member Center) */}
       {currentView === "ClientPortal" && (
         <div className="animate-fade-in" style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <div>
-              <h2 style={{ fontFamily: "var(--font-tech)", color: "var(--accent-cyan)" }}>
-                {lang === "Cn" ? "客户专属会员控制后台" : "CLIENT MEMBER CENTER"}
+          {!user ? (
+            /* Premium Hard Gated Information Screen if not logged in */
+            <div className="glass-card" style={{
+              maxWidth: '800px',
+              margin: '4rem auto',
+              padding: '4rem 3rem',
+              textAlign: 'center',
+              background: '#FAF9F6',
+              border: '1px solid rgba(124, 114, 103, 0.15)',
+              borderRadius: '16px',
+              boxShadow: '0 20px 40px rgba(28, 27, 24, 0.05)'
+            }}>
+              <span className="logo-badge" style={{ marginBottom: '1.5rem', background: 'rgba(124, 114, 103, 0.08)', color: 'var(--accent-primary)' }}>
+                {lang === "Cn" ? "商業機密安全防護門檻" : "COMMERCIAL INTELLECTUAL PROPERTY SECURITY"}
+              </span>
+              <h2 style={{
+                fontFamily: "'Outfit', 'Inter', sans-serif",
+                fontWeight: '600',
+                fontSize: '2.5rem',
+                letterSpacing: '-0.02em',
+                color: '#1C1B18',
+                marginBottom: '1.5rem',
+                lineHeight: '1.2'
+              }}>
+                {lang === "Cn" ? "高端合約製造圖紙與規格保護" : "Secure Gate: Drawings & Specifications"}
               </h2>
-              <p style={{ fontSize: '0.85rem', color: "var(--text-secondary)" }}>
-                ID: {order.clientName} | {lang === "Cn" ? "安全级别：Supabase Auth 已加密" : "Security: Supabase Auth RLS Guarded"}
+              <p style={{
+                fontFamily: "'Georgia', serif",
+                fontSize: '1.15rem',
+                fontStyle: 'italic',
+                color: '#7C7267',
+                lineHeight: '1.8',
+                maxWidth: '600px',
+                margin: '0 auto 2.5rem auto'
+              }}>
+                {lang === "Cn" 
+                  ? "「為確保定製合約家具圖紙、BOM 材料清單及工廠競標數據等商業機密，我們對該客戶專區實施 RLS 加密。請登入或註冊您的 B2B 設計師帳戶以查看或導入新項目。」"
+                  : "“To protect proprietary contract drawings, manufacturing BOM specifications, and competitive factory bids, this dashboard is guarded by secure RLS. Please sign in or register to access the premium project tracker or submit new briefs.”"}
               </p>
+              <div style={{ display: 'flex', gap: '1.5rem', justifyContent: 'center' }}>
+                <button className="btn-premium" style={{ padding: '0.8rem 2.5rem', fontSize: '1rem' }} onClick={() => { setAuthMode("login"); setShowAuthGate(true); }}>
+                  {lang === "Cn" ? "登入帳戶" : "Sign In"}
+                </button>
+                <button className="btn-secondary" style={{ padding: '0.8rem 2.5rem', fontSize: '1rem', borderColor: 'rgba(124, 114, 103, 0.3)' }} onClick={() => { setAuthMode("signup"); setShowAuthGate(true); }}>
+                  {lang === "Cn" ? "註冊新帳戶" : "Create Account"}
+                </button>
+              </div>
             </div>
-            <div style={{ background: "rgba(124, 114, 103, 0.08)", padding: '0.5rem 1rem', borderRadius: '2px', border: "1px solid var(--glass-border)", fontSize: '0.85rem' }}>
-              {lang === "Cn" ? "当前在途订单状态: " : "Order Tracking: "}
-              <strong style={{ color: "var(--accent-primary)", fontFamily: "var(--font-tech)", fontWeight: "bold" }}>{currentStage.id} - {lang === "Cn" ? currentStage.nameCn : currentStage.nameEn}</strong>
-            </div>
-          </div>
-
-          <div className="dashboard-panels">
-            {/* Left Column: Member Order Dashboard */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {renderMaterialStudio()}
-              <div className="glass-card">
-                <div className="panel-header">
-                  <div className="panel-title">📦 {lang === "Cn" ? "在单定制规格与进度" : "Bespoke Items & Specs"}</div>
-                  <span style={{ fontSize: '0.8rem', color: "var(--accent-green)", fontFamily: "var(--font-tech)" }}>
-                    Total: ${getOrderTotal().toLocaleString()}
+          ) : (
+            /* Authenticated Client View with Dual Tab */
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--glass-border)', paddingBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h2 style={{ fontFamily: "var(--font-tech)", color: "var(--accent-cyan)", marginBottom: '0.3rem' }}>
+                    {lang === "Cn" ? "THE CRAFTON - 客戶專屬控制台" : "THE CRAFTON - CLIENT CONSOLE"}
+                  </h2>
+                  <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem' }}>
+                    <span 
+                      onClick={() => setClientPortalTab("Intake")}
+                      style={{
+                        fontSize: '1rem',
+                        fontFamily: 'var(--font-tech)',
+                        fontWeight: '600',
+                        color: clientPortalTab === "Intake" ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                        borderBottom: clientPortalTab === "Intake" ? '2px solid var(--accent-primary)' : 'none',
+                        paddingBottom: '0.4rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+                      </svg>
+                      <span>{lang === "Cn" ? "需求詳情錄入 (Project Intake)" : "Project Intake (New Sketch)"}</span>
+                    </span>
+                    <span 
+                      onClick={() => setClientPortalTab("Tracker")}
+                      style={{
+                        fontSize: '1rem',
+                        fontFamily: 'var(--font-tech)',
+                        fontWeight: '600',
+                        color: clientPortalTab === "Tracker" ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                        borderBottom: clientPortalTab === "Tracker" ? '2px solid var(--accent-primary)' : 'none',
+                        paddingBottom: '0.4rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'inline-flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 20V10M12 20V4M6 20v-6" />
+                      </svg>
+                      <span>{lang === "Cn" ? "進度跟蹤看板 (Interactive Tracker)" : "Interactive Tracker & Specs"}</span>
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
+                  <div style={{ background: "rgba(124, 114, 103, 0.08)", padding: '0.4rem 1rem', borderRadius: '2px', border: "1px solid var(--glass-border)", fontSize: '0.85rem' }}>
+                    {lang === "Cn" ? "在途訂單狀態: " : "Order Tracking: "}
+                    <strong style={{ color: "var(--accent-primary)", fontFamily: "var(--font-tech)", fontWeight: "bold" }}>{currentStage.id} - {lang === "Cn" ? currentStage.nameCn : currentStage.nameEn}</strong>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {lang === "Cn" ? `設計師: ${user.name} | 公司: ${user.company}` : `Designer: ${user.name} | Co: ${user.company}`}
                   </span>
                 </div>
-                <div className="panel-body">
-                  <table className="order-table">
-                    <thead>
-                      <tr>
-                        <th>{lang === "Cn" ? "项目类型" : "Item"}</th>
-                        <th>{lang === "Cn" ? "数量" : "Qty"}</th>
-                        <th>{lang === "Cn" ? "预选材质" : "Material Specs"}</th>
-                        <th>{lang === "Cn" ? "单价" : "Price"}</th>
-                        <th>{lang === "Cn" ? "小计" : "Subtotal"}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {order.items.map(item => (
-                        <tr key={item.id} className={splitDeliveryActive && (item.qty === 38 || item.qty === 4) ? "strike-row" : ""}>
-                          <td style={{ fontWeight: '500' }}>
-                            {lang === "Cn" ? item.typeCn : item.typeEn}
-                          </td>
-                          <td>
-                            {splitDeliveryActive && item.id === "ITEM-01" ? (
-                              <span><span style={{ textDecoration: 'line-through', color: 'var(--accent-red)' }}>40</span> <strong style={{ color: 'var(--accent-green)' }}>38</strong></span>
-                            ) : splitDeliveryActive && item.id === "ITEM-03" ? (
-                              <span><span style={{ textDecoration: 'line-through', color: 'var(--accent-red)' }}>5</span> <strong style={{ color: 'var(--accent-green)' }}>4</strong></span>
-                            ) : (
-                              item.qty
-                            )}
-                          </td>
-                          <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            {lang === "Cn" ? item.materialCn : item.materialEn}
-                            {item.note && <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginTop: '3px' }}>{item.note}</div>}
-                          </td>
-                          <td>${item.unitPrice}</td>
-                          <td style={{ fontWeight: 'bold' }}>${(item.unitPrice * item.qty).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               </div>
 
-              {/* Step bar inside member portal */}
-              <div className="glass-card" style={{ padding: '1.2rem' }}>
-                <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '0.85rem', marginBottom: '1rem', color: 'var(--accent-cyan)' }}>
-                  📍 {lang === "Cn" ? "17 阶段制造与合规进度条" : "17-Stage Production & Compliance Journey"}
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(17, 1fr)', gap: '4px', height: '10px', background: 'var(--bg-tertiary)', borderRadius: '5px', overflow: 'hidden' }}>
-                  {stages.map((st, sidx) => {
-                    let bg = "var(--bg-tertiary)";
-                    if (sidx < currentStageIndex) bg = "var(--accent-green)";
-                    if (sidx === currentStageIndex) bg = "var(--accent-cyan)";
-                    return (
-                      <div key={st.id} title={`${st.id} - ${lang === "Cn" ? st.nameCn : st.nameEn}`} style={{ background: bg, transition: 'background 0.3s' }}></div>
-                    );
-                  })}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  <span>S01 Intake</span>
-                  <span>S05 Crib5 Gate</span>
-                  <span>S11 AI CV Gate</span>
-                  <span>S17 Complete</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: OpenClaw Web chat for member to talk directly to AI Agent */}
-            <div className="glass-card">
-              <div className="panel-header" style={{ background: "rgba(124, 114, 103, 0.04)" }}>
-                <div className="panel-title">
-                  <span className="stage-badge-dot dot-ai" style={{ background: "var(--accent-primary)" }}></span>
-                  {lang === "Cn" ? "与 Crafton AI 选品助手对话" : "Design & Swatch Agent (OpenClaw)"}
-                </div>
-                <span className="logo-badge">Live Chat</span>
-              </div>
-              <div className="panel-body chat-window">
-                <div className="chat-messages">
-                  {chatMessages.map((msg, midx) => (
-                    <div key={midx} className={`chat-bubble ${msg.sender === "client" ? "bubble-client" : "bubble-agent"}`}>
-                      {msg.text}
+              {clientPortalTab === "Intake" && (
+                <div className="dashboard-panels animate-fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1.5rem' }}>
+                  {/* Left Form: B2B Project Intake Form */}
+                  <div className="glass-card" style={{ padding: '2rem' }}>
+                    <div className="panel-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid rgba(124, 114, 103, 0.1)' }}>
+                      <div className="panel-title" style={{ fontFamily: 'var(--font-tech)', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <svg style={{ width: '16px', height: '16px', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        <span>{lang === "Cn" ? "項目設計與製造詳情" : "Bespoke Project Briefing Specifications"}</span>
+                      </div>
                     </div>
-                  ))}
-                </div>
-                
-                {/* Simulated SWATCH selectors for easier demoing */}
-                <div style={{ padding: '0.8rem', background: 'var(--bg-secondary)', borderTop: '1px solid var(--glass-border)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', width: '100%' }}>
-                    {lang === "Cn" ? "快捷选品面料测试（点击发送模拟检测）：" : "Fabric swatches shortcut (click to simulate):"}
-                  </span>
-                  <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }} onClick={() => { setInputText("I want to check FAB-01 Royal Velvet (皇家蓝丝绒) compatibility"); setTimeout(handleSendMessage, 100); }}>
-                    Royal Velvet (Crib 5 Ok)
-                  </button>
-                  <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderColor: 'var(--accent-red)' }} onClick={() => { setInputText("I select FAB-03 Pure Silk Satin (纯丝绸缎)"); setTimeout(handleSendMessage, 100); }}>
-                    Pure Silk Satin (⚠️ WILL BLOCK)
-                  </button>
-                </div>
+                    <form onSubmit={handleIntakeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                          {lang === "Cn" ? "項目名稱" : "PROJECT NAME"}
+                        </label>
+                        <input 
+                          type="text" 
+                          className="chat-input" 
+                          value={intakeProjectName} 
+                          onChange={(e) => setIntakeProjectName(e.target.value)}
+                          placeholder={lang === "Cn" ? "例如：St Albans 精品酒店大堂" : "e.g. St Albans Boutique Hotel Lobby"}
+                          style={{ width: '100%', background: '#FFFFFF', padding: '0.6rem', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '2px' }}
+                          required
+                        />
+                      </div>
 
-                <div className="chat-input-area">
-                  <input type="text" className="chat-input" placeholder={lang === "Cn" ? "向 AI 询问或变更面料..." : "Ask AI Swatch or check codes..."} value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} />
-                  <button className="btn-premium" onClick={handleSendMessage}>Send</button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                          {lang === "Cn" ? "交付目的地" : "DELIVERY DESTINATION"}
+                        </label>
+                        <input 
+                          type="text" 
+                          className="chat-input" 
+                          value={intakeDestination} 
+                          onChange={(e) => setIntakeDestination(e.target.value)}
+                          placeholder={lang === "Cn" ? "例如：英國倫敦" : "e.g. London, UK"}
+                          style={{ width: '100%', background: '#FFFFFF', padding: '0.6rem', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '2px' }}
+                          required
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                          {lang === "Cn" ? "預估定製數量 (及款式)" : "ESTIMATED BESPOKE QUANTITIES"}
+                        </label>
+                        <input 
+                          type="text" 
+                          className="chat-input" 
+                          value={intakeQuantity} 
+                          onChange={(e) => setIntakeQuantity(e.target.value)}
+                          placeholder={lang === "Cn" ? "例如：40 把大堂單人椅, 20 把休閒沙發" : "e.g. 40 Lobby Armchairs, 20 VIP Club Chairs"}
+                          style={{ width: '100%', background: '#FFFFFF', padding: '0.6rem', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '2px' }}
+                          required
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                          {lang === "Cn" ? "設計草圖 / 藍圖上傳" : "DESIGN SKETCH / BLUEPRINT UPLOAD"}
+                        </label>
+                        <div style={{
+                          border: '2px dashed rgba(124, 114, 103, 0.3)',
+                          borderRadius: '4px',
+                          padding: '2.5rem 1.5rem',
+                          textAlign: 'center',
+                          background: 'rgba(124, 114, 103, 0.02)',
+                          cursor: 'pointer',
+                          transition: 'background 0.2s'
+                        }}
+                        onClick={() => document.getElementById('intake-file-upload').click()}
+                        >
+                          <input id="intake-file-upload" type="file" style={{ display: 'none' }} onChange={() => alert(lang === "Cn" ? "檔案已成功預加載！點擊下方按鈕開始 AI 解析。" : "File successfully preloaded! Click submit below to start parsing.")} />
+                          <svg style={{ width: '40px', height: '40px', display: 'block', margin: '0 auto 0.5rem auto', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 22L2 2v20h20z" />
+                            <path d="M18 18L6 6v12h12z" />
+                          </svg>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block' }}>
+                            {lang === "Cn" ? "拖曳或點選上傳手繪草圖 / CAD 設計圖 (PDF, DXG, PNG)" : "Drag & drop hand sketch or CAD blueprint here, or click to browse (PDF, DXG, PNG)"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button type="submit" className="btn-premium" style={{ width: '100%', padding: '0.8rem', marginTop: '0.5rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }} disabled={isIntakeUploading}>
+                        {isIntakeUploading ? (
+                          <>
+                            <svg style={{ width: '16px', height: '16px' }} className="animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+                            </svg>
+                            <span>{lang === "Cn" ? "OpenClaw 智能體解析中..." : "Analyzing Spec with OpenClaw..."}</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M4.5 16.5c-1.5 1.25-2.5 3.5-2.5 3.5s2.25-1 3.5-2.5M20 4a2 2 0 00-2.83 0L10 11.17l-1.41-1.41a1 1 0 00-1.42 0L3.5 13.5a1 1 0 000 1.42l4.24 4.24a1 1 0 001.42 0L12.92 15l1.41 1.41a1 1 0 001.42-1.42l7.17-7.17A2 2 0 0020 4z" />
+                            </svg>
+                            <span>{lang === "Cn" ? "提交項目詳情並使用 AI 解析圖紙" : "Submit Brief & Let AI Analyze Specs"}</span>
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Right: Premium Preview or Live Log terminal console */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    <div className="glass-card" style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', background: 'rgba(124, 114, 103, 0.01)' }}>
+                      {!isIntakeUploading ? (
+                        <>
+                          <div style={{ width: '120px', margin: '0 auto 1.5rem auto' }}>
+                            {renderChairSVG("FAB-02", "matte-black", { opacity: 0.5 })}
+                          </div>
+                          <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+                            {lang === "Cn" ? "實時 CAD & 消防合規預審" : "Real-time CAD & Flammability Pre-Audit"}
+                          </h4>
+                          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '350px', lineHeight: '1.6' }}>
+                            {lang === "Cn" 
+                              ? "當您提交草圖後，我們的多智能體 OpenClaw 管道將自動比對英國 Crib 5 阻燃法規，核對幾何公差，並生成三視圖。解析完成後即可在進度看板中查看項目圖紙。" 
+                              : "Once submitted, our multi-agent OpenClaw pipeline will automatically audit the sketch against Crib 5 regulations, test tolerances, and auto-generate orthogonal CAD blueprints."}
+                          </p>
+                        </>
+                      ) : (
+                        <div style={{ width: '100%', textAlign: 'left', background: '#1C1B18', color: '#E8E5E0', fontFamily: 'var(--font-tech)', padding: '1.5rem', borderRadius: '4px', border: '1px solid var(--glass-border)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', minHeight: '320px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.8rem', marginBottom: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span className="stage-badge-dot dot-ai animate-pulse" style={{ background: 'var(--accent-cyan)' }}></span>
+                              <strong style={{ fontSize: '0.85rem', letterSpacing: '1px' }}>
+                                OPENCLAW SPEC PARSER TERMINAL v2.4
+                              </strong>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: '#BAC2B9' }}>RUNNING</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', flex: 1, overflowY: 'auto' }}>
+                            {parsingLogs.map((log, lidx) => (
+                              <div key={lidx} style={{ fontSize: '0.8rem', lineHeight: '1.5', color: '#FAF9F6' }}>
+                                <span style={{ color: 'var(--accent-green)' }}>[OpenClaw]</span> {lang === "Cn" ? log.cn : log.en}
+                              </div>
+                            ))}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#BAC2B9', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                              <span className="animate-pulse">⏳</span>
+                              <span>{lang === "Cn" ? "AI 智能體正在協同運算中..." : "AI agents collaborating..."}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
+              )}
+
+              {clientPortalTab === "Tracker" && (
+                <div className="dashboard-panels animate-fade-in">
+                  {/* Left Column: Member Order Dashboard */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {renderMaterialStudio()}
+                    <div className="glass-card">
+                      <div className="panel-header">
+                        <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <svg style={{ width: '16px', height: '16px', flexShrink: 0, color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+                            <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
+                          </svg>
+                          <span>{lang === "Cn" ? "在单定制规格与进度" : "Bespoke Items & Specs"}</span>
+                        </div>
+                        <span style={{ fontSize: '0.8rem', color: "var(--accent-green)", fontFamily: "var(--font-tech)" }}>
+                          Total: ${getOrderTotal().toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="panel-body">
+                        <table className="order-table">
+                          <thead>
+                            <tr>
+                              <th>{lang === "Cn" ? "项目类型" : "Item"}</th>
+                              <th>{lang === "Cn" ? "数量" : "Qty"}</th>
+                              <th>{lang === "Cn" ? "预选材质" : "Material Specs"}</th>
+                              <th>{lang === "Cn" ? "单价" : "Price"}</th>
+                              <th>{lang === "Cn" ? "小计" : "Subtotal"}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {order.items.map(item => (
+                              <tr key={item.id} className={splitDeliveryActive && (item.qty === 38 || item.qty === 4) ? "strike-row" : ""}>
+                                <td style={{ fontWeight: '500' }}>
+                                  {lang === "Cn" ? item.typeCn : item.typeEn}
+                                </td>
+                                <td>
+                                  {splitDeliveryActive && item.id === "ITEM-01" ? (
+                                    <span><span style={{ textDecoration: 'line-through', color: 'var(--accent-red)' }}>40</span> <strong style={{ color: 'var(--accent-green)' }}>38</strong></span>
+                                  ) : splitDeliveryActive && item.id === "ITEM-03" ? (
+                                    <span><span style={{ textDecoration: 'line-through', color: 'var(--accent-red)' }}>5</span> <strong style={{ color: 'var(--accent-green)' }}>4</strong></span>
+                                  ) : (
+                                    item.qty
+                                  )}
+                                </td>
+                                <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                  {lang === "Cn" ? item.materialCn : item.materialEn}
+                                  {item.note && <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginTop: '3px' }}>{item.note}</div>}
+                                </td>
+                                <td>${item.unitPrice}</td>
+                                <td style={{ fontWeight: 'bold' }}>${(item.unitPrice * item.qty).toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Step bar inside member portal */}
+                    <div className="glass-card" style={{ padding: '1.2rem' }}>
+                      <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '0.85rem', marginBottom: '1rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <svg style={{ width: '16px', height: '16px', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span>{lang === "Cn" ? "17 阶段制造与合规进度条" : "17-Stage Production & Compliance Journey"}</span>
+                      </h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(17, 1fr)', gap: '4px', height: '10px', background: 'var(--bg-tertiary)', borderRadius: '5px', overflow: 'hidden' }}>
+                        {stages.map((st, sidx) => {
+                          let bg = "var(--bg-tertiary)";
+                          if (sidx < currentStageIndex) bg = "var(--accent-green)";
+                          if (sidx === currentStageIndex) bg = "var(--accent-cyan)";
+                          return (
+                            <div key={st.id} title={`${st.id} - ${lang === "Cn" ? st.nameCn : st.nameEn}`} style={{ background: bg, transition: 'background 0.3s' }}></div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                        <span>S01 Intake</span>
+                        <span>S05 Crib5 Gate</span>
+                        <span>S11 AI CV Gate</span>
+                        <span>S17 Complete</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: OpenClaw Web chat for member to talk directly to AI Agent */}
+                  <div className="glass-card">
+                    <div className="panel-header" style={{ background: "rgba(124, 114, 103, 0.04)" }}>
+                      <div className="panel-title">
+                        <span className="stage-badge-dot dot-ai" style={{ background: "var(--accent-primary)" }}></span>
+                        {lang === "Cn" ? "与 Crafton AI 选品助手对话" : "Design & Swatch Agent (OpenClaw)"}
+                      </div>
+                      <span className="logo-badge">Live Chat</span>
+                    </div>
+                    <div className="panel-body chat-window">
+                      <div className="chat-messages">
+                        {chatMessages.map((msg, midx) => (
+                          <div key={midx} className={`chat-bubble ${msg.sender === "client" ? "bubble-client" : "bubble-agent"}`}>
+                            {msg.text}
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Simulated SWATCH selectors for easier demoing */}
+                      <div style={{ padding: '0.8rem', background: 'var(--bg-secondary)', borderTop: '1px solid var(--glass-border)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', width: '100%' }}>
+                          {lang === "Cn" ? "快捷选品面料测试（点击发送模拟检测）：" : "Fabric swatches shortcut (click to simulate):"}
+                        </span>
+                        <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }} onClick={() => { setInputText("I want to check FAB-01 Royal Velvet (皇家蓝丝绒) compatibility"); setTimeout(handleSendMessage, 100); }}>
+                          Royal Velvet (Crib 5 Ok)
+                        </button>
+                        <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderColor: 'var(--accent-red)' }} onClick={() => { setInputText("I select FAB-03 Pure Silk Satin (纯丝绸缎)"); setTimeout(handleSendMessage, 100); }}>
+                          Pure Silk Satin (⚠️ WILL BLOCK)
+                        </button>
+                      </div>
+
+                      <div className="chat-input-area">
+                        <input type="text" className="chat-input" placeholder={lang === "Cn" ? "向 AI 询问或变更面料..." : "Ask AI Swatch or check codes..."} value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} />
+                        <button className="btn-premium" onClick={handleSendMessage}>Send</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -2085,29 +3946,47 @@ function App() {
               {/* Render Simulation Interactivity depending on current active stage */}
               <div style={{ marginLeft: 'auto' }}>
                 {currentStage.id === "S04" && (
-                  <button className="btn-premium" onClick={handleChoApproval}>
-                    ✍️ {lang === "Cn" ? "批准规格书与BOM (Human H1)" : "Approve Tech BOM (Human H1)"}
+                  <button className="btn-premium" style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={handleChoApproval}>
+                    <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" />
+                    </svg>
+                    <span>{lang === "Cn" ? "批准规格书与BOM (Human H1)" : "Approve Tech BOM (Human H1)"}</span>
                   </button>
                 )}
 
                 {currentStage.id === "S05" && isCrib5Blocked && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
-                    <span style={{ color: 'var(--accent-red)', fontSize: '0.8rem', fontWeight: 'bold' }}>⚠️ CRIB 5 BLOCK INTERCEPTED (Crib 5 强制拦截中)</span>
-                    <button className="btn-premium" style={{ background: 'var(--accent-orange)', color: 'white' }} onClick={() => handleBypassCrib5("Navy Classic Linen")}>
-                      🔄 {lang === "Cn" ? "强制降级为符合Crib 5面料" : "Bypass block: Change to Navy Linen"}
+                    <span style={{ color: 'var(--accent-red)', fontSize: '0.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <svg style={{ width: '14px', height: '14px', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />
+                      </svg>
+                      <span>CRIB 5 BLOCK INTERCEPTED (Crib 5 强制拦截中)</span>
+                    </span>
+                    <button className="btn-premium" style={{ background: 'var(--accent-orange)', color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={() => handleBypassCrib5("Navy Classic Linen")}>
+                      <svg style={{ width: '14px', height: '14px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+                      </svg>
+                      <span>{lang === "Cn" ? "强制降级为符合Crib 5面料" : "Bypass block: Change to Navy Linen"}</span>
                     </button>
                   </div>
                 )}
 
                 {currentStage.id === "S08" && (
-                  <span style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    👈 {lang === "Cn" ? "请在右侧选择供应商下单" : "Select supplier on the right column"}
+                  <span style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <svg style={{ width: '16px', height: '16px', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="19" y1="12" x2="5" y2="12" />
+                      <polyline points="12,19 5,12 12,5" />
+                    </svg>
+                    <span>{lang === "Cn" ? "请在右侧选择供应商下单" : "Select supplier on the right column"}</span>
                   </span>
                 )}
 
                 {currentStage.id === "S15" && !splitDeliveryActive && (
-                  <button className="btn-premium" style={{ background: 'var(--accent-red)', color: 'white' }} onClick={triggerSplitDelivery}>
-                    ⚡ {lang === "Cn" ? "客户提出更改：执行分批交付财务划线核销" : "Execute Split Delivery Strike-through"}
+                  <button className="btn-premium" style={{ background: 'var(--accent-red)', color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={triggerSplitDelivery}>
+                    <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                    </svg>
+                    <span>{lang === "Cn" ? "客户提出更改：执行分批交付财务划线核销" : "Execute Split Delivery Strike-through"}</span>
                   </button>
                 )}
 
@@ -2125,7 +4004,14 @@ function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div className="glass-card">
                   <div className="panel-header">
-                    <div className="panel-title">📋 Supabase 共享主数据库 (Master Sheet)</div>
+                    <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <svg style={{ width: '16px', height: '16px', flexShrink: 0, color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" />
+                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                        <path d="M9 14l2 2 4-4" />
+                      </svg>
+                      <span>Supabase 共享主数据库 (Master Sheet)</span>
+                    </div>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ID: {order.orderId}</span>
                   </div>
                   <div className="panel-body" style={{ padding: '1.5rem 0' }}>
@@ -2191,8 +4077,12 @@ function App() {
                 {/* Change Tracker Log Panel */}
                 <div className="glass-card">
                   <div className="panel-header">
-                    <div className="panel-title">
-                      {lang === "Cn" ? "🛡️ 变更审计日志 (Change Tracker Log)" : "🛡️ Change Tracker Log"}
+                    <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <svg style={{ width: '16px', height: '16px', flexShrink: 0, color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                        <path d="M9 11l2 2 4-4" />
+                      </svg>
+                      <span>{lang === "Cn" ? "变更审计日志 (Change Tracker Log)" : "Change Tracker Log"}</span>
                     </div>
                   </div>
                   <div className="panel-body" style={{ maxHeight: '180px', overflowY: 'auto' }}>
@@ -2271,7 +4161,10 @@ function App() {
             {/* Modal Header */}
             <div className="volumetric-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '1.4rem' }}>📦</span>
+                <svg style={{ width: '22px', height: '22px', color: 'var(--accent-primary)', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+                  <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
+                </svg>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.1rem', fontFamily: 'var(--font-tech)', color: 'var(--text-primary)', fontWeight: '600', letterSpacing: '0.5px' }}>
                     {lang === "Cn" ? "3D 集裝箱排櫃優化仿真模型 (Live Volumetric Packing Simulation)" : "3D Volumetric Container Packing Simulation Console"}
@@ -2285,7 +4178,7 @@ function App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
                 {/* Open in New Tab Button */}
                 <button 
-                  onClick={() => window.open(`/loading-ai/?lang=${lang === "Cn" ? "cn" : "en"}`, '_blank')}
+                  onClick={() => window.open(`/loading-ai/index.html?lang=${lang === "Cn" ? "cn" : "en"}`, '_blank')}
                   style={{
                     background: 'none',
                     border: '1px solid var(--text-primary)',
@@ -2335,7 +4228,7 @@ function App() {
             {/* Modal Body / Iframe Container (Perfect 100% Height Fill) */}
             <div className="volumetric-modal-body">
               <iframe 
-                src={`/loading-ai/?lang=${lang === "Cn" ? "cn" : "en"}`} 
+                src={`/loading-ai/index.html?lang=${lang === "Cn" ? "cn" : "en"}`} 
                 style={{
                   width: '100%',
                   height: '100%',
@@ -2366,6 +4259,9 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Premium Auth Gate Overlay */}
+      {showAuthGate && renderAuthGate()}
     </div>
   );
 }
