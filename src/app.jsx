@@ -7,8 +7,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import mockData from './mockData';
 
+// Modularized components
+import ChairSVG from './components/ChairSVG';
+import MaterialStudio from './components/MaterialStudio';
+import CVQASimulator from './components/CVQASimulator';
+import ClientPortalTeaser from './components/ClientPortalTeaser';
+import ErrorBoundary from './components/ErrorBoundary';
+
 const IMAGES = {
-  heroChair: "https://images.unsplash.com/photo-1592078615290-033ee584e267?q=80&w=800&auto=format&fit=crop", // 侘寂奢華皮質單椅 (取代 image1)
+  heroChair: "/hero_chair.jpg", // 侘寂奢華皮質單椅 (取代 image1)
   workflowPhases: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?q=80&w=800&auto=format&fit=crop", // 手作工坊布樣與尺規 (取代 image2)
   masterShowwall: "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?q=80&w=1200&auto=format&fit=crop", // 意式奢華客廳實景 (取代 image3)
   wabiTextures: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800&auto=format&fit=crop", // 暖沙天然洞石幾何特寫 (取代 image4)
@@ -17,7 +24,10 @@ const IMAGES = {
   caseMayfair: "https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=600&auto=format&fit=crop", // Portal Hedge Fund 倫敦對沖基金辦公室 (案例 2)
   caseBermondsey: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?q=80&w=600&auto=format&fit=crop", // Bermondsey Lofts 工業風公寓 (案例 3)
   caseBathHotel: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=600&auto=format&fit=crop", // The Stow Boutique Hotel 精品客房 (案例 4)
-  caseCamden: "https://images.unsplash.com/photo-1524758631624-e2822e304c36?q=80&w=600&auto=format&fit=crop" // Camden Creative Studios 創意共享空間 (案例 5)
+  caseCamden: "https://images.unsplash.com/photo-1524758631624-e2822e304c36?q=80&w=600&auto=format&fit=crop", // Camden Creative Studios 創意共享空間 (案例 5)
+  setMilano: "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?q=80&w=800&auto=format&fit=crop", // Milano Elegance
+  setToscana: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?q=80&w=800&auto=format&fit=crop", // Toscana Warmth
+  setVenezia: "https://images.unsplash.com/photo-1538688525198-9b88f6f53126?q=80&w=800&auto=format&fit=crop" // Venezia Contemporary
 };
 
 // Inject into window for backward compatibility with legacy prototype code
@@ -132,6 +142,23 @@ function App() {
   const [docAudited, setDocAudited] = useState(false);
   const [archiveHashed, setArchiveHashed] = useState(false);
   const [showVolumetricSimulation, setShowVolumetricSimulation] = useState(false);
+
+  // WOW effect state variables for homepage V1.2 enhancements
+  const [activeSwatch, setActiveSwatch] = useState("nubuck"); // nubuck, linen, gold, walnut
+  const [blueprintSliderPos, setBlueprintSliderPos] = useState(50);
+  const [demoMilestone, setDemoMilestone] = useState("frame");
+
+  // V1.2/1.3 Intake Modal States
+  const [activeIntakeModal, setActiveIntakeModal] = useState(null); // 'pdf', 'excel', 'words', 'item', or null
+  const [modalProjectName, setModalProjectName] = useState("");
+  const [modalDestination, setModalDestination] = useState("");
+  const [modalQuantity, setModalQuantity] = useState("40");
+  const [modalTextBrief, setModalTextBrief] = useState("");
+  const [modalFilePreloaded, setModalFilePreloaded] = useState(false);
+  const [modalFilePreloadedName, setModalFilePreloadedName] = useState("");
+
+  // V1.3 Marketing Bespoke Simulation States (Now modularly encapsulated in CVQASimulator and ClientPortalTeaser)
+
 
   // =====================================================================
   // THE CRAFTON - SESSION & AUTHENTICATION HANDLERS
@@ -251,37 +278,7 @@ function App() {
   // =====================================================================
 
   const renderChairSVG = (fabricId, legId, animateStyle = {}) => {
-    let cushionColor = '#BAC2B9'; // Linen default (FAB-02)
-    if (fabricId === 'FAB-01') cushionColor = '#8C99A4'; // Velvet
-    if (fabricId === 'FAB-03') cushionColor = '#DFDCD6'; // Silk
-    if (fabricId === 'FAB-04') cushionColor = '#5C534C'; // Leather
-
-    let legsColor = '#1C1B18'; // Black default
-    if (legId === 'bronze') legsColor = '#A88F80';
-    if (legId === 'white-oak') legsColor = '#D2C9B1';
-
-    return (
-      <svg viewBox="0 0 200 200" width="100%" height="220" style={{ stroke: '#5C534C', strokeWidth: '1.2', fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', ...animateStyle }}>
-        {/* Chair Backrest */}
-        <path d="M 60,60 L 140,60 Q 148,60 148,68 L 148,110 L 52,110 L 52,68 Q 52,60 60,60 Z" style={{ fill: cushionColor, transition: 'fill 0.5s' }} />
-        
-        {/* Chair Cushion */}
-        <rect x="46" y="110" width="108" height="24" rx="4" style={{ fill: cushionColor, strokeWidth: '1.4', transition: 'fill 0.5s' }} />
-        
-        {/* Chair Arms */}
-        <path d="M 46,104 L 38,104 C 34,104 34,124 34,124 L 46,124 Z" style={{ fill: cushionColor, transition: 'fill 0.5s' }} />
-        <path d="M 154,104 L 162,104 C 166,104 166,124 166,124 L 154,124 Z" style={{ fill: cushionColor, transition: 'fill 0.5s' }} />
-
-        {/* Chair Legs */}
-        <line x1="56" y1="134" x2="42" y2="176" style={{ stroke: legsColor, strokeWidth: '2.5', transition: 'stroke 0.5s' }} />
-        <line x1="144" y1="134" x2="158" y2="176" style={{ stroke: legsColor, strokeWidth: '2.5', transition: 'stroke 0.5s' }} />
-        <line x1="68" y1="134" x2="72" y2="170" style={{ stroke: legsColor, strokeWidth: '1.8', opacity: 0.7, transition: 'stroke 0.5s' }} />
-        <line x1="132" y1="134" x2="128" y2="170" style={{ stroke: legsColor, strokeWidth: '1.8', opacity: 0.7, transition: 'stroke 0.5s' }} />
-
-        {/* Structural crossbar */}
-        <line x1="42" y1="165" x2="158" y2="165" style={{ stroke: legsColor, strokeWidth: '1.2', transition: 'stroke 0.5s' }} />
-      </svg>
-    );
+    return <ChairSVG fabricId={fabricId} legId={legId} animateStyle={animateStyle} />;
   };
 
   const handleFabricSelect = async (fabId) => {
@@ -315,107 +312,7 @@ function App() {
     }
   };
 
-  const renderMaterialStudio = () => {
-    const selectedFabObj = mockData.fabrics.find(f => f.id === selectedFabric);
-    return (
-      <div className="material-studio-card animate-fade-in">
-        <div className="material-studio-headline">
-          🌿 {lang === "Cn" ? "Crafton 高端面料與金屬工藝定製工坊" : "Crafton Premium Material & Finishes Configurator"}
-        </div>
-        
-        <div className="swatch-configurator-box">
-          {/* Left Column: Interactive Vector Blueprint */}
-          <div className="blueprint-board" style={{ height: '240px', background: '#F8F6F2' }}>
-            <span className="blueprint-title-tag">Bespoke Configurator V1.0</span>
-            {renderChairSVG(selectedFabric, selectedLeg, configuratorCrib5Blocked ? { outline: '2px dashed #A68480', outlineOffset: '4px' } : {})}
-            {configuratorCrib5Blocked && (
-              <div style={{ position: 'absolute', bottom: '15px', left: '15px', background: 'rgba(166, 132, 128, 0.95)', color: 'white', padding: '0.3rem 0.6rem', fontSize: '0.68rem', letterSpacing: '0.5px', border: '1px solid #FAF9F6', borderRadius: '2px', textTransform: 'uppercase' }}>
-                ⚠️ CRIB 5 BANNED
-              </div>
-            )}
-            <span className="blueprint-scale-tag">SCALE 1:10</span>
-          </div>
 
-          {/* Right Column: Choices */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-            {/* Fabric options */}
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                {lang === "Cn" ? "1. 精選低飽和度面料庫" : "1. Select Low-Saturation Fabric"}
-              </label>
-              <div className="fabric-swatches-grid" style={{ marginTop: '0.4rem' }}>
-                {mockData.fabrics.map(fab => {
-                  let textureClass = "texture-linen";
-                  if (fab.id === "FAB-01") textureClass = "texture-velvet";
-                  if (fab.id === "FAB-03") textureClass = "texture-silk";
-                  if (fab.id === "FAB-04") textureClass = "texture-leather";
-
-                  return (
-                    <div 
-                      key={fab.id} 
-                      className={`fabric-card-option ${selectedFabric === fab.id ? 'selected' : ''}`}
-                      onClick={() => handleFabricSelect(fab.id)}
-                      title={lang === "Cn" ? fab.notesCn : fab.notesEn}
-                    >
-                      <div className={`swatch-preview-circle ${textureClass}`}></div>
-                      <div style={{ fontSize: '0.62rem', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {lang === "Cn" ? fab.name.split(' (')[0] : fab.name.split(' (')[0]}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Leg finish options */}
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                {lang === "Cn" ? "2. 椅腿五金 / 實木飾面" : "2. Chair Leg Finish"}
-              </label>
-              <div className="finishes-row">
-                <button 
-                  className={`finish-circle-btn ${selectedLeg === 'matte-black' ? 'selected' : ''}`}
-                  style={{ background: '#1C1B18' }} 
-                  onClick={() => handleLegSelect('matte-black')}
-                  title="Matte Basalt Black Steel"
-                ></button>
-                <button 
-                  className={`finish-circle-btn ${selectedLeg === 'bronze' ? 'selected' : ''}`}
-                  style={{ background: '#A88F80' }} 
-                  onClick={() => handleLegSelect('bronze')}
-                  title="Brushed Walnut Bronze"
-                ></button>
-                <button 
-                  className={`finish-circle-btn ${selectedLeg === 'white-oak' ? 'selected' : ''}`}
-                  style={{ background: '#D2C9B1' }} 
-                  onClick={() => handleLegSelect('white-oak')}
-                  title="Natural White Oak Wood"
-                ></button>
-              </div>
-            </div>
-
-            {/* Selected feedback and CRIB 5 validation alert */}
-            <div style={{ marginTop: '0.2rem', padding: '0.6rem 0.8rem', background: '#F4F2EE', border: '1px solid var(--glass-border)', borderRadius: '2px', fontSize: '0.72rem' }}>
-              <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
-                {lang === "Cn" ? `當前材質: ${selectedFabObj.name}` : `Active Swatch: ${selectedFabObj.name}`}
-              </div>
-              <div style={{ color: 'var(--text-secondary)', marginTop: '2px', lineHeight: '1.4' }}>
-                {lang === "Cn" ? selectedFabObj.notesCn : selectedFabObj.notesEn}
-              </div>
-              
-              {/* Compliance status banner */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px', fontWeight: '600', color: selectedFabObj.crib5Compatible ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                <span className={`stage-badge-dot dot-${selectedFabObj.crib5Compatible ? 'completed' : 'add-log'}`} style={{ width: '6px', height: '6px' }}></span>
-                {selectedFabObj.crib5Compatible 
-                  ? (lang === "Cn" ? "✓ 符合英國 Crib 5 消防阻燃法規" : "✓ UK Crib 5 Compliance Pass")
-                  : (lang === "Cn" ? "✗ 警告：面料禁售！不符合 Crib 5 法規" : "✗ BANNED: Fails Crib 5 Regulation")}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   const handleStartCrib5Test = () => {
     setCrib5TestStatus("running");
@@ -446,6 +343,222 @@ function App() {
   const handleCryptographicArchive = () => {
     setArchiveHashed(true);
     addLog("System", "項目資料哈希打包完畢：SHA-256: 8f5c90b6a7d18721c4b2e70e17631bd4fb6029cf8e11a2f4219b16752d586b51", "Project archive hashed and packaged: SHA-256: 8f5c90b6a7d18721c4b2e70e17631bd4fb6029cf8e11a2f4219b16752d586b51");
+  };
+
+  const handleIntakeFlowSubmit = (projectName, destination, quantity, fileType, textBrief) => {
+    setIntakeProjectName(projectName || "St Albans Boutique Hotel Lobby");
+    setIntakeDestination(destination || "London, UK");
+    setIntakeQuantity(quantity || "40");
+    setClientPortalTab("Intake");
+    setCurrentView("ClientPortal");
+    setActiveIntakeModal(null);
+    setTimeout(() => {
+      handleIntakeSubmit();
+    }, 100);
+  };
+
+  const renderIntakeModal = () => {
+    if (!activeIntakeModal) return null;
+
+    const titleCn = activeIntakeModal === 'pdf' ? "No. 01 — 上傳招標 PDF 規格書" 
+                  : activeIntakeModal === 'excel' ? "No. 02 — 導入 Excel 家具清單"
+                  : activeIntakeModal === 'item' ? "獲取精選配套定制報價"
+                  : "No. 03 — 貼入文字需求描述";
+    const titleEn = activeIntakeModal === 'pdf' ? "No. 01 — Upload Tender PDF Specs"
+                  : activeIntakeModal === 'excel' ? "No. 02 — Import Excel Furniture List"
+                  : activeIntakeModal === 'item' ? "Request Curated Package Quote"
+                  : "No. 03 — Paste Text Requirements";
+
+    const descCn = activeIntakeModal === 'pdf' ? "請拖曳上傳您的 PDF 招標文件或技術規格書。系統將調用 OpenClaw 智能體，實時提取幾何參數與合規性分析。"
+                 : activeIntakeModal === 'excel' ? "請上傳包含家具品名、尺寸、面料與數量的 Excel 電子表格。系統將自動解析為 B2B 門戶中的物料清單。"
+                 : activeIntakeModal === 'item' ? "確認配套定制信息，一鍵為您的項目生成專屬報價單，並在控制台中實時跟蹤。"
+                 : "直接粘貼郵件對話記錄或手打需求，我們的 AI 智能體將實時精確理解並拆解為可生產的技術條目。";
+    const descEn = activeIntakeModal === 'pdf' ? "Drag and drop your PDF spec sheet or tender documents. OpenClaw agents will extract dimensions, geometry parameters, and perform compliance audit in real time."
+                 : activeIntakeModal === 'excel' ? "Upload your spreadsheet containing item schedules, sizes, and swatches. The system will automatically convert it to a structured BOM list."
+                 : activeIntakeModal === 'item' ? "Confirm the details of your package. The system will automatically generate a tailored commercial bid and load it to your portal."
+                 : "Paste email threads or type out your requirements. Our multi-agent system will parse text into ready-to-manufacture line items.";
+
+    return (
+      <div className="volumetric-modal-overlay animate-fade-in" style={{ zIndex: 1100 }}>
+        <div className="volumetric-modal-card" style={{ maxWidth: '650px', width: '90%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+          {/* Header */}
+          <div className="volumetric-modal-header" style={{ padding: '1.5rem 2rem', borderBottom: '1px solid var(--glass-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontFamily: 'var(--font-tech)', fontSize: '1.2rem', fontStyle: 'italic', color: 'var(--accent-primary)', flexShrink: 0 }}>
+                {activeIntakeModal === 'pdf' ? "No. 01" : activeIntakeModal === 'excel' ? "No. 02" : activeIntakeModal === 'item' ? "⭐" : "No. 03"}
+              </span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontFamily: 'var(--font-tech)', color: 'var(--text-primary)', fontWeight: '500' }}>
+                  {lang === "Cn" ? titleCn : titleEn}
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                  {lang === "Cn" ? descCn : descEn}
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setActiveIntakeModal(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: '1.2rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                transition: 'background-color 0.2s',
+              }}
+              onMouseEnter={(e) => { e.target.style.backgroundColor = 'rgba(28,27,24,0.06)'; }}
+              onMouseLeave={(e) => { e.target.style.backgroundColor = 'transparent'; }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Body */}
+          <div style={{ padding: '1.8rem 2rem', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            {/* Project Name */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', color: 'var(--text-secondary)' }}>
+                {lang === "Cn" ? "項目名稱 / PROJECT NAME" : "PROJECT NAME"}
+              </label>
+              <input 
+                type="text" 
+                className="chat-input"
+                value={modalProjectName} 
+                onChange={(e) => setModalProjectName(e.target.value)}
+                placeholder={lang === "Cn" ? "請輸入項目名稱..." : "Enter project name..."}
+                style={{ width: '100%', background: '#FFFFFF', padding: '0.7rem', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '2px', fontFamily: 'var(--font-sans)', fontSize: '0.9rem' }}
+                required
+              />
+            </div>
+
+            {/* Destination & Quantity Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.2rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', color: 'var(--text-secondary)' }}>
+                  {lang === "Cn" ? "交付目的地 / DESTINATION" : "DELIVERY DESTINATION"}
+                </label>
+                <input 
+                  type="text" 
+                  className="chat-input"
+                  value={modalDestination} 
+                  onChange={(e) => setModalDestination(e.target.value)}
+                  placeholder={lang === "Cn" ? "例如：英國倫敦" : "e.g. London, UK"}
+                  style={{ width: '100%', background: '#FFFFFF', padding: '0.7rem', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '2px', fontFamily: 'var(--font-sans)', fontSize: '0.9rem' }}
+                  required
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', color: 'var(--text-secondary)' }}>
+                  {lang === "Cn" ? "預估數量 / EST. QUANTITY" : "ESTIMATED QUANTITY"}
+                </label>
+                <input 
+                  type="text" 
+                  className="chat-input"
+                  value={modalQuantity} 
+                  onChange={(e) => setModalQuantity(e.target.value)}
+                  placeholder="40"
+                  style={{ width: '100%', background: '#FFFFFF', padding: '0.7rem', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '2px', fontFamily: 'var(--font-sans)', fontSize: '0.9rem' }}
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Interactive File Section or Textarea */}
+            {activeIntakeModal === 'item' ? (
+              <div style={{ background: '#FAF7F2', padding: '1.2rem', border: '1px solid rgba(124, 114, 103, 0.15)', borderRadius: '4px' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--accent-primary)', fontWeight: '600', letterSpacing: '1px', display: 'block', marginBottom: '0.4rem' }}>
+                  {lang === "Cn" ? "⚡ 精選設計配套已加載" : "⚡ CURATED DESIGN PACKAGE PRE-LOADED"}
+                </span>
+                <span style={{ fontSize: '0.88rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                  {modalProjectName}
+                </span>
+              </div>
+            ) : activeIntakeModal === 'words' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', color: 'var(--text-secondary)' }}>
+                  {lang === "Cn" ? "手寫文字需求描述 / WORDS BRIEF" : "TEXT REQUIREMENTS BRIEF"}
+                </label>
+                <textarea 
+                  className="chat-input"
+                  value={modalTextBrief}
+                  onChange={(e) => setModalTextBrief(e.target.value)}
+                  placeholder={lang === "Cn" ? "在此處輸入或粘貼您的家具定製要求、材質防火指標、交期限制等..." : "Paste or type your furniture specs, fabric options, Crib 5 requirements here..."}
+                  style={{ width: '100%', minHeight: '120px', background: '#FFFFFF', padding: '0.7rem', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '2px', fontFamily: 'var(--font-sans)', fontSize: '0.85rem', lineHeight: '1.6', resize: 'vertical' }}
+                  required
+                />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', color: 'var(--text-secondary)' }}>
+                  {activeIntakeModal === 'pdf' ? (lang === "Cn" ? "招標 PDF 規格書 / TENDER PDF" : "TENDER PDF ATTACHMENT") : (lang === "Cn" ? "Excel 家具清單表格 / EXCEL SHEET" : "EXCEL SHEET ATTACHMENT")}
+                </label>
+                <div style={{
+                  border: '1px dashed var(--accent-primary)',
+                  borderRadius: '2px',
+                  padding: '2rem 1.5rem',
+                  textAlign: 'center',
+                  background: 'rgba(176, 91, 67, 0.02)',
+                  position: 'relative'
+                }}>
+                  <svg style={{ width: '32px', height: '32px', display: 'block', margin: '0 auto 0.6rem auto', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                  </svg>
+                  {modalFilePreloaded ? (
+                    <div>
+                      <span style={{ fontSize: '0.82rem', fontFamily: 'var(--font-tech)', color: 'var(--text-primary)', display: 'block', fontWeight: '500' }}>
+                        📎 {modalFilePreloadedName}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--accent-muted)', display: 'block', marginTop: '4px' }}>
+                        {lang === "Cn" ? "⚡ 系統預加載文件已就緒！" : "⚡ System preloaded file is active!"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block' }}>
+                        {lang === "Cn" ? "拖曳文件到此處，或點擊瀏覽本地" : "Drag & drop files here, or click to browse"}
+                      </span>
+                    </div>
+                  )}
+                  <input type="file" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setModalFilePreloadedName(e.target.files[0].name);
+                      setModalFilePreloaded(true);
+                    }
+                  }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="volumetric-modal-footer" style={{ padding: '1.2rem 2rem', background: 'rgba(124, 114, 103, 0.02)', borderTop: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <button 
+              className="btn-secondary" 
+              style={{ padding: '0.5rem 1.5rem', fontSize: '0.82rem' }}
+              onClick={() => setActiveIntakeModal(null)}
+            >
+              {lang === "Cn" ? "取消 / CANCEL" : "CANCEL"}
+            </button>
+            <button 
+              className="btn-premium" 
+              style={{ padding: '0.5rem 2rem', fontSize: '0.82rem' }}
+              onClick={() => {
+                const fileTypeLabel = activeIntakeModal === 'pdf' ? "TENDER_PDF" : activeIntakeModal === 'excel' ? "EXCEL_BOM" : activeIntakeModal === 'item' ? "CURATED_PACKAGE" : "TEXT_BRIEF";
+                handleIntakeFlowSubmit(modalProjectName, modalDestination, modalQuantity, fileTypeLabel, modalTextBrief);
+              }}
+            >
+              {lang === "Cn" ? "啟動 AI 解析" : "ANALYZE WITH AI →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderInteractivePlayground = () => {
@@ -2766,6 +2879,165 @@ function App() {
     );
   };
 
+  const renderFooter = () => {
+    return (
+      <footer style={{
+        backgroundColor: '#1A1918',
+        borderTop: '1px solid rgba(250, 247, 242, 0.08)',
+        padding: '5rem 2rem 3rem 2rem',
+        marginTop: '6rem',
+        color: '#FAF7F2',
+        fontFamily: 'var(--font-sans)',
+        fontSize: '0.85rem'
+      }}>
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '4rem',
+          textAlign: 'left'
+        }} className="footer-columns">
+          {/* Col 1: Brand & Philosophy */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <span style={{
+              fontFamily: 'var(--font-tech)',
+              fontSize: '1.6rem',
+              fontWeight: '500',
+              letterSpacing: '3px',
+              color: '#FAF7F2',
+              textTransform: 'uppercase'
+            }}>
+              THE CRAFTON
+            </span>
+            <p style={{
+              color: '#9E958B',
+              lineHeight: '1.7',
+              fontWeight: '300',
+              fontSize: '0.85rem',
+              maxWidth: '300px'
+            }}>
+              {lang === "Cn"
+                ? "義式極簡合約傢俱設計與精工製造。為全球頂奢酒店、高端住宅及设计事務所提供毫米級工程交付。"
+                : "Italian Minimalist contract furniture design and engineering. Delivering millimeter-precision custom products for luxury hotels, residences, and design ateliers globally."}
+            </p>
+          </div>
+
+          {/* Col 2: Sitemap */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <span style={{
+              fontFamily: 'var(--font-tech)',
+              fontSize: '1rem',
+              fontWeight: '600',
+              letterSpacing: '1px',
+              color: 'var(--accent-secondary)',
+              textTransform: 'uppercase'
+            }}>
+              {lang === "Cn" ? "網站導航" : "SITEMAP"}
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontWeight: '300' }}>
+              {[
+                { id: "Overview", cn: "首頁", en: "Home" },
+                { id: "HowItWorks", cn: "合作流程", en: "How It Works" },
+                { id: "CaseStudies", cn: "經典案例", en: "Case Studies" },
+                { id: "BespokeFurniture", cn: "高端定製", en: "Bespoke Furniture" },
+                { id: "SetFurniture", cn: "標準套配", en: "Set Furniture" },
+                { id: "Contact", cn: "聯絡我們", en: "Contact Us" }
+              ].map((link) => (
+                <span
+                  key={link.id}
+                  onClick={() => {
+                    setCurrentStageView("Marketing");
+                    setMarketingTab(link.id);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  style={{
+                    color: '#9E958B',
+                    cursor: 'pointer',
+                    transition: 'color 0.2s',
+                  }}
+                  onMouseEnter={(e) => e.target.style.color = '#FAF7F2'}
+                  onMouseLeave={(e) => e.target.style.color = '#9E958B'}
+                >
+                  {lang === "Cn" ? link.cn : link.en}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Col 3: Compliance */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <span style={{
+              fontFamily: 'var(--font-tech)',
+              fontSize: '1rem',
+              fontWeight: '600',
+              letterSpacing: '1px',
+              color: 'var(--accent-secondary)',
+              textTransform: 'uppercase'
+            }}>
+              {lang === "Cn" ? "技術合規" : "COMPLIANCE"}
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', color: '#9E958B', fontWeight: '300' }}>
+              <span>{lang === "Cn" ? "英國 BS 5852 Crib 5 消防阻燃" : "BS 5852 Crib 5 Fire Rated"}</span>
+              <span>{lang === "Cn" ? "FSC® 綠色可持續硬木" : "FSC® Certified Hardwoods"}</span>
+              <span>{lang === "Cn" ? "8%-12% H₂O 真空窯幹防裂" : "8%-12% H₂O Kiln Dried"}</span>
+              <span>{lang === "Cn" ? "ISO 9001 質量認證工廠" : "ISO 9001 Quality Assured"}</span>
+            </div>
+          </div>
+
+          {/* Col 4: Contact & Locations */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <span style={{
+              fontFamily: 'var(--font-tech)',
+              fontSize: '1rem',
+              fontWeight: '600',
+              letterSpacing: '1px',
+              color: 'var(--accent-secondary)',
+              textTransform: 'uppercase'
+            }}>
+              {lang === "Cn" ? "全球聯絡" : "OFFICES"}
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', color: '#9E958B', fontWeight: '300', fontSize: '0.8rem' }}>
+              <div>
+                <strong style={{ color: '#FAF7F2', display: 'block', marginBottom: '2px', fontSize: '0.85rem' }}>🇬🇧 LONDON STUDIO</strong>
+                <span>+44 20 7946 0192</span><br />
+                <span>london@crafton.com</span>
+              </div>
+              <div>
+                <strong style={{ color: '#FAF7F2', display: 'block', marginBottom: '2px', fontSize: '0.85rem' }}>🇨🇳 GUANGDONG MILL HQ</strong>
+                <span>+86 757 2388 9988</span><br />
+                <span>factory@crafton.com</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Divider & Copyright */}
+        <div style={{
+          maxWidth: '1200px',
+          margin: '4rem auto 0 auto',
+          paddingTop: '2rem',
+          borderTop: '1px solid rgba(250, 247, 242, 0.05)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          color: '#9E958B',
+          fontSize: '0.75rem',
+          fontWeight: '300'
+        }}>
+          <span>
+            © 2026 THE CRAFTON. {lang === "Cn" ? "保留所有權利。" : "All rights reserved."}
+          </span>
+          <span style={{ fontFamily: 'var(--font-tech)', fontStyle: 'italic', letterSpacing: '0.5px' }}>
+            {lang === "Cn" ? "意式極簡 · 匠心製造" : "Fine Contract Furniture of Italian Minimalist Craftsmanship."}
+          </span>
+        </div>
+      </footer>
+    );
+  };
+
   return (
     <div>
       {/* Supabase Connection Drawer */}
@@ -2890,21 +3162,16 @@ function App() {
               setMarketingTab("Overview");
             }}
           >
-            {lang === "Cn" ? "首頁" : "Home"}
+            {lang === "Cn" ? "首頁" : "HOME"}
           </span>
           <span 
-            className="nav-link" 
-            onClick={(e) => {
-              e.preventDefault();
+            className={`nav-link ${currentView === "Marketing" && marketingTab === "HowItWorks" ? "active" : ""}`} 
+            onClick={() => {
               setCurrentStageView("Marketing");
-              setMarketingTab("Overview");
-              setTimeout(() => {
-                const el = document.getElementById("how-it-works");
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }, 100);
+              setMarketingTab("HowItWorks");
             }}
           >
-            {lang === "Cn" ? "合作流程" : "How It Works"}
+            {lang === "Cn" ? "合作流程" : "HOW IT WORKS"}
           </span>
           <span 
             className={`nav-link ${currentView === "Marketing" && marketingTab === "CaseStudies" ? "active" : ""}`} 
@@ -2913,16 +3180,25 @@ function App() {
               setMarketingTab("CaseStudies");
             }}
           >
-            {lang === "Cn" ? "經典案例" : "Case Study"}
+            {lang === "Cn" ? "經典案例" : "CASE STUDY"}
           </span>
           <span 
-            className={`nav-link ${currentView === "Marketing" && marketingTab === "OurStory" ? "active" : ""}`} 
+            className={`nav-link ${currentView === "Marketing" && marketingTab === "BespokeFurniture" ? "active" : ""}`} 
             onClick={() => {
               setCurrentStageView("Marketing");
-              setMarketingTab("OurStory");
+              setMarketingTab("BespokeFurniture");
             }}
           >
-            {lang === "Cn" ? "品牌故事" : "Our Story"}
+            {lang === "Cn" ? "高端定製" : "BESPOKE FURNITURE"}
+          </span>
+          <span 
+            className={`nav-link ${currentView === "Marketing" && marketingTab === "SetFurniture" ? "active" : ""}`} 
+            onClick={() => {
+              setCurrentStageView("Marketing");
+              setMarketingTab("SetFurniture");
+            }}
+          >
+            {lang === "Cn" ? "標準套配" : "SET FURNITURE"}
           </span>
           <span 
             className={`nav-link ${currentView === "Marketing" && marketingTab === "Contact" ? "active" : ""}`} 
@@ -2931,7 +3207,7 @@ function App() {
               setMarketingTab("Contact");
             }}
           >
-            {lang === "Cn" ? "聯絡我們" : "Contact"}
+            {lang === "Cn" ? "聯絡我們" : "CONTACT"}
           </span>
         </div>
 
@@ -3137,9 +3413,6 @@ function App() {
                     }}>
                       {lang === "Cn" ? "啟動項目 ＋ AI規格解析" : "Start Project & Parse"}
                     </button>
-                    <button className="btn-secondary" style={{ padding: '0.8rem 2rem', fontSize: '0.85rem', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase' }} onClick={() => setCurrentStageView("Backoffice")}>
-                      {lang === "Cn" ? "進入 17 階段進度" : "Simulate 17-Stages"}
-                    </button>
                   </div>
                 </div>
 
@@ -3215,53 +3488,1220 @@ function App() {
                 </div>
               </div>
 
-              {/* Integration: Material Studio Configurator */}
-              <div style={{ maxWidth: '1200px', margin: '0 auto 4rem auto', padding: '0 2rem' }}>
-                {renderMaterialStudio()}
+              {/* SECTION: Tell Us What You Need */}
+              <div className="animate-editorial-slide-up" style={{
+                maxWidth: '1200px',
+                margin: '8rem auto 4rem auto',
+                padding: '0 2rem',
+                textAlign: 'center'
+              }}>
+                <h2 style={{
+                  fontSize: '3rem',
+                  fontFamily: 'var(--font-tech)',
+                  color: 'var(--text-primary)',
+                  fontWeight: '300',
+                  letterSpacing: '0.01em',
+                  marginBottom: '1.2rem'
+                }}>
+                  {lang === "Cn" ? <>告訴我們您的<strong>需求。</strong></> : <>Tell us <em>what you need.</em></>}
+                </h2>
+                <p style={{
+                  fontSize: '0.98rem',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-sans)',
+                  fontWeight: '300',
+                  lineHeight: '1.8',
+                  maxWidth: '850px',
+                  margin: '0 auto 4rem auto'
+                }}>
+                  {lang === "Cn"
+                    ? "無論是以何種檔案格式存在於您的系統中 ── 我們都能為您完美接手。Crafton AI 能自動讀取並智慧生成結構化的項目規格書。"
+                    : "However it lives in your filing system — we'll take it from there. Crafton AI reads your input and structures the brief automatically."}
+                </p>
+
+                {/* 4 Cards Grid */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                  gap: '1.5rem',
+                  marginBottom: '2rem'
+                }}>
+                  
+                  {/* Card 1 */}
+                  <div className="glass-card" style={{
+                    border: '1px dashed rgba(124, 114, 103, 0.3)',
+                    padding: '2.5rem 1.5rem',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    transition: 'transform 0.3s ease, box-shadow 0.3s ease'
+                  }} onClick={() => {
+                    if (user) {
+                      setCurrentStageView("ClientPortal");
+                      setClientPortalTab("Intake");
+                    } else {
+                      setAuthMode("signup");
+                      setShowAuthGate(true);
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 12px 24px rgba(124, 114, 103, 0.08)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--accent-muted)', letterSpacing: '0.1em', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '1.2rem' }}>No. 01</span>
+                      <div style={{
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(124, 114, 103, 0.05)',
+                        border: '1px solid rgba(124, 114, 103, 0.15)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1.5rem auto'
+                      }}>
+                        <svg style={{ width: '22px', height: '24px', stroke: 'var(--accent-primary)', fill: 'none' }} viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                        </svg>
+                      </div>
+                      <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.2rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '0.8rem' }}>
+                        {lang === "Cn" ? <>上傳 <em>PDF 文件</em></> : <>Upload a <em>PDF</em></>}
+                      </h4>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: '1.6', fontWeight: '300', minHeight: '40px' }}>
+                        {lang === "Cn"
+                          ? "設計規格書、招標書或單頁簡報，拖拽直接導入。"
+                          : "A spec sheet, a tender pack, a single-page brief. Drop it in."}
+                      </p>
+                    </div>
+
+                    <div>
+                      {/* Interactive Mock Form */}
+                      <div style={{
+                        background: '#ffffff',
+                        border: '1px solid rgba(124,114,103,0.12)',
+                        borderRadius: '4px',
+                        padding: '1rem',
+                        marginTop: '1.5rem',
+                        boxShadow: '0 4px 12px rgba(26,25,24,0.02)',
+                        textAlign: 'left'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ height: '6px', width: '35%', background: 'rgba(124,114,103,0.3)', borderRadius: '2px' }}></div>
+                          <div style={{ height: '6px', width: '75%', background: 'rgba(124,114,103,0.15)', borderRadius: '2px' }}></div>
+                          <div style={{ border: '1px solid rgba(124,114,103,0.1)', borderRadius: '3px', height: '22px', display: 'flex', alignItems: 'center', padding: '0 0.4rem', background: '#FAF7F2' }}>
+                            <div style={{ height: '5px', width: '45%', background: 'rgba(124,114,103,0.2)', borderRadius: '1px' }}></div>
+                          </div>
+                          <div style={{ border: '1px dashed var(--accent-primary)', borderRadius: '3px', height: '36px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(124,114,103,0.02)' }}>
+                            <svg style={{ width: '12px', height: '12px', stroke: 'var(--accent-primary)', fill: 'none', marginBottom: '2px' }} viewBox="0 0 24 24" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                            <span style={{ fontSize: '0.5rem', color: 'var(--text-muted)' }}>Drop PDF Here</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <span className="card-link" style={{
+                        fontFamily: 'var(--font-sans)',
+                        fontSize: '0.72rem',
+                        fontWeight: '700',
+                        letterSpacing: '1.5px',
+                        textTransform: 'uppercase',
+                        color: 'var(--accent-primary)',
+                        borderBottom: '1.5px solid rgba(124, 114, 103, 0.2)',
+                        paddingBottom: '4px',
+                        display: 'inline-block',
+                        marginTop: '1.5rem',
+                        transition: 'all 0.3s ease'
+                      }}>{lang === "Cn" ? "選擇檔案 →" : "CHOOSE FILE →"}</span>
+                    </div>
+                  </div>
+
+                  {/* Card 2 (Highlighted Dark Card) */}
+                  <div style={{
+                    backgroundColor: '#1C1B1A',
+                    color: '#FAF7F2',
+                    padding: '2.5rem 1.5rem',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    boxShadow: '0 15px 35px rgba(26, 25, 24, 0.15)',
+                    transition: 'transform 0.3s ease, box-shadow 0.3s ease'
+                  }} onClick={() => {
+                    if (user) {
+                      setCurrentStageView("ClientPortal");
+                      setClientPortalTab("Intake");
+                    } else {
+                      setAuthMode("signup");
+                      setShowAuthGate(true);
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 20px 40px rgba(26, 25, 24, 0.25)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 15px 35px rgba(26, 25, 24, 0.15)';
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: '#C5B4A5', opacity: '0.7', letterSpacing: '0.1em', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '1.2rem' }}>No. 02</span>
+                      <div style={{
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--accent-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1.5rem auto'
+                      }}>
+                        <svg style={{ width: '22px', height: '22px', stroke: '#ffffff', fill: 'none' }} viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                          <line x1="9" y1="3" x2="9" y2="21" />
+                          <line x1="15" y1="3" x2="15" y2="21" />
+                          <line x1="3" y1="9" x2="21" y2="9" />
+                          <line x1="3" y1="15" x2="21" y2="15" />
+                        </svg>
+                      </div>
+                      <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.2rem', fontWeight: '300', color: '#ffffff', marginBottom: '0.8rem' }}>
+                        {lang === "Cn" ? <>Excel <em>彙總表</em></> : <>Excel <em>summary</em></>}
+                      </h4>
+                      <p style={{ fontSize: '0.82rem', color: '#C5B4A5', opacity: '0.85', lineHeight: '1.6', fontWeight: '300', minHeight: '40px' }}>
+                        {lang === "Cn"
+                          ? "包含產品清單、數量及規格尺寸的電子表格。"
+                          : "A schedule of items, quantities and dimensions in a spreadsheet."}
+                      </p>
+                    </div>
+
+                    <div>
+                      {/* Interactive Dark Mock Form */}
+                      <div style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '4px',
+                        padding: '1rem',
+                        marginTop: '1.5rem',
+                        textAlign: 'left'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ height: '6px', width: '40%', background: 'rgba(255, 255, 255, 0.3)', borderRadius: '2px' }}></div>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <div style={{ flex: 1, height: '18px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', border: '1px solid rgba(255, 255, 255, 0.05)' }}></div>
+                            <div style={{ flex: 1, height: '18px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', border: '1px solid rgba(255, 255, 255, 0.05)' }}></div>
+                            <div style={{ flex: 1, height: '18px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', border: '1px solid rgba(255, 255, 255, 0.05)' }}></div>
+                          </div>
+                          <div style={{ height: '18px', background: 'var(--accent-primary)', borderRadius: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ height: '5px', width: '35%', background: '#ffffff', opacity: 0.9, borderRadius: '1px' }}></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <span className="card-link" style={{
+                        fontFamily: 'var(--font-sans)',
+                        fontSize: '0.72rem',
+                        fontWeight: '700',
+                        letterSpacing: '1.5px',
+                        textTransform: 'uppercase',
+                        color: 'var(--accent-secondary)',
+                        borderBottom: '1.5px solid rgba(197, 180, 165, 0.4)',
+                        paddingBottom: '4px',
+                        display: 'inline-block',
+                        marginTop: '1.5rem',
+                        transition: 'all 0.3s ease'
+                      }}>{lang === "Cn" ? "上傳表格 →" : "UPLOAD SHEET →"}</span>
+                    </div>
+                  </div>
+
+                  {/* Card 3 */}
+                  <div className="glass-card" style={{
+                    border: '1px dashed rgba(124, 114, 103, 0.3)',
+                    padding: '2.5rem 1.5rem',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    transition: 'transform 0.3s ease, box-shadow 0.3s ease'
+                  }} onClick={() => {
+                    if (user) {
+                      setCurrentStageView("ClientPortal");
+                      setClientPortalTab("Intake");
+                    } else {
+                      setAuthMode("signup");
+                      setShowAuthGate(true);
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 12px 24px rgba(124, 114, 103, 0.08)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--accent-muted)', letterSpacing: '0.1em', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '1.2rem' }}>No. 03</span>
+                      <div style={{
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(124, 114, 103, 0.05)',
+                        border: '1px solid rgba(124, 114, 103, 0.15)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1.5rem auto'
+                      }}>
+                        <svg style={{ width: '22px', height: '22px', stroke: 'var(--accent-primary)', fill: 'none' }} viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                        </svg>
+                      </div>
+                      <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.2rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '0.8rem' }}>
+                        {lang === "Cn" ? <>文字<em>自由描述</em></> : <>Describe in <em>words</em></>}
+                      </h4>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: '1.6', fontWeight: '300', minHeight: '40px' }}>
+                        {lang === "Cn"
+                          ? "貼上電子郵件往來，直接輸入，或與我們語音交談。"
+                          : "Paste an email thread, type it out, or talk us through it."}
+                      </p>
+                    </div>
+
+                    <div>
+                      {/* Interactive Mock Form */}
+                      <div style={{
+                        background: '#ffffff',
+                        border: '1px solid rgba(124,114,103,0.12)',
+                        borderRadius: '4px',
+                        padding: '1rem',
+                        marginTop: '1.5rem',
+                        boxShadow: '0 4px 12px rgba(26,25,24,0.02)',
+                        textAlign: 'left'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ height: '6px', width: '45%', background: 'rgba(124,114,103,0.3)', borderRadius: '2px' }}></div>
+                          <div style={{ border: '1px solid rgba(124,114,103,0.1)', borderRadius: '3px', padding: '0.4rem', background: '#FAF7F2' }}>
+                            <div style={{ height: '5px', width: '90%', background: 'rgba(124,114,103,0.15)', borderRadius: '1px', marginBottom: '4px' }}></div>
+                            <div style={{ height: '5px', width: '75%', background: 'rgba(124,114,103,0.15)', borderRadius: '1px', marginBottom: '4px' }}></div>
+                            <div style={{ height: '5px', width: '50%', background: 'rgba(124,114,103,0.15)', borderRadius: '1px' }}></div>
+                          </div>
+                          <div style={{ height: '18px', background: 'var(--accent-primary)', borderRadius: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ height: '5px', width: '35%', background: '#ffffff', opacity: 0.8, borderRadius: '1px' }}></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <span className="card-link" style={{
+                        fontFamily: 'var(--font-sans)',
+                        fontSize: '0.72rem',
+                        fontWeight: '700',
+                        letterSpacing: '1.5px',
+                        textTransform: 'uppercase',
+                        color: 'var(--accent-primary)',
+                        borderBottom: '1.5px solid rgba(124, 114, 103, 0.2)',
+                        paddingBottom: '4px',
+                        display: 'inline-block',
+                        marginTop: '1.5rem',
+                        transition: 'all 0.3s ease'
+                      }}>{lang === "Cn" ? "打開編輯器 →" : "OPEN EDITOR →"}</span>
+                    </div>
+                  </div>
+
+                  {/* Card 4 */}
+                  <div className="glass-card" style={{
+                    border: '1px dashed rgba(124, 114, 103, 0.3)',
+                    padding: '2.5rem 1.5rem',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    transition: 'transform 0.3s ease, box-shadow 0.3s ease'
+                  }} onClick={() => {
+                    if (user) {
+                      setCurrentStageView("ClientPortal");
+                      setClientPortalTab("Intake");
+                    } else {
+                      setAuthMode("signup");
+                      setShowAuthGate(true);
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 12px 24px rgba(124, 114, 103, 0.08)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--accent-muted)', letterSpacing: '0.1em', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '1.2rem' }}>No. 04</span>
+                      <div style={{
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(124, 114, 103, 0.05)',
+                        border: '1px solid rgba(124, 114, 103, 0.15)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1.5rem auto'
+                      }}>
+                        <svg style={{ width: '22px', height: '22px', stroke: 'var(--accent-primary)', fill: 'none' }} viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="12" y1="8" x2="12" y2="16" />
+                          <line x1="8" y1="12" x2="16" y2="12" />
+                        </svg>
+                      </div>
+                      <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.2rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '0.8rem' }}>
+                        {lang === "Cn" ? <>逐項<em>手動添加</em></> : <>Add <em>item by item</em></>}
+                      </h4>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: '1.6', fontWeight: '300', minHeight: '40px' }}>
+                        {lang === "Cn"
+                          ? "使用直觀的引導表單，一次建立一個產品的需求規格。"
+                          : "Build the brief one product at a time using our guided form."}
+                      </p>
+                    </div>
+
+                    <div>
+                      {/* Interactive Mock Form */}
+                      <div style={{
+                        background: '#ffffff',
+                        border: '1px solid rgba(124,114,103,0.12)',
+                        borderRadius: '4px',
+                        padding: '1rem',
+                        marginTop: '1.5rem',
+                        boxShadow: '0 4px 12px rgba(26,25,24,0.02)',
+                        textAlign: 'left'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ height: '6px', width: '30%', background: 'rgba(124,114,103,0.3)', borderRadius: '2px' }}></div>
+                            <div style={{ height: '10px', width: '10px', borderRadius: '50%', background: 'var(--accent-green)' }}></div>
+                          </div>
+                          <div style={{ height: '5px', width: '85%', background: 'rgba(124,114,103,0.15)', borderRadius: '2px' }}></div>
+                          <div style={{ border: '1px solid rgba(124,114,103,0.1)', borderRadius: '3px', height: '18px', background: '#FAF7F2' }}></div>
+                          <div style={{ border: '1px solid rgba(124,114,103,0.1)', borderRadius: '3px', height: '18px', background: '#FAF7F2' }}></div>
+                        </div>
+                      </div>
+
+                      <span className="card-link" style={{
+                        fontFamily: 'var(--font-sans)',
+                        fontSize: '0.72rem',
+                        fontWeight: '700',
+                        letterSpacing: '1.5px',
+                        textTransform: 'uppercase',
+                        color: 'var(--accent-primary)',
+                        borderBottom: '1.5px solid rgba(124, 114, 103, 0.2)',
+                        paddingBottom: '4px',
+                        display: 'inline-block',
+                        marginTop: '1.5rem',
+                        transition: 'all 0.3s ease'
+                      }}>{lang === "Cn" ? "開始填寫 →" : "START FORM →"}</span>
+                    </div>
+                  </div>
+
+                </div>
               </div>
 
-              {/* High-end Features Grid with Vector SVGs */}
-              <div className="portal-features-grid">
-                <div className="glass-card feature-box" style={{ borderRadius: '6px' }}>
-                  <div className="feature-icon" style={{ display: 'flex', alignItems: 'center' }}>
-                    <svg style={{ width: '2.2rem', height: '2.2rem', color: 'var(--accent-primary)', marginBottom: '1.5rem' }} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.959 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                    </svg>
+              {/* Integration: Material Studio Configurator */}
+              <div style={{ maxWidth: '1200px', margin: '0 auto 4rem auto', padding: '0 2rem' }}>
+                <MaterialStudio 
+                  lang={lang} 
+                  selectedFabric={selectedFabric} 
+                  selectedLeg={selectedLeg} 
+                  configuratorCrib5Blocked={configuratorCrib5Blocked} 
+                  handleFabricSelect={handleFabricSelect} 
+                  handleLegSelect={handleLegSelect} 
+                />
+              </div>
+
+              {/* SECTION 1: 意式高定材质微观画廊 (The Digital Swatches Studio) */}
+              <div className="animate-editorial-slide-up" style={{ 
+                maxWidth: '1200px', 
+                margin: '6rem auto 6rem auto', 
+                padding: '0 2rem',
+                textAlign: 'left'
+              }}>
+                <span style={{ fontSize: '0.72rem', color: '#7C7267', letterSpacing: '0.2em', textTransform: 'uppercase', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '0.6rem' }}>
+                  {lang === "Cn" ? "意式高定材質微觀畫廊" : "EXQUISITE MATERIAL ATELIER"}
+                </span>
+                <h2 style={{
+                  fontSize: '2.4rem',
+                  fontFamily: 'var(--font-tech)',
+                  color: 'var(--text-primary)',
+                  fontWeight: '300',
+                  marginBottom: '1rem',
+                  letterSpacing: '0.02em'
+                }}>
+                  {lang === "Cn" ? "觸摸微觀細節，感知意式匠心。" : "Touch the details. Feel the craft."}
+                </h2>
+                <p style={{
+                  fontSize: '0.95rem',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-sans)',
+                  fontWeight: '300',
+                  lineHeight: '1.7',
+                  maxWidth: '750px',
+                  marginBottom: '3rem'
+                }}>
+                  {lang === "Cn"
+                    ? "高端合約採購本質上是對材質細節與安全性的考量。我們甄選符合最高標準的可持續硬木、拉絲金屬以及 BS 5852 Crib 5 消防阻燃面料，在您的專属雲端展廳中微觀呈現。"
+                    : "Contract sourcing is defined by the integrity of materials. Explore our curated library of FSC sustainable hardwoods, sand-polished metals, and Crib 5 certified textiles in high-fidelity digital macro."}
+                </p>
+
+                {/* Swatches Grid Split-screen */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(280px, 1fr) 1.5fr',
+                  gap: '3rem',
+                  alignItems: 'start'
+                }}>
+                  {/* Left Selector List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {[
+                      {
+                        id: "nubuck",
+                        nameCn: "意大利磨砂 Nubuck 皮革",
+                        nameEn: "Tuscan Nubuck Leather",
+                        color: "#B05B43",
+                        subCn: "頂奢皮藝 · 消防合規",
+                        subEn: "CRIB 5 FLAMMABILITY SECURED"
+                      },
+                      {
+                        id: "linen",
+                        nameCn: "比利時頂級雨露麻",
+                        nameEn: "Belgian Dew-Retted Linen",
+                        color: "#E5DEC9",
+                        subCn: "環保面料 · 粗克重防霉",
+                        subEn: "100% ORGANIC CERTIFIED"
+                      },
+                      {
+                        id: "gold",
+                        nameCn: "陽極氧化手磨香檳拉絲金",
+                        nameEn: "Anodized Champagne Bronze",
+                        color: "#C5B4A5",
+                        subCn: "陽極氧化 · 無縫手磨拋光",
+                        subEn: "FINGERPRINT-RESISTANT SUS304"
+                      },
+                      {
+                        id: "walnut",
+                        nameCn: "北美特級實心黑胡桃木",
+                        nameEn: "FAS American Black Walnut",
+                        color: "#5C4B40",
+                        subCn: "FSC可持續硬木 · 真空窑干",
+                        subEn: "8% MOISTURE WATER SECURED"
+                      }
+                    ].map((sw) => {
+                      const isActive = activeSwatch === sw.id;
+                      return (
+                        <div 
+                          key={sw.id}
+                          onClick={() => setActiveSwatch(sw.id)}
+                          style={{
+                            padding: '1.2rem 1.5rem',
+                            background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                            border: isActive ? '1px solid var(--accent-primary)' : '1px solid var(--glass-border)',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '1.2rem',
+                            transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                            transform: isActive ? 'translateX(10px)' : 'translateX(0)',
+                            boxShadow: isActive ? 'var(--glass-shadow)' : 'none'
+                          }}
+                          className="swatch-item-selector"
+                        >
+                          <span style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '50%',
+                            background: sw.color,
+                            border: '1px solid rgba(26,25,24,0.1)',
+                            flexShrink: 0,
+                            display: 'block'
+                          }} />
+                          <div style={{ textAlign: 'left' }}>
+                            <div style={{ 
+                              fontFamily: 'var(--font-tech)', 
+                              fontSize: '1.05rem', 
+                              fontWeight: isActive ? '500' : '400',
+                              color: 'var(--text-primary)'
+                            }}>
+                              {lang === "Cn" ? sw.nameCn : sw.nameEn}
+                            </div>
+                            <div style={{ 
+                              fontSize: '0.68rem', 
+                              letterSpacing: '1px', 
+                              textTransform: 'uppercase', 
+                              color: 'var(--accent-muted)',
+                              marginTop: '3px',
+                              fontFamily: 'var(--font-sans)'
+                            }}>
+                              {lang === "Cn" ? sw.subCn : sw.subEn}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="feature-title">{lang === "Cn" ? "Crib 5 自动消防拦截" : "Crib 5 Anti-Fire Hard Gate"}</div>
-                  <div className="feature-desc">
-                    {lang === "Cn" 
-                      ? "系統實時比對物料、木皮阻燃合規數據庫。凡不支持物理防火塗層的精細面料一律在詢價前紅字攔截，杜絕特大貨運糾紛。" 
-                      : "Automatic material check against British fire databases. Delicate fabrics (like silk) that shrink under flame coating are flagged and blocked before production."}
+
+                  {/* Right Detail Showcase Card */}
+                  <div className="glass-card" style={{
+                    padding: '2.5rem',
+                    borderRadius: '6px',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--glass-border)',
+                    boxShadow: 'var(--glass-shadow)',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1.2fr',
+                    gap: '2rem',
+                    alignItems: 'center',
+                    minHeight: '380px'
+                  }}>
+                    {/* Left: Swatch Image */}
+                    <div style={{ position: 'relative', width: '100%', height: '100%', aspectRatio: '1/1', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--glass-border)' }}>
+                      <img 
+                        src={
+                          activeSwatch === 'nubuck' ? "https://images.unsplash.com/photo-1581428982868-e410dd047a90?q=80&w=600&auto=format&fit=crop"
+                          : activeSwatch === 'linen' ? "https://images.unsplash.com/photo-1598928506311-c55ded91a20c?q=80&w=600&auto=format&fit=crop"
+                          : activeSwatch === 'gold' ? "https://images.unsplash.com/photo-1618220179428-22790b461013?q=80&w=600&auto=format&fit=crop"
+                          : "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?q=80&w=600&auto=format&fit=crop"
+                        } 
+                        alt="Macro Swatch Material" 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      <div style={{
+                        position: 'absolute',
+                        top: '12px',
+                        left: '12px',
+                        background: 'rgba(26,25,24,0.75)',
+                        backdropFilter: 'blur(6px)',
+                        padding: '3px 8px',
+                        fontSize: '0.62rem',
+                        color: '#ffffff',
+                        borderRadius: '2px',
+                        letterSpacing: '1px',
+                        textTransform: 'uppercase',
+                        fontFamily: 'var(--font-sans)'
+                      }}>
+                        MACRO RENDERING
+                      </div>
+                    </div>
+
+                    {/* Right: Technical Spec Text */}
+                    <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div>
+                        <span style={{ 
+                          fontSize: '0.65rem', 
+                          fontWeight: '600', 
+                          letterSpacing: '1.5px', 
+                          color: 'var(--accent-primary)', 
+                          fontFamily: 'var(--font-sans)',
+                          textTransform: 'uppercase'
+                        }}>
+                          {
+                            activeSwatch === 'nubuck' ? (lang === "Cn" ? "頂奢合約皮藝飾面" : "ANILINE LEATHER FINISH")
+                            : activeSwatch === 'linen' ? (lang === "Cn" ? "生態可持續亞麻紡織" : "ECOLOGICAL COMPATIBLE TEXTILE")
+                            : activeSwatch === 'gold' ? (lang === "Cn" ? "工匠手工拉絲五金" : "HAND-SHIELDED METAL ARTISTRY")
+                            : (lang === "Cn" ? "FSC認證工藝硬實木" : "FSC CRAFTSMAN HARDWOOD")
+                          }
+                        </span>
+                        <h3 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.5rem', fontWeight: '400', margin: '6px 0 0 0', color: 'var(--text-primary)' }}>
+                          {
+                            activeSwatch === 'nubuck' ? (lang === "Cn" ? "意大利特級 Nubuck 磨砂皮革" : "Tuscan Nubuck Leather")
+                            : activeSwatch === 'linen' ? (lang === "Cn" ? "比利時天然雨露退膠亞麻" : "Belgian Dew-Washed Linen")
+                            : activeSwatch === 'gold' ? (lang === "Cn" ? "不留紋拉絲陽極氧化香檳金" : "Anodized Champagne Gold Steel")
+                            : (lang === "Cn" ? "北美阿巴拉契亞 FAS 黑胡桃木" : "FAS American Black Walnut Wood")
+                          }
+                        </h3>
+                      </div>
+
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.6', fontWeight: '300', margin: 0 }}>
+                        {
+                          activeSwatch === 'nubuck' ? (lang === "Cn" ? "精選北歐公牛皮，經意大利托斯卡納植鞣工藝精心硝製。表面經過極細砂纸磨砂拋光，保留真皮呼吸氣孔的同時，呈現如同天鵝絨般的極致磨砂微絨觸感。手感綿密，厚實耐磨。" : "Full-grain northern European bull hides, vegetable-tanned in Tuscany. Lightly sanded to create a micro-velvet nubuck texture that retains genuine breathability, forming an elegant organic patina with age.")
+                          : activeSwatch === 'linen' ? (lang === "Cn" ? "來自西法蘭德斯大麻產區的天然有機原麻。採用傳統雨露退膠工藝，編織出粗克重天然肌理。防霉防蟎，克重高達 450g/㎡，防縮水且具備極佳的骨架挺拔度。" : "Harvested in Belgium's famous flax valleys. Retains the authentic organic linen slub fibers. Features high tensile strength, resistance to mold, weighing 450g/sqm to guarantee elegant contract tailoring.")
+                          : activeSwatch === 'gold' ? (lang === "Cn" ? "選用加厚 SUS304 高精不銹鋼板。表面由十年經驗工匠在拉絲轉盤上物理手工打磨。在無氧車間進行精密陽極着色，多重氟碳防油膜保護，耐酸鹼、不留指紋痕跡，金属光澤在自然光下極具厚重感。" : "Thickened SUS304 stainless base, hand-brushed on polishing turns. Coated in chemical anodized chambrays and topped with Monocoat protection against fingerprints and scratch, presenting a rich architectural sheen.")
+                          : (lang === "Cn" ? "嚴選阿巴拉契亞可持續硬木森林 FAS 特等木心。採用長達 65 天的漸進式真空蒸汽窯干處理，含水率在出廠時牢牢鎖定在 8% - 12% 之間，徹底隔絕在極乾氣候（如倫敦冬日暖氣）或潮濕環境下變形、爆裂的風險。" : "FAS Appalachian timber hearts, vacuum kiln-dried for 65 days. The internal moisture is calibrated to exactly 8%-12% to lock structural volume and prevent bowing, cracking, or joint fatigue when deployed in dry climates.")
+                        }
+                      </p>
+
+                      <div style={{ 
+                        borderTop: '1px solid rgba(124, 114, 103, 0.15)', 
+                        paddingTop: '0.8rem', 
+                        fontSize: '0.72rem', 
+                        fontFamily: 'var(--font-sans)', 
+                        color: 'var(--accent-primary)',
+                        fontWeight: '600',
+                        letterSpacing: '1px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-primary)', display: 'block' }} />
+                        {
+                          activeSwatch === 'nubuck' ? (lang === "Cn" ? "等級：A級全粒面 · 消防安全：英國 BS 5852 Crib 5 阻燃合規" : "GRADE: FAS FULL GRAIN · SAFETY: BRITISH BS 5852 CRIB 5 COMPLIANT")
+                          : activeSwatch === 'linen' ? (lang === "Cn" ? "成分：100% 亞麻 · 耐磨：Martindale 35,000次 · 阻燃：支持CRIB 5" : "COMPOS: 100% NATURAL · MARTINDALE: 35,000 rubs · CRIB 5 COMPATIBLE")
+                          : activeSwatch === 'gold' ? (lang === "Cn" ? "工藝：手工拋光 ＋ 陽極氧化 · 耐腐蝕：鹽霧測試 480 小時無變色" : "PROCESS: HAND POLISHED + ANODIZED · RESISTANCE: 480H CORROSION BARRIER")
+                          : (lang === "Cn" ? "等級：USDA-FAS 特級 · 可持續：FSC 綠色認證 · 飾面：0-VOC 天然木蠟" : "GRADE: FAS SPECIAL · SUSTAINABLE: FSC CERTIFIED · COATING: 0-VOC MONOCOAT")
+                        }
+                      </div>
+                    </div>
                   </div>
                 </div>
+              </div>
 
-                <div className="glass-card feature-box" style={{ borderRadius: '6px' }}>
-                  <div className="feature-icon" style={{ display: 'flex', alignItems: 'center' }}>
-                    <svg style={{ width: '2.2rem', height: '2.2rem', color: 'var(--accent-primary)', marginBottom: '1.5rem' }} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
+
+              {/* SECTION 2: 手稿 ➔ CAD 智能双子对比滑块 (Digital Twin Blueprint Slider) */}
+              <div className="animate-editorial-slide-up" style={{ 
+                maxWidth: '1200px', 
+                margin: '6rem auto 6rem auto', 
+                padding: '0 2rem',
+                textAlign: 'left'
+              }}>
+                <span style={{ fontSize: '0.72rem', color: '#7C7267', letterSpacing: '0.2em', textTransform: 'uppercase', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '0.6rem' }}>
+                  {lang === "Cn" ? "靈感手稿與毫米級精密 CAD 雙子比對" : "DESIGN TWIN: SKETCH TO MILLIMETER CAD"}
+                </span>
+                <h2 style={{
+                  fontSize: '2.4rem',
+                  fontFamily: 'var(--font-tech)',
+                  color: 'var(--text-primary)',
+                  fontWeight: '300',
+                  marginBottom: '1rem',
+                  letterSpacing: '0.02em'
+                }}>
+                  {lang === "Cn" ? "從粗糙靈感，到精密工程規格的平滑演變。" : "From raw sketch to millimeter-precision specs."}
+                </h2>
+                <p style={{
+                  fontSize: '0.95rem',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-sans)',
+                  fontWeight: '300',
+                  lineHeight: '1.7',
+                  maxWidth: '750px',
+                  marginBottom: '2.5rem'
+                }}>
+                  {lang === "Cn"
+                    ? "拉動或滑動金合對比條。左側為客戶粗略尺寸手稿；拖拽向右，即可實時看清由 OpenClaw 技術算法自動生成的三視標註 CAD 工程圖，精確捕捉每一處公差。"
+                    : "Drag or slide the center bronze control. On the left is the client's pencil sketch or email brief. Slide right to witness its translation into a multi-elevation manufacturing blueprint."}
+                </p>
+
+                {/* Sliding Curtain Container */}
+                <div style={{
+                  position: 'relative',
+                  width: '100%',
+                  height: '460px',
+                  borderRadius: '6px',
+                  overflow: 'hidden',
+                  border: '1px solid var(--glass-border)',
+                  boxShadow: 'var(--glass-shadow)',
+                  background: '#1A1918',
+                  userSelect: 'none'
+                }}>
+                  {/* Underlay layer: SKETCH (Full width) */}
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    background: '#FAF7F2', // Limestone warm paper background
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    padding: '2rem'
+                  }}>
+                    {/* Pencil hand-drawn chair drawing using responsive custom SVG */}
+                    <div style={{ width: '100%', height: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <svg viewBox="0 0 400 400" style={{ width: '100%', height: '320px', stroke: '#7C7267', fill: 'none', strokeWidth: '1.2', strokeLinecap: 'round', strokeLinejoin: 'round' }}>
+                        {/* Hand-drawn sketchy paths */}
+                        <path d="M 120 280 C 130 285, 140 285, 280 280" strokeDasharray="3 3" /> {/* Floor line */}
+                        <path d="M 150 280 L 158 180" /> {/* Back leg left */}
+                        <path d="M 250 278 L 242 195" /> {/* Front leg right */}
+                        <path d="M 175 280 L 175 190" /> {/* Front leg left */}
+                        <path d="M 225 278 L 225 190" /> {/* Back leg right */}
+                        
+                        {/* Seat box */}
+                        <path d="M 145 190 C 145 190, 180 180, 255 190 C 255 190, 240 215, 150 210 Z" />
+                        <path d="M 150 210 L 250 210" />
+
+                        {/* Backrest cushion */}
+                        <path d="M 148 190 C 142 140, 155 100, 160 85 C 165 78, 205 76, 235 85 C 240 100, 242 140, 242 190 Z" />
+                        <path d="M 170 100 C 180 110, 210 110, 220 100" /> {/* stitch lines */}
+                        <path d="M 175 130 C 185 140, 205 140, 215 130" />
+
+                        {/* Dimensions and handwritten notes */}
+                        <text x="140" y="55" fontFamily="'Cormorant Garamond', serif" fontSize="14" fontStyle="italic" fill="#B05B43">Make Back comfy & thick?</text>
+                        <text x="270" y="195" fontFamily="'Cormorant Garamond', serif" fontSize="14" fontStyle="italic" fill="#7C7267">H ~ 45cm</text>
+                        <text x="180" y="325" fontFamily="'Cormorant Garamond', serif" fontSize="14" fontStyle="italic" fill="#7C7267">W: 65cm approx.</text>
+                        
+                        {/* Annotation pointers */}
+                        <path d="M 190 312 L 195 295" stroke="#7C7267" strokeWidth="0.8" />
+                        <path d="M 285 205 L 255 200" stroke="#7C7267" strokeWidth="0.8" />
+                      </svg>
+                      
+                      {/* Watermark Label */}
+                      <div style={{ position: 'absolute', bottom: '25px', left: '25px', color: 'var(--accent-muted)', fontFamily: 'var(--font-sans)', fontSize: '0.68rem', fontWeight: '600', letterSpacing: '1px' }}>
+                        {lang === "Cn" ? "■ 客戶原始幾何手稿" : "■ ORIGINAL CLIENT BRIEF SKETCH"}
+                      </div>
+                    </div>
                   </div>
-                  <div className="feature-title">{lang === "Cn" ? "AI 视觉质检重合比对" : "AI CV Inspection"}</div>
-                  <div className="feature-desc">
-                    {lang === "Cn" 
-                      ? "利用計算機視覺（OpenCV），自動將工廠每日拍照與原始 CAD 設計圖紙重合比對，金屬椅腳顏色做錯、尺寸超差，出貨前自動攔截報警。" 
-                      : "Utilizing Computer Vision to overlap worker site photographs with raw CAD drawings. Detecting color or angle discrepancies before cargo leaves the factory floor."}
+
+                  {/* Sliding overlay layer: HIGH-TECH CAD BLUEPRINT */}
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    width: `${100 - blueprintSliderPos}%`,
+                    height: '100%',
+                    background: '#151413', // Deep CAD background slate
+                    overflow: 'hidden',
+                    borderLeft: '2px solid var(--accent-primary)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}>
+                    {/* Blueprint grid offset matching layout */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      right: 0,
+                      width: '1000px', // Large fixed width to prevent text from squeezing during slide
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      backgroundImage: 'radial-gradient(rgba(176, 91, 67, 0.12) 1px, transparent 1px), linear-gradient(rgba(124, 114, 103, 0.05) 1px, transparent 1px)',
+                      backgroundSize: '24px 24px',
+                      padding: '2rem'
+                    }}>
+                      <div style={{ width: '100%', height: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative' }}>
+                        <svg viewBox="0 0 400 400" style={{ width: '100%', height: '320px', stroke: 'var(--accent-primary)', fill: 'none', strokeWidth: '1.2', strokeLinecap: 'round', strokeLinejoin: 'round' }}>
+                          {/* Precise engineering guidelines and crosshairs */}
+                          <line x1="30" y1="200" x2="370" y2="200" stroke="#7C7267" strokeWidth="0.5" strokeDasharray="5 5" />
+                          <line x1="200" y1="30" x2="200" y2="370" stroke="#7C7267" strokeWidth="0.5" strokeDasharray="5 5" />
+                          
+                          {/* Coordinate circles */}
+                          <circle cx="200" cy="200" r="140" stroke="rgba(124,114,103,0.15)" strokeWidth="0.8" />
+                          
+                          {/* Solid legs with thickness */}
+                          <line x1="150" y1="280" x2="158" y2="180" stroke="var(--accent-primary)" strokeWidth="2" />
+                          <line x1="250" y1="278" x2="242" y2="195" stroke="var(--accent-primary)" strokeWidth="2" />
+                          <line x1="175" y1="280" x2="175" y2="190" stroke="var(--accent-primary)" strokeWidth="2" />
+                          <line x1="225" y1="278" x2="225" y2="190" stroke="var(--accent-primary)" strokeWidth="2" />
+                          
+                          {/* Precise engineered seat pan */}
+                          <path d="M 145 190 L 255 190 L 245 210 L 155 210 Z" stroke="var(--accent-primary)" strokeWidth="1.5" />
+                          
+                          {/* Backrest profile with spline anchors */}
+                          <path d="M 148 190 Q 140 140, 160 85 Q 200 76, 235 85 Q 245 140, 242 190 Z" stroke="var(--accent-primary)" strokeWidth="1.5" />
+                          
+                          {/* Vector spline control vertices indicators */}
+                          <rect x="158" y="83" width="4" height="4" fill="none" stroke="#FAF7F2" strokeWidth="0.8" />
+                          <rect x="233" y="83" width="4" height="4" fill="none" stroke="#FAF7F2" strokeWidth="0.8" />
+                          <rect x="146" y="188" width="4" height="4" fill="none" stroke="#FAF7F2" strokeWidth="0.8" />
+                          <rect x="240" y="188" width="4" height="4" fill="none" stroke="#FAF7F2" strokeWidth="0.8" />
+
+                          {/* Technical drawing dimension rules and arrows */}
+                          {/* Width dimension */}
+                          <path d="M 145 310 L 255 310" stroke="#FAF7F2" strokeWidth="0.8" />
+                          <path d="M 145 307 L 145 313" stroke="#FAF7F2" strokeWidth="0.8" />
+                          <path d="M 255 307 L 255 313" stroke="#FAF7F2" strokeWidth="0.8" />
+                          
+                          {/* Height dimension */}
+                          <path d="M 290 85 L 290 280" stroke="#FAF7F2" strokeWidth="0.8" />
+                          <path d="M 287 85 L 293 85" stroke="#FAF7F2" strokeWidth="0.8" />
+                          <path d="M 287 280 L 293 280" stroke="#FAF7F2" strokeWidth="0.8" />
+                          
+                          {/* CAD vector labels */}
+                          <text x="168" y="325" fontFamily="var(--font-tech)" fontSize="10" fill="#FAF7F2" letterSpacing="0.5">W: 650.00 mm</text>
+                          <text x="300" y="185" fontFamily="var(--font-tech)" fontSize="10" fill="#FAF7F2" letterSpacing="0.5">H: 850.00 mm</text>
+                          <text x="180" y="235" fontFamily="var(--font-tech)" fontSize="9" fill="rgba(124,114,103,0.6)" letterSpacing="0.5">GRID INTERVAL: 10mm</text>
+                        </svg>
+
+                        {/* Live technical info block */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '25px',
+                          right: '25px',
+                          border: '1px solid rgba(176,91,67,0.3)',
+                          padding: '6px 12px',
+                          background: 'rgba(26,25,24,0.85)',
+                          borderRadius: '2px',
+                          textAlign: 'left'
+                        }}>
+                          <div style={{ fontFamily: 'var(--font-tech)', fontSize: '0.62rem', color: 'var(--accent-primary)', letterSpacing: '1px', textTransform: 'uppercase' }}>VECTOR ENGINE ACTIVE</div>
+                          <div style={{ fontFamily: 'var(--font-tech)', fontSize: '0.68rem', color: '#FAF7F2', marginTop: '2px' }}>TOLERANCE: &lt; 0.15mm</div>
+                        </div>
+
+                        {/* Bottom alignment caption */}
+                        <div style={{ position: 'absolute', bottom: '25px', right: '25px', color: 'var(--accent-primary)', fontFamily: 'var(--font-sans)', fontSize: '0.68rem', fontWeight: '600', letterSpacing: '1px' }}>
+                          {lang === "Cn" ? "■ AUTOMATIC CAD BLUEPRINT / 自動化製造圖紙" : "■ AUTOMATIC MANUFACTURABLE CAD BLUEPRINT"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Horizontal range input overlay handling drags smoothly */}
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    value={blueprintSliderPos}
+                    onChange={(e) => setBlueprintSliderPos(Number(e.target.value))}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: '100%',
+                      opacity: 0,
+                      cursor: 'ew-resize',
+                      zIndex: 20
+                    }}
+                  />
+
+                  {/* Visual slider controller handle */}
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: `${blueprintSliderPos}%`,
+                    width: '2px',
+                    height: '100%',
+                    background: 'var(--accent-primary)',
+                    pointerEvents: 'none',
+                    zIndex: 15,
+                    boxShadow: '0 0 10px rgba(176, 91, 67, 0.5)'
+                  }}>
+                    {/* Circular Handle Grab */}
+                    <div style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      background: 'var(--accent-primary)',
+                      border: '2px solid #FAF7F2',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
+                      color: '#FAF7F2',
+                      fontSize: '0.72rem',
+                      fontWeight: '700',
+                      letterSpacing: '1px'
+                    }}>
+                      ⇆
+                    </div>
                   </div>
                 </div>
+              </div>
 
-                <div className="glass-card feature-box" style={{ borderRadius: '6px' }}>
-                  <div className="feature-icon" style={{ display: 'flex', alignItems: 'center' }}>
-                    <svg style={{ width: '2.2rem', height: '2.2rem', color: 'var(--accent-primary)', marginBottom: '1.5rem' }} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25M12 9v3.75m0 0a1.5 1.5 0 110-3m0 3a1.5 1.5 0 100-3m-4.875 3h1.375m6.375 0h1.375" />
-                    </svg>
+
+              {/* SECTION 3: 极简艺术字信誉看板 (Atelier Credibility Ribbon) */}
+              <div style={{
+                width: '100%',
+                background: 'var(--bg-secondary)',
+                borderTop: '1px solid rgba(124, 114, 103, 0.12)',
+                borderBottom: '1px solid rgba(124, 114, 103, 0.12)',
+                padding: '4rem 2rem',
+                margin: '6rem 0 6rem 0'
+              }}>
+                <div style={{
+                  maxWidth: '1200px',
+                  margin: '0 auto',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '3rem',
+                  textAlign: 'left'
+                }}>
+                  {/* Metric 1 */}
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-tech)', fontSize: '3rem', fontWeight: '300', color: 'var(--accent-primary)', lineHeight: '1' }}>
+                      3 <span style={{ fontSize: '1.2rem', fontFamily: 'var(--font-sans)', fontWeight: '600' }}>MILLS</span>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-tech)', fontSize: '1.1rem', color: 'var(--text-primary)', margin: '10px 0 6px 0', fontWeight: '400' }}>
+                      {lang === "Cn" ? "三家嚴選代工廠" : "Vetted Contract Mills"}
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: 0, fontWeight: '300' }}>
+                      {lang === "Cn" 
+                        ? "精選佛山、惠州三大頂級合約加工廠，產線與技術完全打通，提供極致性價比與產能保障。" 
+                        : "Fully integrated production arrays across 3 elite Chinese manufacturing plants, ensuring quality and price."}
+                    </p>
                   </div>
-                  <div className="feature-title">{lang === "Cn" ? "OpenClaw 智能体自动跟单" : "OpenClaw Daemon Follow-up"}</div>
-                  <div className="feature-desc">
-                    {lang === "Cn" 
-                      ? "無需反覆人工確認。24 小時掛機 AI 自動給工廠發送 WhatsApp 中文催催信，跟進質檢照，狀態即時回寫，Cho 隨時掌控全局。" 
-                      : "No manual nagging. The OpenClaw Daemon queries production states from Supabase, automatically messaging factories in Chinese on WhatsApp to fetch updates."}
+
+                  {/* Metric 2 */}
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-tech)', fontSize: '3rem', fontWeight: '300', color: 'var(--accent-primary)', lineHeight: '1' }}>
+                      100% <span style={{ fontSize: '1.2rem', fontFamily: 'var(--font-sans)', fontWeight: '600' }}>CRIB 5</span>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-tech)', fontSize: '1.1rem', color: 'var(--text-primary)', margin: '10px 0 6px 0', fontWeight: '400' }}>
+                      {lang === "Cn" ? "消防安全自動攔截" : "Fire Compliance Gate"}
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: 0, fontWeight: '300' }}>
+                      {lang === "Cn" 
+                        ? "所有合約家具、皮革與海綿默認符合英國 BS 5852 消防高標準，系統預審檢索，拒絕不合格品。" 
+                        : "All fillings and fabrics meet UK BS 5852 fire standards by default. Non-compliant elements are blocked upfront."}
+                    </p>
+                  </div>
+
+                  {/* Metric 3 */}
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-tech)', fontSize: '3rem', fontWeight: '300', color: 'var(--accent-primary)', lineHeight: '1' }}>
+                      8%-12% <span style={{ fontSize: '1.2rem', fontFamily: 'var(--font-sans)', fontWeight: '600' }}>H₂O</span>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-tech)', fontSize: '1.1rem', color: 'var(--text-primary)', margin: '10px 0 6px 0', fontWeight: '400' }}>
+                      {lang === "Cn" ? "精控實木含水率" : "Vacuum Wood Kiln-Dry"}
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: 0, fontWeight: '300' }}>
+                      {lang === "Cn" 
+                        ? "實木含水率穩鎖 8%-12%，徹底消除高端家具在倫敦冬季暖氣下翹曲、開裂的宿命隱患。" 
+                        : "Wood components are lock-dried to 8%-12% moisture. Eliminating cracking and warping under extreme indoor heat."}
+                    </p>
+                  </div>
+
+                  {/* Metric 4 */}
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-tech)', fontSize: '3rem', fontWeight: '300', color: 'var(--accent-primary)', lineHeight: '1' }}>
+                      1.5k+ <span style={{ fontSize: '1.2rem', fontFamily: 'var(--font-sans)', fontWeight: '600' }}>ITEMS</span>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-tech)', fontSize: '1.1rem', color: 'var(--text-primary)', margin: '10px 0 6px 0', fontWeight: '400' }}>
+                      {lang === "Cn" ? "全球合約家具交付" : "B2B Items Delivered"}
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: 0, fontWeight: '300' }}>
+                      {lang === "Cn" 
+                        ? "在倫敦、赫特福德郡、聖奧爾本斯精品工裝項目均有交付案例，深受頂奢室內設計事務所信賴。" 
+                        : "Highly trusted by premium interior design ateliers, supplying boutique hotel and high-end residential sites."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+
+              {/* SECTION 4: 实时车间追踪微演示 (Interactive Milestone Live Demo) */}
+              <div className="animate-editorial-slide-up" style={{ 
+                maxWidth: '1200px', 
+                margin: '6rem auto 6rem auto', 
+                padding: '0 2rem',
+                textAlign: 'left'
+              }}>
+                <span style={{ fontSize: '0.72rem', color: '#7C7267', letterSpacing: '0.2em', textTransform: 'uppercase', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '0.6rem' }}>
+                  {lang === "Cn" ? "實時車間製造節點追蹤演示" : "CLIENT PORTAL PREVIEW: MILL PROGRESS SNEAK"}
+                </span>
+                <h2 style={{
+                  fontSize: '2.4rem',
+                  fontFamily: 'var(--font-tech)',
+                  color: 'var(--text-primary)',
+                  fontWeight: '300',
+                  marginBottom: '1rem',
+                  letterSpacing: '0.02em'
+                }}>
+                  {lang === "Cn" ? "足不出戶，車間現場動態一覽無遺。" : "Watch the workshop, from anywhere in the world."}
+                </h2>
+                <p style={{
+                  fontSize: '0.95rem',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-sans)',
+                  fontWeight: '300',
+                  lineHeight: '1.7',
+                  maxWidth: '750px',
+                  marginBottom: '3rem'
+                }}>
+                  {lang === "Cn"
+                    ? "我們為您的每個項目創建專屬的數字工作坊門戶。代工廠物料均貼有唯一二維碼，工匠在完成開料、軟包、飾面、包裝時掃碼登記。實拍大貨照即時上傳，Cho 與您共享掌控感。"
+                    : "Every contract order is provisioned with a private tracking workshop. Craft mills log milestones by scanning item QR codes. Real-time site photographs and specifications sync to your dashboard."}
+                </p>
+
+                {/* Tracker Simulator Container */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(260px, 1fr) 1.5fr',
+                  gap: '3rem',
+                  alignItems: 'start'
+                }}>
+                  {/* Left workflow list selectors */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                    {[
+                      { id: "frame", num: "STAGE 01", nameCn: "Frame Woodwork · 木架工序", nameEn: "FSC Wood Framing", leadCn: "已完成 · 22 小時前", leadEn: "Completed · 22h ago" },
+                      { id: "upholstery", num: "STAGE 02", nameCn: "Upholstery Sew · 軟包工藝", nameEn: "Stitching & Foam-Flipping", leadCn: "進行中 · 正在覆蓋面料", leadEn: "Active · Stitching classic swatches" },
+                      { id: "finishing", num: "STAGE 03", nameCn: "Artisan Finishing · 表面拋光/噴漆", nameEn: "Polishing & Anodizing", leadCn: "預計 · 2 天內啟動", leadEn: "Scheduled · Starts in 2 days" },
+                      { id: "packaging", num: "STAGE 04", nameCn: "Protective Packaging · 木托安全打包", nameEn: "Fitted Corner Protection", leadCn: "預計 · 5 天內啟动", leadEn: "Scheduled · Starts in 5 days" }
+                    ].map((ms) => {
+                      const isActive = demoMilestone === ms.id;
+                      return (
+                        <div
+                          key={ms.id}
+                          onClick={() => setDemoMilestone(ms.id)}
+                          style={{
+                            padding: '1.2rem',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            background: isActive ? 'rgba(176, 91, 67, 0.05)' : 'var(--bg-secondary)',
+                            border: isActive ? '1px solid var(--accent-primary)' : '1px solid var(--glass-border)',
+                            textAlign: 'left',
+                            transition: 'all 0.25s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontFamily: 'var(--font-tech)', fontSize: '0.65rem', letterSpacing: '1px', color: isActive ? 'var(--accent-primary)' : 'var(--accent-muted)' }}>
+                              {ms.num}
+                            </span>
+                            <span style={{ 
+                              fontSize: '0.65rem', 
+                              color: isActive ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                              fontWeight: isActive ? '600' : '400',
+                              fontFamily: 'var(--font-sans)'
+                            }}>
+                              {lang === "Cn" ? ms.leadCn : ms.leadEn}
+                            </span>
+                          </div>
+                          <div style={{ 
+                            fontFamily: 'var(--font-tech)', 
+                            fontSize: '1.1rem', 
+                            color: 'var(--text-primary)', 
+                            marginTop: '6px',
+                            fontWeight: isActive ? '500' : '400'
+                          }}>
+                            {lang === "Cn" ? ms.nameCn : ms.nameEn}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Right live feed simulator glass card */}
+                  <div className="glass-card" style={{
+                    padding: '2rem',
+                    borderRadius: '6px',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--glass-border)',
+                    boxShadow: 'var(--glass-shadow)',
+                    textAlign: 'left',
+                    minHeight: '380px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between'
+                  }}>
+                    {/* Header line status */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(124, 114, 103, 0.12)', paddingBottom: '1rem', marginBottom: '1.2rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          background: '#5B9F4E', // Breathing green light
+                          display: 'block',
+                          boxShadow: '0 0 8px #5B9F4E',
+                          animation: 'pulse 1.5s infinite'
+                        }} />
+                        <span style={{ fontFamily: 'var(--font-tech)', fontSize: '0.72rem', fontWeight: '600', color: 'var(--text-primary)', letterSpacing: '1.5px' }}>
+                          LIVE FEED FROM MILLS
+                        </span>
+                      </div>
+                      <span style={{ fontFamily: 'var(--font-tech)', fontSize: '0.7rem', color: 'var(--accent-muted)' }}>
+                        SYNC: 12S AGO | MILL-ID: #3_FOSHAN
+                      </span>
+                    </div>
+
+                    {/* Middle grid image + spec audit */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1.2fr 1fr',
+                      gap: '2rem',
+                      alignItems: 'center',
+                      flex: 1
+                    }}>
+                      {/* Left side workshop image */}
+                      <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '220px', aspectRatio: '1.4/1', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--glass-border)' }}>
+                        <img 
+                          src={
+                            demoMilestone === 'frame' ? "https://images.unsplash.com/photo-1540555700478-4be289fbecef?q=80&w=600&auto=format&fit=crop"
+                            : demoMilestone === 'upholstery' ? "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?q=80&w=600&auto=format&fit=crop"
+                            : demoMilestone === 'finishing' ? "https://images.unsplash.com/photo-1505691938895-1758d7feb511?q=80&w=600&auto=format&fit=crop"
+                            : "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=600&auto=format&fit=crop"
+                          } 
+                          alt="Live mill process tracking view" 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '10px',
+                          left: '10px',
+                          background: 'rgba(26,25,24,0.8)',
+                          padding: '3px 8px',
+                          fontSize: '0.6rem',
+                          color: '#FAF7F2',
+                          borderRadius: '2px',
+                          fontFamily: 'var(--font-tech)'
+                        }}>
+                          QC PHOTO SIGNED BY MASTER CHO
+                        </div>
+                      </div>
+
+                      {/* Right side spec logs */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                        <div>
+                          <div style={{ fontSize: '0.62rem', letterSpacing: '1px', color: 'var(--accent-primary)', textTransform: 'uppercase', fontFamily: 'var(--font-sans)', fontWeight: '600' }}>
+                            {lang === "Cn" ? "工藝核對與質檢報告" : "PROCESS AUDIT SPEC"}
+                          </div>
+                          <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.15rem', color: 'var(--text-primary)', margin: '4px 0 0 0', fontWeight: '400' }}>
+                            {
+                              demoMilestone === 'frame' ? (lang === "Cn" ? "白橡木榫卯框架精密度校準" : "Appalachian Oak Framing")
+                              : demoMilestone === 'upholstery' ? (lang === "Cn" ? "阻燃回彈高密度海綿覆布" : "High-Density Foam Wrap")
+                              : demoMilestone === 'finishing' ? (lang === "Cn" ? "啞光防刮氟碳漆噴塗" : "Matte Fluorocarbon Spray")
+                              : (lang === "Cn" ? "特厚實木托盤與防護泡沫封裝" : "Solid Wooden Pallet Wrapping")
+                            }
+                          </h4>
+                        </div>
+
+                        {/* Audit log text list */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: '300' }}>
+                          {
+                            demoMilestone === 'frame' ? (
+                              <>
+                                <div>- {lang === "Cn" ? "FSC認證可持續木心檢查：通過" : "FSC certified core check: Passed"}</div>
+                                <div>- {lang === "Cn" ? "物理含水率傳感儀測試：9.2%" : "Digital moisture sensor test: 9.2%"}</div>
+                                <div>- {lang === "Cn" ? "榫卯咬合公差度校準：< 0.1mm" : "Mortise fit tolerance test: < 0.1mm"}</div>
+                              </>
+                            ) : demoMilestone === 'upholstery' ? (
+                              <>
+                                <div>- {lang === "Cn" ? "英國 Crib 5 阻燃底襯檢查：通過" : "British BS 5852 Crib 5 barrier: Passed"}</div>
+                                <div>- {lang === "Cn" ? "面料拼接對位度 CV 驗證：100% 重合" : "Textile contour alignment CV: 100% Match"}</div>
+                                <div>- {lang === "Cn" ? "高回彈多層冷發泡海綿：35kg/m³ 達標" : "High resilience cold-cure foam: 35kg/m³ Ok"}</div>
+                              </>
+                            ) : demoMilestone === 'finishing' ? (
+                              <>
+                                <div>- {lang === "Cn" ? "香檳暗金拉絲紋理比對：合格" : "Brushed champagne grain contrast: Passed"}</div>
+                                <div>- {lang === "Cn" ? "零 VOC 天然漆硬度測試：2H 通過" : "Zero-VOC monocoat hardness test: 2H Passed"}</div>
+                                <div>- {lang === "Cn" ? "高溫恆濕烘烤固化時間：48小時" : "Oven humidity baking period: 48 hours"}</div>
+                              </>
+                            ) : (
+                              <>
+                                <div>- {lang === "Cn" ? "雙重防撞實木護角加固：裝配" : "Double-thick custom solid wood corner pads: Done"}</div>
+                                <div>- {lang === "Cn" ? "3D 排櫃算法最大容積圖：生成" : "3D cargo stacking plan bitmap: Auto-gen"}</div>
+                                <div>- {lang === "Cn" ? "倫敦項目在途標籤綁定：OK" : "London site transit tag matched: Ready"}</div>
+                              </>
+                            )
+                          }
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3495,9 +4935,439 @@ function App() {
             </div>
           )}
 
-          {marketingTab === "OurStory" && (
-            <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 2rem' }}>
-              {renderOurStoryBlock()}
+          {marketingTab === "HowItWorks" && (
+            <div className="animate-editorial-slide-up" style={{ maxWidth: '1200px', margin: '0 auto', padding: '4rem 2rem' }}>
+              <div style={{ textAlign: 'center', marginBottom: '4.5rem' }}>
+                <span style={{ fontSize: '0.72rem', color: '#7C7267', letterSpacing: '0.2em', textTransform: 'uppercase', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '0.8rem' }}>
+                  {lang === "Cn" ? "合作流程" : "OUR WORKFLOW"}
+                </span>
+                <h2 style={{
+                  fontSize: '2.5rem',
+                  fontFamily: 'var(--font-tech)',
+                  color: 'var(--text-primary)',
+                  fontWeight: '300',
+                  letterSpacing: '0.02em',
+                  marginBottom: '1rem'
+                }}>
+                  {lang === "Cn" ? "四大交付階段 ── 合作流程。" : "Four phases of seamless delivery."}
+                </h2>
+                <div style={{ width: '40px', height: '1.5px', background: 'var(--accent-primary)', margin: '1.5rem auto 0 auto' }}></div>
+              </div>
+
+              {/* 4 columns layout connected by line */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: '2.2rem',
+                position: 'relative'
+              }}>
+                {/* Phase I */}
+                <div className="glass-card" style={{
+                  padding: '2.5rem 2rem',
+                  borderRadius: '6px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--glass-border)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  minHeight: '340px'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--accent-muted)' }}>PHASE I</span>
+                      <svg style={{ width: '18px', height: '18px', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12h4.5m-1.5-1.5h1.5m-7.5-3h7.5M6 21.75h12a3 3 0 003-3V12a3 3 0 00-3-3H6a3 3 0 00-3 3v6.75a3 3 0 003 3z" />
+                      </svg>
+                    </div>
+                    <h3 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.4rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '1rem' }}>
+                      {lang === "Cn" ? "項目對接與報價" : "Brief & Quote"}
+                    </h3>
+                    <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: '1.7', fontWeight: '300' }}>
+                      {lang === "Cn"
+                        ? "上傳 PDF 招標文件、粘貼 Excel 或是描述您的需求。我們將規格發送至三家受審代工廠進行比價，並並列展示供您挑選。"
+                        : "Upload a PDF, paste an Excel, or describe what you need. We send to three vetted factories and lay the prices side by side. You pick."}
+                    </p>
+                  </div>
+                  <div style={{ borderTop: '1px solid rgba(124, 114, 103, 0.15)', paddingTop: '1rem', marginTop: '1.5rem', fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', color: 'var(--accent-muted)' }}>
+                    {lang === "Cn" ? "第 1-2 週" : "WEEKS 1-2"}
+                  </div>
+                </div>
+
+                {/* Phase II */}
+                <div className="glass-card" style={{
+                  padding: '2.5rem 2rem',
+                  borderRadius: '6px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--glass-border)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  minHeight: '340px'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--accent-muted)' }}>PHASE II</span>
+                      <svg style={{ width: '18px', height: '18px', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                      </svg>
+                    </div>
+                    <h3 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.4rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '1rem' }}>
+                      {lang === "Cn" ? "規格定案與樣品" : "Spec & Samples"}
+                    </h3>
+                    <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: '1.7', fontWeight: '300' }}>
+                      {lang === "Cn"
+                        ? "系統自動生成幾何三視圖、立面與材料方案。實物樣品將快遞寄送至您的府上，一鍵審批即可正式投產。"
+                        : "Drawings auto-generated from your brief — plan, elevation, section, materials. Physical samples shipped to your door. You approve in a tap."}
+                    </p>
+                  </div>
+                  <div style={{ borderTop: '1px solid rgba(124, 114, 103, 0.15)', paddingTop: '1rem', marginTop: '1.5rem', fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', color: 'var(--accent-muted)' }}>
+                    {lang === "Cn" ? "第 3-5 週" : "WEEKS 3-5"}
+                  </div>
+                </div>
+
+                {/* Phase III (Burnt Terracotta Highlight) */}
+                <div className="glass-card" style={{
+                  padding: '2.5rem 2rem',
+                  borderRadius: '6px',
+                  background: '#B05B43', // Burnt Terracotta
+                  border: '1px solid #B05B43',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  minHeight: '340px',
+                  color: '#FAF7F2',
+                  boxShadow: '0 15px 35px rgba(176, 91, 67, 0.25)',
+                  transform: 'scale(1.03)',
+                  zIndex: '5'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase', color: '#EBE5DF' }}>PHASE III</span>
+                      <svg style={{ width: '18px', height: '18px', color: '#FAF7F2' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <h3 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.4rem', fontWeight: '400', color: '#FAF7F2', marginBottom: '1rem' }}>
+                      {lang === "Cn" ? "車間生產與追蹤" : "Production & Tracking"}
+                    </h3>
+                    <p style={{ fontSize: '0.88rem', color: '#FAF7F2', opacity: '0.9', lineHeight: '1.7', fontWeight: '300' }}>
+                      {lang === "Cn"
+                        ? "生產節點實時更新，並配備高清車間質檢相片。覆蓋木架、軟包、油漆與包裝。工廠生產，您線上實時監看。"
+                        : "Live milestone updates with photos at every stage. Frame · upholstery · finishing · packaging. The factory works. You watch."}
+                    </p>
+                  </div>
+                  <div style={{ borderTop: '1px solid rgba(250, 247, 242, 0.3)', paddingTop: '1rem', marginTop: '1.5rem', fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', color: '#FAF7F2' }}>
+                    {lang === "Cn" ? "第 6-14 週" : "WEEKS 6-14"}
+                  </div>
+                </div>
+
+                {/* Phase IV */}
+                <div className="glass-card" style={{
+                  padding: '2.5rem 2rem',
+                  borderRadius: '6px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--glass-border)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  minHeight: '340px'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--accent-muted)' }}>PHASE IV</span>
+                      <svg style={{ width: '18px', height: '18px', color: 'var(--accent-primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.959 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                      </svg>
+                    </div>
+                    <h3 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.4rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '1rem' }}>
+                      {lang === "Cn" ? "消防合規與交付" : "Compliance & Delivery"}
+                    </h3>
+                    <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: '1.7', fontWeight: '300' }}>
+                      {lang === "Cn"
+                        ? "出廠前須通過四重合規質檢關卡。單證與清關手續全託管。安全、百分百準時送達您的指定項目現場。"
+                        : "Four compliance gates passed before anything ships. Documents cross-checked. Customs handled. Delivered to your site, on time."}
+                    </p>
+                  </div>
+                  <div style={{ borderTop: '1px solid rgba(124, 114, 103, 0.15)', paddingTop: '1rem', marginTop: '1.5rem', fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: '600', letterSpacing: '1px', color: 'var(--accent-muted)' }}>
+                    {lang === "Cn" ? "第 15-22 週" : "WEEKS 15-22"}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {marketingTab === "BespokeFurniture" && (
+            <ErrorBoundary lang={lang}>
+              <div className="animate-editorial-slide-up" style={{ maxWidth: '1200px', margin: '0 auto', padding: '4rem 2rem' }}>
+                
+                {/* Block 1: Your order, automated. Backed by quiet, tireless AI. */}
+                <div style={{ marginBottom: '5rem' }}>
+                  <ClientPortalTeaser 
+                    lang={lang} 
+                    selectedFabric={selectedFabric} 
+                    selectedLeg={selectedLeg} 
+                    setActiveIntakeModal={setActiveIntakeModal} 
+                  />
+                </div>
+
+              {/* Block 2: AI Computer Vision QA Diagnostics */}
+              <div style={{ borderTop: '1px solid rgba(124, 114, 103, 0.15)', paddingTop: '5rem', marginBottom: '5rem' }}>
+                <CVQASimulator 
+                  lang={lang} 
+                  selectedFabric={selectedFabric} 
+                  selectedLeg={selectedLeg} 
+                />
+              </div>
+
+              {/* Block 3: Bespoke contract furniture engineered to endure. */}
+              <div style={{ borderTop: '1px solid rgba(124, 114, 103, 0.15)', paddingTop: '5rem' }}>
+                <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#7C7267', letterSpacing: '0.2em', textTransform: 'uppercase', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '0.8rem' }}>
+                    {lang === "Cn" ? "高端定製" : "BESPOKE MANUFACTURING"}
+                  </span>
+                  <h2 style={{
+                    fontSize: '2.5rem',
+                    fontFamily: 'var(--font-tech)',
+                    color: 'var(--text-primary)',
+                    fontWeight: '300',
+                    letterSpacing: '0.02em',
+                    marginBottom: '1rem'
+                  }}>
+                    {lang === "Cn" ? "精雕細琢 ── 專屬合約定制系列。" : "Bespoke contract furniture engineered to endure."}
+                  </h2>
+                  <div style={{ width: '40px', height: '1.5px', background: 'var(--accent-primary)', margin: '1.5rem auto 0 auto' }}></div>
+                </div>
+
+                {/* Craftsmanship Narratives Grid */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                  gap: '2.5rem',
+                  marginBottom: '1rem'
+                }}>
+                  {/* Story 1 */}
+                  <div style={{ textAlign: 'left' }}>
+                    <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.25rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '0.8rem' }}>
+                      {lang === "Cn" ? "🌳 甄選可持續實木硬木" : "🌳 Premium Hardwood Selection"}
+                    </h4>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.7', fontWeight: '300' }}>
+                      {lang === "Cn"
+                        ? "所有框架均採用經 FSC 認證的美國黑胡桃木、白橡木與歐洲山毛櫸。木材含水率嚴格烘乾至 8% - 12%，確保在高濕或極乾氣候下均不起翹不開裂。"
+                        : "We source FSC-certified American walnut, white oak, and European beech wood. Kiln-dried to 8%-12% moisture content to prevent wrapping, cracking or joint separation."}
+                    </p>
+                  </div>
+                  {/* Story 2 */}
+                  <div style={{ textAlign: 'left' }}>
+                    <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.25rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '0.8rem' }}>
+                      {lang === "Cn" ? "✨ 意式砂光金屬與表面處理" : "✨ Artisan Sand-Polished Metal Finishes"}
+                    </h4>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.7', fontWeight: '300' }}>
+                      {lang === "Cn"
+                        ? "配備香檳金拉絲、黑鈦拉丝與高精砂光不銹鋼。所有焊接均由十年以上匠人手工打磨、拋光，保證在自然光下展現無接縫、無瑕疵的完美過渡。"
+                        : "Brushed champagne bronze, matte gunmetal, and micro-sanded stainless steel. Every joint is hand-shielded and polished by seasoned artisans to eliminate visible seams."}
+                    </p>
+                  </div>
+                  {/* Story 3 */}
+                  <div style={{ textAlign: 'left' }}>
+                    <h4 style={{ fontFamily: 'var(--font-tech)', fontSize: '1.25rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '0.8rem' }}>
+                      {lang === "Cn" ? "🔥 英國 BS 5852 Crib 5 消防標準" : "🔥 Strict UK BS 5852 Crib 5 Compliance"}
+                    </h4>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.7', fontWeight: '300' }}>
+                      {lang === "Cn"
+                        ? "專為高奢酒店、會所和公共場所設計。所有海綿和麵料均默認提供 BS 5852 阻燃測試證書，出廠前進行明火噴槍考驗，確保萬無一失。"
+                        : "Engineered specifically for boutique hospitality and public spaces. All foam cores, interliners, and fabrics come fully certified to British BS 5852 fire safety requirements."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ErrorBoundary>
+          )}
+
+          {marketingTab === "SetFurniture" && (
+            <div className="animate-editorial-slide-up" style={{ maxWidth: '1200px', margin: '0 auto', padding: '4rem 2rem' }}>
+              <div style={{ textAlign: 'center', marginBottom: '4.5rem' }}>
+                <span style={{ fontSize: '0.72rem', color: '#7C7267', letterSpacing: '0.2em', textTransform: 'uppercase', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: '0.8rem' }}>
+                  {lang === "Cn" ? "標準套配" : "CURATED SET COLLECTIONS"}
+                </span>
+                <h2 style={{
+                  fontSize: '2.5rem',
+                  fontFamily: 'var(--font-tech)',
+                  color: 'var(--text-primary)',
+                  fontWeight: '300',
+                  letterSpacing: '0.02em',
+                  marginBottom: '1rem'
+                }}>
+                  {lang === "Cn" ? "標準套配系列 ── B2B 整合採購方案。" : "Curated contract furniture packages."}
+                </h2>
+                <div style={{ width: '40px', height: '1.5px', background: 'var(--accent-primary)', margin: '1.5rem auto 0 auto' }}></div>
+              </div>
+
+              {/* Curated sets grid */}
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '5rem'
+              }}>
+                {/* Suite 1: Milano Elegance */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '3.5rem',
+                  alignItems: 'center'
+                }} className="hidden-mobile-grid">
+                  <div className="glass-card" style={{ borderRadius: '6px', overflow: 'hidden', aspectRatio: '4/3' }}>
+                    <img src={IMAGES.setMilano} alt="Milano Elegance Lobby Package" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <div style={{ textAlign: 'left' }}>
+                    <span style={{ fontSize: '0.68rem', color: '#B05B43', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>
+                      {lang === "Cn" ? "大堂奢華系列" : "LOBBY & LOUNGE"}
+                    </span>
+                    <h3 style={{ fontFamily: 'var(--font-tech)', fontSize: '2rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '1rem' }}>
+                      {lang === "Cn" ? "「米蘭雅緻」大堂配套 (Milano Elegance)" : "Milano Elegance Lobby Package"}
+                    </h3>
+                    <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: '1.8', fontWeight: '300', marginBottom: '1.8rem' }}>
+                      {lang === "Cn"
+                        ? "專為高端精品酒店及豪宅大堂設計。低矮流線的休閒沙發、天然洞石茶几與實木胡桃木邊櫃完美交融，營造優雅、內斂的意大利極簡尊貴質感。"
+                        : "Low-profile lounge suites in travertine and sand-washed linen. Curated for luxury hotel receptions and elite apartment lobbies, blending rich walnut credenzas and custom sculptural brass armchairs."}
+                    </p>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.2rem', borderRadius: '4px', border: '1px solid var(--glass-border)', marginBottom: '2rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                        <strong>{lang === "Cn" ? "套配清單：" : "Package Includes:"}</strong><br />
+                        {lang === "Cn"
+                          ? "2x 大堂定制休閒沙發, 4x 洞石不規則邊几, 1x 實木胡桃木定制邊櫃, 2x 藝術雕塑單椅。"
+                          : "2x Lounge Sofas, 4x Travertine Side Tables, 1x Solid Walnut Credenza, 2x Sculptural Accent Chairs."}
+                      </div>
+                      <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', borderTop: '1px solid rgba(124,114,103,0.1)', paddingTop: '0.8rem' }}>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>{lang === "Cn" ? "估算體積" : "EST. VOLUME"}</span>
+                          <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>14.5 m³</strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>{lang === "Cn" ? "定制工期" : "PRODUCTION LEAD"}</span>
+                          <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>8 {lang === "Cn" ? "週" : "Weeks"}</strong>
+                        </div>
+                      </div>
+                    </div>
+                    <button className="btn-premium" style={{ padding: '0.6rem 1.6rem' }} onClick={() => {
+                      setModalProjectName("Milano Elegance Lobby Curated Package");
+                      setModalDestination("London, UK");
+                      setModalQuantity("15 sets");
+                      setActiveIntakeModal("item");
+                    }}>
+                      {lang === "Cn" ? "索取本套配最優報價 →" : "Request Curated Quote →"}
+                    </button>
+                  </div>
+                </div>
+
+                <hr style={{ border: 'none', borderTop: '1px solid rgba(124, 114, 103, 0.15)' }} />
+
+                {/* Suite 2: Toscana Warmth */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '3.5rem',
+                  alignItems: 'center'
+                }} className="hidden-mobile-grid">
+                  <div style={{ textAlign: 'left' }}>
+                    <span style={{ fontSize: '0.68rem', color: '#B05B43', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>
+                      {lang === "Cn" ? "精品客房系列" : "SUITE & BEDROOM"}
+                    </span>
+                    <h3 style={{ fontFamily: 'var(--font-tech)', fontSize: '2rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '1rem' }}>
+                      {lang === "Cn" ? "「托斯卡納溫馨」客房配套 (Toscana Warmth)" : "Toscana Warmth Bedroom Suite"}
+                    </h3>
+                    <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: '1.8', fontWeight: '300', marginBottom: '1.8rem' }}>
+                      {lang === "Cn"
+                        ? "溫暖的實木胡桃木床架、手工縫製的真皮床頭背板與暗青銅金屬配件完美匹配。為酒店住客提供沉浸式的托斯卡納莊園暖意與極致安寧體驗。"
+                        : "Warm walnut bedframes, hand-stitched leather panels, and bronze fixtures. Curated to wrap guests in Tuscan serenity, creating an inviting, residential-grade feel with contract-grade durability."}
+                    </p>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.2rem', borderRadius: '4px', border: '1px solid var(--glass-border)', marginBottom: '2rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                        <strong>{lang === "Cn" ? "套配清單：" : "Package Includes:"}</strong><br />
+                        {lang === "Cn"
+                          ? "1x 奢華大床架 (真皮靠背), 2x 特製床頭櫃, 1x 全實木書桌椅, 1x 精奢客房單人沙發, 1x 一體化衣櫃。"
+                          : "1x King Bedframe, 2x Integrated Nightstands, 1x Writing Desk, 1x Lounge Armchair, 1x Wardrobe."}
+                      </div>
+                      <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', borderTop: '1px solid rgba(124,114,103,0.1)', paddingTop: '0.8rem' }}>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>{lang === "Cn" ? "估算體積" : "EST. VOLUME"}</span>
+                          <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>11.2 m³</strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>{lang === "Cn" ? "定制工期" : "PRODUCTION LEAD"}</span>
+                          <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>10 {lang === "Cn" ? "週" : "Weeks"}</strong>
+                        </div>
+                      </div>
+                    </div>
+                    <button className="btn-premium" style={{ padding: '0.6rem 1.6rem' }} onClick={() => {
+                      setModalProjectName("Toscana Curated Guestrooms Suite");
+                      setModalDestination("Florence, Italy");
+                      setModalQuantity("40 sets");
+                      setActiveIntakeModal("item");
+                    }}>
+                      {lang === "Cn" ? "索取本套配最優報價 →" : "Request Curated Quote →"}
+                    </button>
+                  </div>
+                  <div className="glass-card" style={{ borderRadius: '6px', overflow: 'hidden', aspectRatio: '4/3' }}>
+                    <img src={IMAGES.setToscana} alt="Toscana Curated Bed Suite" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                </div>
+
+                <hr style={{ border: 'none', borderTop: '1px solid rgba(124, 114, 103, 0.15)' }} />
+
+                {/* Suite 3: Venezia Contemporary */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '3.5rem',
+                  alignItems: 'center'
+                }} className="hidden-mobile-grid">
+                  <div className="glass-card" style={{ borderRadius: '6px', overflow: 'hidden', aspectRatio: '4/3' }}>
+                    <img src={IMAGES.setVenezia} alt="Venezia Dining Set" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <div style={{ textAlign: 'left' }}>
+                    <span style={{ fontSize: '0.68rem', color: '#B05B43', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>
+                      {lang === "Cn" ? "精緻餐廚系列" : "FINE DINING RESTAURANT"}
+                    </span>
+                    <h3 style={{ fontFamily: 'var(--font-tech)', fontSize: '2rem', fontWeight: '400', color: 'var(--text-primary)', marginBottom: '1rem' }}>
+                      {lang === "Cn" ? "「威尼斯現代」餐廚系列 (Venezia Contemporary)" : "Venezia Contemporary Dining Set"}
+                    </h3>
+                    <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: '1.8', fontWeight: '300', marginBottom: '1.8rem' }}>
+                      {lang === "Cn"
+                        ? "雕塑般的白橡木長餐几、圓潤低背皮質餐椅與奢華大理石餐邊櫃交錯，展現極具張力的幾何美感與威尼斯運河畔的現代風韻。"
+                        : "Sculptural oak dining tables and low-back dining chairs. Crafted for high-end boutique restaurants and VIP dining rooms, with brushed travertine sidings and premium contract grain leather."}
+                    </p>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.2rem', borderRadius: '4px', border: '1px solid var(--glass-border)', marginBottom: '2rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                        <strong>{lang === "Cn" ? "套配清單：" : "Package Includes:"}</strong><br />
+                        {lang === "Cn"
+                          ? "1x 雕塑白橡木長餐几 (10人座), 10x 精製低背牛皮餐椅, 1x 奢華大理石定制餐邊櫃。"
+                          : "1x 10-Seater Oak Table, 10x Tailored Leather Dining Chairs, 1x Marble Sideboard."}
+                      </div>
+                      <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', borderTop: '1px solid rgba(124,114,103,0.1)', paddingTop: '0.8rem' }}>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>{lang === "Cn" ? "估算體積" : "EST. VOLUME"}</span>
+                          <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>8.8 m³</strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>{lang === "Cn" ? "定制工期" : "PRODUCTION LEAD"}</span>
+                          <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>7 {lang === "Cn" ? "週" : "Weeks"}</strong>
+                        </div>
+                      </div>
+                    </div>
+                    <button className="btn-premium" style={{ padding: '0.6rem 1.6rem' }} onClick={() => {
+                      setModalProjectName("Venezia Restaurant Sourcing Package");
+                      setModalDestination("Venice, Italy");
+                      setModalQuantity("10 sets");
+                      setActiveIntakeModal("item");
+                    }}>
+                      {lang === "Cn" ? "索取本套配最優報價 →" : "Request Curated Quote →"}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -3506,6 +5376,8 @@ function App() {
               {renderContactBlock()}
             </div>
           )}
+
+          {renderFooter()}
         </div>
       )}
 
@@ -3775,7 +5647,14 @@ function App() {
                 <div className="dashboard-panels animate-fade-in">
                   {/* Left Column: Member Order Dashboard */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                    {renderMaterialStudio()}
+                    <MaterialStudio 
+                      lang={lang} 
+                      selectedFabric={selectedFabric} 
+                      selectedLeg={selectedLeg} 
+                      configuratorCrib5Blocked={configuratorCrib5Blocked} 
+                      handleFabricSelect={handleFabricSelect} 
+                      handleLegSelect={handleLegSelect} 
+                    />
                     <div className="glass-card">
                       <div className="panel-header">
                         <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -3835,7 +5714,7 @@ function App() {
                           <path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        <span>{lang === "Cn" ? "17 阶段制造与合规进度条" : "17-Stage Production & Compliance Journey"}</span>
+                        <span>{lang === "Cn" ? "製造與合規進度追蹤" : "Production & Compliance Progress Tracker"}</span>
                       </h4>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(17, 1fr)', gap: '4px', height: '10px', background: 'var(--bg-tertiary)', borderRadius: '5px', overflow: 'hidden' }}>
                         {stages.map((st, sidx) => {
@@ -3848,10 +5727,10 @@ function App() {
                         })}
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                        <span>S01 Intake</span>
-                        <span>S05 Crib5 Gate</span>
-                        <span>S11 AI CV Gate</span>
-                        <span>S17 Complete</span>
+                        <span>{lang === "Cn" ? "項目登錄" : "Intake Specs"}</span>
+                        <span>{lang === "Cn" ? "Crib 5 消防驗證" : "Crib 5 Gate"}</span>
+                        <span>{lang === "Cn" ? "AI 視覺質檢" : "AI CV Inspection"}</span>
+                        <span>{lang === "Cn" ? "交付完成" : "Delivery Complete"}</span>
                       </div>
                     </div>
                   </div>
