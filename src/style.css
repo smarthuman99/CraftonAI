@@ -1654,3 +1654,108 @@ body {
   }
 }
 
+/* ==========================================================================
+   NAVBAR HIGH-END POLISH & LAYOUT OPTIMIZATIONS
+   ========================================================================== */
+
+/* Navbar Base Protection */
+.navbar {
+  flex-wrap: nowrap !important; /* Never wrap the navbar container */
+}
+
+.logo-container {
+  flex-shrink: 0 !important;
+}
+
+.logo-logo {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+.nav-links {
+  flex-wrap: nowrap !important; /* Ensure nav links stay in a single line */
+  flex-shrink: 1; /* Allow container to shrink elegantly */
+}
+
+.nav-link {
+  white-space: nowrap !important; /* Force navigation items to stay on a single line */
+  flex-shrink: 0 !important;
+}
+
+/* English-Specific Luxury Branding Style */
+.navbar-en .nav-links {
+  gap: 1.4rem; /* Crisp, cohesive gap spacing for English links */
+}
+
+.navbar-en .nav-link {
+  font-size: 0.82rem; /* Clean typography sizing for longer English labels */
+  letter-spacing: 0.8px; /* Refined letter-spacing for premium editorial aesthetic */
+  font-weight: 500;
+}
+
+/* Actions Container Layout */
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0 !important;
+}
+
+.navbar-en .navbar-actions {
+  gap: 0.8rem;
+}
+
+/* Button protections against squeeze */
+.btn-premium, .btn-secondary {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+/* Medium Screens Responsive Adaptations (Laptops & Tablets: 769px to 1320px) */
+@media (min-width: 769px) and (max-width: 1320px) {
+  .navbar {
+    padding: 1.1rem 1.8rem !important; /* Dynamic horizontal compression */
+  }
+  
+  .logo-logo {
+    font-size: 1.45rem !important; /* Elegant scaled down typography */
+    letter-spacing: 2.5px !important;
+  }
+  
+  .nav-links {
+    gap: 1.1rem !important; /* Graceful spacing compression */
+  }
+  
+  .nav-link {
+    font-size: 0.8rem !important;
+  }
+  
+  /* Additional breathing room for English version on laptop-sized screens */
+  .navbar-en .nav-links {
+    gap: 0.8rem !important;
+  }
+  
+  .navbar-en .nav-link {
+    font-size: 0.76rem !important;
+    letter-spacing: 0.5px !important;
+  }
+  
+  .navbar-actions {
+    gap: 0.7rem !important;
+  }
+  
+  .navbar-en .navbar-actions {
+    gap: 0.5rem !important;
+  }
+  
+  .btn-premium {
+    padding: 0.45rem 1rem !important;
+    font-size: 0.78rem !important;
+  }
+  
+  .btn-secondary {
+    padding: 0.45rem 0.8rem !important;
+    font-size: 0.78rem !important;
+  }
+}
+

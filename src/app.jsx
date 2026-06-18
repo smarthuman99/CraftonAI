@@ -3165,7 +3165,7 @@ function App() {
       )}
 
       {/* Navbar Header */}
-      <nav className="navbar">
+      <nav className={`navbar ${lang === "En" ? "navbar-en" : ""}`}>
         <div className="logo-container" onClick={() => {
           setCurrentStageView("Marketing");
           setMarketingTab("Overview");
@@ -3239,7 +3239,7 @@ function App() {
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div className="navbar-actions">
           <button className="btn-secondary" onClick={handleLangToggle} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <svg style={{ width: '14px', height: '14px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
@@ -3310,7 +3310,7 @@ function App() {
                 }}
                 style={{ padding: '0.5rem 1.2rem', fontSize: '0.85rem', fontWeight: '600' }}
               >
-                {lang === "Cn" ? "啟動項目" : "Start the Project"}
+                {lang === "Cn" ? "啟動項目" : "Start Project"}
               </button>
             </>
           )}
