@@ -13,6 +13,7 @@ import MaterialStudio from './components/MaterialStudio';
 import CVQASimulator from './components/CVQASimulator';
 import ClientPortalTeaser from './components/ClientPortalTeaser';
 import ErrorBoundary from './components/ErrorBoundary';
+import MaterialLibrary from './components/MaterialLibrary';
 
 const IMAGES = {
   heroChair: "/hero_chair.jpg", // 侘寂奢華皮質單椅 (取代 image1)
@@ -92,6 +93,7 @@ function App() {
   const [currentView, setCurrentStageView] = useState("Marketing"); // Views: "Marketing", "Backoffice", "ClientPortal"
   const [lang, setLang] = useState("Cn"); // Language: "Cn" or "En"
   const [marketingTab, setMarketingTab] = useState("Overview"); // "Overview", "CaseStudies", "OurStory", "Contact"
+  const [contactMessage, setContactMessage] = useState("");
   const [clientPortalTab, setClientPortalTab] = useState("Tracker"); // "Tracker", "Intake"
   const [openFaq, setOpenFaq] = useState(null); // Accordion FAQ toggle
   const [isIntakeUploading, setIsIntakeUploading] = useState(false); // For upload animation
@@ -2788,7 +2790,13 @@ function App() {
                   <input type="text" placeholder={lang === "Cn" ? "姓名" : "Name"} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid rgba(124, 114, 103, 0.15)', background: '#FAF9F6' }} />
                   <input type="email" placeholder={lang === "Cn" ? "郵箱" : "Email"} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid rgba(124, 114, 103, 0.15)', background: '#FAF9F6' }} />
                 </div>
-                <textarea rows="3" placeholder={lang === "Cn" ? "描述您的項目需求..." : "Describe your project requirements..."} style={{ padding: '10px', borderRadius: '6px', border: '1px solid rgba(124, 114, 103, 0.15)', background: '#FAF9F6', resize: 'none' }}></textarea>
+                <textarea 
+                  rows="3" 
+                  placeholder={lang === "Cn" ? "描述您的項目需求..." : "Describe your project requirements..."} 
+                  value={contactMessage}
+                  onChange={(e) => setContactMessage(e.target.value)}
+                  style={{ padding: '10px', borderRadius: '6px', border: '1px solid rgba(124, 114, 103, 0.15)', background: '#FAF9F6', resize: 'none' }}
+                ></textarea>
                 <button 
                   onClick={() => alert(lang === "Cn" ? "諮詢已提交，我們將通過郵件與 WhatsApp 儘速聯繫您！" : "Inquiry submitted! We will reach out via email/WhatsApp shortly.")}
                   style={{ padding: '10px', background: '#7C7267', color: '#FAF9F6', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', letterSpacing: '0.05em' }}
@@ -2939,6 +2947,7 @@ function App() {
               {[
                 { id: "Overview", cn: "首頁", en: "Home" },
                 { id: "HowItWorks", cn: "合作流程", en: "How It Works" },
+                { id: "MaterialLibrary", cn: "選材庫", en: "Material Library" },
                 { id: "CaseStudies", cn: "經典案例", en: "Case Studies" },
                 { id: "BespokeFurniture", cn: "高端定製", en: "Bespoke Furniture" },
                 { id: "SetFurniture", cn: "標準套配", en: "Set Furniture" },
@@ -3172,6 +3181,15 @@ function App() {
             }}
           >
             {lang === "Cn" ? "合作流程" : "HOW IT WORKS"}
+          </span>
+          <span 
+            className={`nav-link ${currentView === "Marketing" && marketingTab === "MaterialLibrary" ? "active" : ""}`} 
+            onClick={() => {
+              setCurrentStageView("Marketing");
+              setMarketingTab("MaterialLibrary");
+            }}
+          >
+            {lang === "Cn" ? "選材庫" : "MATERIAL LIBRARY"}
           </span>
           <span 
             className={`nav-link ${currentView === "Marketing" && marketingTab === "CaseStudies" ? "active" : ""}`} 
@@ -5098,6 +5116,20 @@ function App() {
             </div>
           )}
 
+          {marketingTab === "MaterialLibrary" && (
+            <MaterialLibrary 
+              lang={lang} 
+              onProceedToContact={(text) => {
+                setContactMessage(text);
+                setMarketingTab("Contact");
+                setTimeout(() => {
+                  const el = document.getElementById("contact-section");
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }, 100);
+              }}
+            />
+          )}
+
           {marketingTab === "BespokeFurniture" && (
             <ErrorBoundary lang={lang}>
               <div className="animate-editorial-slide-up" style={{ maxWidth: '1200px', margin: '0 auto', padding: '4rem 2rem' }}>
@@ -5372,7 +5404,7 @@ function App() {
           )}
 
           {marketingTab === "Contact" && (
-            <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 2rem' }}>
+            <div id="contact-section" className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 2rem' }}>
               {renderContactBlock()}
             </div>
           )}
