@@ -3017,6 +3017,16 @@ function App() {
                 <span>+86 757 2388 9988</span><br />
                 <span>factory@crafton.com</span>
               </div>
+              <div>
+                <strong style={{ color: '#FAF7F2', display: 'block', marginBottom: '2px', fontSize: '0.85rem' }}>🇦🇺 MELBOURNE ATELIER</strong>
+                <span>+61 3 9846 0118</span><br />
+                <span>melbourne@crafton.com</span>
+              </div>
+              <div>
+                <strong style={{ color: '#FAF7F2', display: 'block', marginBottom: '2px', fontSize: '0.85rem' }}>🇺🇸 MIAMI SHOWROOM</strong>
+                <span>+1 305 555 0143</span><br />
+                <span>miami@crafton.com</span>
+              </div>
             </div>
           </div>
         </div>
