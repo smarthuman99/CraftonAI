@@ -5,6 +5,96 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crafton AI - Premium Bespoke Furniture Engine</title>
     
+    <!-- Global Error Trapper to prevent and debug blank white screen -->
+    <script>
+      (function() {
+        var createErrorOverlay = function(title, message, stack) {
+          if (document.getElementById('crafton-error-overlay')) return;
+          var overlay = document.createElement('div');
+          overlay.id = 'crafton-error-overlay';
+          overlay.style.position = 'fixed';
+          overlay.style.top = '0';
+          overlay.style.left = '0';
+          overlay.style.width = '100vw';
+          overlay.style.height = '100vh';
+          overlay.style.backgroundColor = '#1C1616';
+          overlay.style.color = '#FF6B6B';
+          overlay.style.padding = '3rem 2rem';
+          overlay.style.boxSizing = 'border-box';
+          overlay.style.zIndex = '999999';
+          overlay.style.fontFamily = 'monospace';
+          overlay.style.overflowY = 'auto';
+          overlay.style.lineHeight = '1.6';
+          overlay.style.display = 'flex';
+          overlay.style.flexDirection = 'column';
+          overlay.style.gap = '1.5rem';
+
+          var header = document.createElement('h2');
+          header.style.margin = '0';
+          header.style.fontSize = '1.8rem';
+          header.style.fontWeight = '300';
+          header.style.letterSpacing = '1px';
+          header.style.borderBottom = '1px solid rgba(255,107,107,0.2)';
+          header.style.paddingBottom = '1rem';
+          header.style.color = '#FF4C4C';
+          header.textContent = title;
+
+          var intro = document.createElement('p');
+          intro.style.margin = '0';
+          intro.style.fontSize = '0.95rem';
+          intro.style.color = '#D4C5C5';
+          intro.textContent = 'A critical runtime exception occurred during initial load or render. Below is the automated diagnostic stack trace:';
+
+          var msgBox = document.createElement('div');
+          msgBox.style.background = '#2B1E1E';
+          msgBox.style.padding = '1.2rem';
+          msgBox.style.borderRadius = '4px';
+          msgBox.style.borderLeft = '4px solid #FF4C4C';
+          msgBox.innerHTML = '<strong>Error Message:</strong> ' + message;
+
+          var stackBox = document.createElement('pre');
+          stackBox.style.background = '#140E0E';
+          stackBox.style.padding = '1.5rem';
+          stackBox.style.borderRadius = '4px';
+          stackBox.style.overflowX = 'auto';
+          stackBox.style.margin = '0';
+          stackBox.style.fontSize = '0.85rem';
+          stackBox.style.color = '#E5CFCF';
+          stackBox.style.whiteSpace = 'pre-wrap';
+          stackBox.style.wordBreak = 'break-all';
+          stackBox.textContent = stack || 'No stack trace available.';
+
+          overlay.appendChild(header);
+          overlay.appendChild(intro);
+          overlay.appendChild(msgBox);
+          overlay.appendChild(stackBox);
+
+          if (document.body) {
+            document.body.appendChild(overlay);
+          } else {
+            window.addEventListener('DOMContentLoaded', function() {
+              document.body.appendChild(overlay);
+            });
+          }
+        };
+
+        window.onerror = function(message, source, lineno, colno, error) {
+          var errorMsg = message;
+          var stack = error ? error.stack : '';
+          var locationInfo = '\\nSource: ' + source + ' L:' + lineno + ' C:' + colno;
+          createErrorOverlay('🚨 UNCAUGHT RUNTIME EXCEPTION', errorMsg + locationInfo, stack);
+          return false;
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event.reason || 'Unknown Rejection';
+          var errorMsg = typeof reason === 'object' ? (reason.message || reason.toString()) : reason;
+          var stack = reason.stack || '';
+          createErrorOverlay('⚡ UNHANDLED PROMISE REJECTION', errorMsg, stack);
+        });
+      })();
+    </script>
+
     <!-- SEO Optimization -->
     <meta name="description" content="Crafton AI - High-End Bespoke Furniture Multi-Agent Workflow Engine. Fully integrated with UK Crib 5 compliance checkers, automatic RFQ bidding comparison, AI computer vision quality control, and volumetric container packing optimization.">
     <meta name="keywords" content="Bespoke Furniture, Crafton AI, OpenClaw, Supabase, Crib 5, Furniture AI Agent, UK Fire Safety, Smart Manufacturing">

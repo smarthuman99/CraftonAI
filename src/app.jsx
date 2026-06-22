@@ -31,12 +31,38 @@ const IMAGES = {
   setVenezia: "https://images.unsplash.com/photo-1538688525198-9b88f6f53126?q=80&w=800&auto=format&fit=crop" // Venezia Contemporary
 };
 
+// Safely wrap localStorage operations to handle sandbox or private/incognito restrictions
+const safeGetItem = (key) => {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch (e) {
+    console.warn("localStorage.getItem is restricted in this environment:", e);
+    return "";
+  }
+};
+
+const safeSetItem = (key, val) => {
+  try {
+    localStorage.setItem(key, val);
+  } catch (e) {
+    console.warn("localStorage.setItem is restricted in this environment:", e);
+  }
+};
+
+const safeRemoveItem = (key) => {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.warn("localStorage.removeItem is restricted in this environment:", e);
+  }
+};
+
 // Inject into window for backward compatibility with legacy prototype code
 window.supabase = { createClient };
 
-// Initialize Supabase from localStorage
-const savedUrl = localStorage.getItem("supabase_url") || "";
-const savedKey = localStorage.getItem("supabase_key") || "";
+// Initialize Supabase from localStorage with robust safety guards
+const savedUrl = safeGetItem("supabase_url");
+const savedKey = safeGetItem("supabase_key");
 let supabaseClient = null;
 
 if (savedUrl && savedKey && window.supabase) {
@@ -291,7 +317,7 @@ function App() {
     
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase.createClient(localStorage.getItem("supabase_url"), localStorage.getItem("supabase_key"));
+        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
         await client.from("projects").update({ 
           selected_fabric: fabId,
           is_crib5_blocked: isSilk,
@@ -307,7 +333,7 @@ function App() {
     setSelectedLeg(legId);
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase.createClient(localStorage.getItem("supabase_url"), localStorage.getItem("supabase_key"));
+        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
         await client.from("projects").update({ selected_leg: legId }).eq("id", order.id);
       } catch (err) {
         console.error("Supabase leg sync error:", err);
@@ -1191,7 +1217,7 @@ function App() {
 
   // Fetch real-time data from Supabase if connected
   const fetchSupabaseData = async (shouldThrow = false) => {
-    if (!window.supabase || !localStorage.getItem("supabase_url") || !localStorage.getItem("supabase_key")) {
+    if (!window.supabase || !safeGetItem("supabase_url") || !safeGetItem("supabase_key")) {
       setDbConnected(false);
       return;
     }
@@ -1200,9 +1226,9 @@ function App() {
     setDbError("");
     
     try {
-      const url = localStorage.getItem("supabase_url");
-      const key = localStorage.getItem("supabase_key");
-      const client = window.supabase.createClient(url, key);
+      const url = safeGetItem("supabase_url");
+      const key = safeGetItem("supabase_key");
+      const client = window.supabase?.createClient(url, key);
       
       // 1. Fetch live Project named 'CRAFT-202605-01'
       const { data: projectsData, error: projectErr } = await client
@@ -1583,10 +1609,10 @@ function App() {
 
     let channel = null;
     try {
-      const url = localStorage.getItem("supabase_url");
-      const key = localStorage.getItem("supabase_key");
+      const url = safeGetItem("supabase_url");
+      const key = safeGetItem("supabase_key");
       if (url && key && window.supabase) {
-        const client = window.supabase.createClient(url, key);
+        const client = window.supabase?.createClient(url, key);
         
         channel = client
           .channel("schema-db-changes")
@@ -1661,9 +1687,9 @@ function App() {
     return () => {
       if (channel && window.supabase) {
         try {
-          const url = localStorage.getItem("supabase_url");
-          const key = localStorage.getItem("supabase_key");
-          const client = window.supabase.createClient(url, key);
+          const url = safeGetItem("supabase_url");
+          const key = safeGetItem("supabase_key");
+          const client = window.supabase?.createClient(url, key);
           client.removeChannel(channel);
           console.log("Supabase Realtime subscription unsubscribed successfully.");
         } catch (err) {
@@ -1677,8 +1703,8 @@ function App() {
   const handleSaveDbConfig = async (e) => {
     e.preventDefault();
     if (!dbUrl.trim() || !dbKey.trim()) {
-      localStorage.removeItem("supabase_url");
-      localStorage.removeItem("supabase_key");
+      safeRemoveItem("supabase_url");
+      safeRemoveItem("supabase_key");
       setDbConnected(false);
       setShowDbConfig(false);
       return;
@@ -1695,8 +1721,8 @@ function App() {
       if (error) throw error;
 
       // Persist to localStorage
-      localStorage.setItem("supabase_url", dbUrl.trim());
-      localStorage.setItem("supabase_key", dbKey.trim());
+      safeSetItem("supabase_url", dbUrl.trim());
+      safeSetItem("supabase_key", dbKey.trim());
       
       // Load actual data and execute the auto-seeder, letting errors propagate
       await fetchSupabaseData(true);
@@ -1718,8 +1744,8 @@ function App() {
       setDbError("Supabase client is not loaded in window.");
       return;
     }
-    const url = localStorage.getItem("supabase_url");
-    const key = localStorage.getItem("supabase_key");
+    const url = safeGetItem("supabase_url");
+    const key = safeGetItem("supabase_key");
     if (!url || !key) {
       setDbError("Please save a valid database connection first before seeding.");
       return;
@@ -1768,7 +1794,7 @@ function App() {
     // Sync to Supabase if connected
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase.createClient(localStorage.getItem("supabase_url"), localStorage.getItem("supabase_key"));
+        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
         const stageId = stages[index].id;
         const currentStageInt = parseInt(stageId.substring(1), 10);
         await client.from("projects").update({ current_stage: currentStageInt }).eq("id", order.id);
@@ -1812,7 +1838,7 @@ function App() {
         
         if (dbConnected && order.id) {
           try {
-            const client = window.supabase.createClient(localStorage.getItem("supabase_url"), localStorage.getItem("supabase_key"));
+            const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
             await client.from("projects").update({ 
               current_stage: 5,
               selected_fabric: "FAB-03",
@@ -1837,7 +1863,7 @@ function App() {
 
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase.createClient(localStorage.getItem("supabase_url"), localStorage.getItem("supabase_key"));
+        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
         const nextStageId = stages[nextIndex].id;
         const nextStageInt = parseInt(nextStageId.substring(1), 10);
         await client.from("projects").update({ current_stage: nextStageInt }).eq("id", order.id);
@@ -1862,7 +1888,7 @@ function App() {
 
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase.createClient(localStorage.getItem("supabase_url"), localStorage.getItem("supabase_key"));
+        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
         await client.from("projects").update({ 
           current_stage: 6,
           selected_fabric: "FAB-02",
@@ -1907,7 +1933,7 @@ function App() {
 
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase.createClient(localStorage.getItem("supabase_url"), localStorage.getItem("supabase_key"));
+        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
         await client.from("projects").update({ 
           current_stage: 9,
           selected_supplier: supplier
@@ -1960,7 +1986,7 @@ function App() {
 
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase.createClient(localStorage.getItem("supabase_url"), localStorage.getItem("supabase_key"));
+        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
         await client.from("projects").update({ split_delivery_active: true }).eq("id", order.id);
         
         // Update specifications quantities and notes in database
@@ -3446,8 +3472,8 @@ function App() {
                       onClick={() => {
                         setDbUrl("");
                         setDbKey("");
-                        localStorage.removeItem("supabase_url");
-                        localStorage.removeItem("supabase_key");
+                        safeRemoveItem("supabase_url");
+                        safeRemoveItem("supabase_key");
                         setDbConnected(false);
                         setOrder(JSON.parse(JSON.stringify(mockData.initialOrder)));
                         setLogs(JSON.parse(JSON.stringify(mockData.changeLogs)));
