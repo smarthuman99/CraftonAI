@@ -1,0 +1,22 @@
+﻿网站架构V1.1 
+
+
+Home
+  ├ 参考这个外观设计
+
+
+
+
+
+
+Case study
+  ├ 参考这个设计，用目录形式展示产品案例
+
+Our story
+  ├参考以下文案
+
+Contact
+  ├ 做了demo先，详细资料后面补充给你Sign in (按钮)Start a project (按钮)
+
+以下是点击start a project 按钮后跳转到的sign up页面的显示内容
+

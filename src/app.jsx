@@ -158,6 +158,7 @@ function App() {
   const [modalTextBrief, setModalTextBrief] = useState("");
   const [modalFilePreloaded, setModalFilePreloaded] = useState(false);
   const [modalFilePreloadedName, setModalFilePreloadedName] = useState("");
+  const [selectedProject, setSelectedProject] = useState(null); // null or project object for detail overlay modal
 
   // V1.3 Marketing Bespoke Simulation States (Now modularly encapsulated in CVQASimulator and ClientPortalTeaser)
 
@@ -2885,6 +2886,305 @@ function App() {
         </div>
       </div>
     );
+  const getSwatchBgColor = (code) => {
+    switch (code) {
+      case 'WD-01': return '#3a2d24'; // American Walnut
+      case 'WD-04': return '#d2b48c'; // White Oak
+      case 'WD-07': return '#2c2520'; // Smoked Eucalyptus
+      case 'BF-02': return '#f0ebd8'; // Organic Bouclé
+      case 'BF-08': return '#e1d5c2'; // Belgian Linen
+      case 'BF-12': return '#58111a'; // Royal Velvet / Chili
+      case 'MT-02': return '#d4af37'; // Champagne Gold
+      case 'TL-09': return '#592c18'; // Saddle Leather
+      case 'ST-01': return '#4c2e43'; // Calacatta Viola
+      default: return '#7c7267';
+    }
+  };
+
+  const renderProjectDetailModal = () => {
+    if (!selectedProject) return null;
+
+    return (
+      <div 
+        style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(26, 25, 24, 0.75)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1500,
+          padding: '2rem',
+        }}
+        onClick={() => setSelectedProject(null)}
+      >
+        <div 
+          style={{
+            position: 'relative',
+            backgroundColor: '#FAF9F6',
+            color: '#1C1B18',
+            maxWidth: '1100px',
+            width: '100%',
+            maxHeight: '90vh',
+            borderRadius: '12px',
+            border: '1px solid rgba(124, 114, 103, 0.2)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))',
+            overflow: 'hidden',
+            padding: 0
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Close Button */}
+          <button 
+            onClick={() => setSelectedProject(null)}
+            style={{
+              position: 'absolute',
+              top: '1.5rem',
+              right: '1.5rem',
+              background: 'rgba(26, 25, 24, 0.05)',
+              border: 'none',
+              color: '#1C1B18',
+              cursor: 'pointer',
+              fontSize: '1.2rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              zIndex: 10,
+              lineHeight: '1'
+            }}
+          >
+            ✕
+          </button>
+
+          {/* Left Column: Image */}
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#FAF9F6' }}>
+            <div style={{ flex: 1, position: 'relative', minHeight: '380px', overflow: 'hidden' }}>
+              <img 
+                src={selectedProject.img} 
+                alt={selectedProject.titleEn}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block'
+                }}
+              />
+              <div style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                background: 'linear-gradient(180deg, rgba(0,0,0,0) 60%, rgba(26,25,24,0.4) 100%)'
+              }}></div>
+              <span style={{ 
+                position: 'absolute', 
+                left: '2rem', 
+                bottom: '1.5rem', 
+                fontFamily: 'var(--font-tech)', 
+                color: '#FAF7F2', 
+                fontSize: '2rem', 
+                fontWeight: '300',
+                letterSpacing: '2px',
+                textShadow: '0 2px 4px rgba(0,0,0,0.4)'
+              }}>
+                {selectedProject.initials}
+              </span>
+            </div>
+
+            {/* Quick Specs Metadata Bar */}
+            <div style={{ 
+              padding: '1.5rem 2rem', 
+              borderTop: '1px solid rgba(124, 114, 103, 0.15)',
+              background: 'rgba(124, 114, 103, 0.03)',
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '1rem'
+            }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#7C7267', fontFamily: 'var(--font-tech)', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                  {lang === "Cn" ? "項目地點 / LOCATION" : "PROJECT LOCATION"}
+                </span>
+                <strong style={{ fontSize: '0.88rem', color: '#1C1B18', fontWeight: '500' }}>
+                  {lang === "Cn" ? selectedProject.locationCn : selectedProject.locationEn}
+                </strong>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#7C7267', fontFamily: 'var(--font-tech)', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                  {lang === "Cn" ? "工藝標準 / COMPLIANCE" : "QUALITY REGULATION"}
+                </span>
+                <strong style={{ fontSize: '0.88rem', color: '#1C1B18', fontWeight: '500' }}>
+                  {selectedProject.specsEn.split('/')[0].replace('Specs:', '').trim()}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Descriptions & Swatches */}
+          <div style={{ 
+            padding: '3rem', 
+            overflowY: 'auto', 
+            maxHeight: '90vh', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            justifyContent: 'space-between',
+            background: '#FAF9F6'
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '0.5rem' }}>
+                <span style={{
+                  background: 'rgba(28, 27, 24, 0.08)',
+                  color: 'var(--accent-primary)',
+                  padding: '0.3rem 0.6rem',
+                  fontSize: '0.7rem',
+                  borderRadius: '3px',
+                  fontFamily: 'var(--font-tech)',
+                  textTransform: 'uppercase',
+                  fontWeight: '600'
+                }}>
+                  {lang === "Cn" ? selectedProject.tagCn : selectedProject.tagEn}
+                </span>
+                <span style={{ fontSize: '0.72rem', color: '#7C7267', fontFamily: 'var(--font-tech)' }}>
+                  ID: {selectedProject.id}
+                </span>
+              </div>
+
+              <h2 style={{ 
+                fontSize: '2rem', 
+                color: '#1C1B18', 
+                fontFamily: "'Cormorant Garamond', 'Georgia', serif", 
+                fontWeight: '300', 
+                margin: '0 0 1.5rem 0',
+                lineHeight: '1.2',
+                textAlign: 'left'
+              }}>
+                {lang === "Cn" ? selectedProject.titleCn : selectedProject.titleEn}
+              </h2>
+
+              <div style={{ width: '40px', height: '1px', backgroundColor: 'var(--accent-primary)', marginBottom: '1.5rem' }}></div>
+
+              {/* Detailed Narrative Section */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
+                <p style={{ 
+                  fontSize: '0.92rem', 
+                  color: '#4A453F', 
+                  lineHeight: '1.75', 
+                  margin: 0, 
+                  textAlign: 'justify',
+                  fontFamily: lang === "Cn" ? 'var(--font-sans)' : "'Georgia', serif"
+                }}>
+                  {lang === "Cn" ? selectedProject.detailDescCn : selectedProject.detailDescEn}
+                </p>
+              </div>
+
+              {/* Swatches Ribbon */}
+              <div style={{ marginBottom: '2rem', textAlign: 'left' }}>
+                <h4 style={{ 
+                  fontSize: '0.75rem', 
+                  fontFamily: 'var(--font-tech)', 
+                  color: '#7C7267', 
+                  letterSpacing: '1px', 
+                  textTransform: 'uppercase', 
+                  marginBottom: '1rem',
+                  borderBottom: '1px solid rgba(124, 114, 103, 0.15)',
+                  paddingBottom: '0.5rem'
+                }}>
+                  {lang === "Cn" ? "本案精選定制材質 (FEATURED CUSTOM SWATCHES)" : "FEATURED CUSTOM MATERIALS IN THIS PROJECT"}
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                  {selectedProject.materials && selectedProject.materials.map((mat) => (
+                    <div 
+                      key={mat.code}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '12px',
+                        padding: '0.6rem 1rem',
+                        background: 'rgba(124, 114, 103, 0.05)',
+                        border: '1px solid rgba(124, 114, 103, 0.1)',
+                        borderRadius: '4px'
+                      }}
+                    >
+                      {/* Swatch color bubble */}
+                      <div style={{ 
+                        width: '24px', 
+                        height: '24px', 
+                        borderRadius: '50%', 
+                        background: getSwatchBgColor(mat.code),
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        flexShrink: 0
+                      }}></div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.8rem', fontWeight: '500', color: '#1C1B18' }}>
+                            {lang === "Cn" ? mat.nameCn : mat.nameEn}
+                          </span>
+                          <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-tech)', color: 'var(--accent-primary)', fontWeight: '600' }}>
+                            {mat.code}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button 
+                className="btn-premium" 
+                style={{ 
+                  flex: 1, 
+                  padding: '0.9rem 1.5rem', 
+                  fontSize: '0.85rem',
+                  letterSpacing: '1px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onClick={() => {
+                  setContactMessage(lang === "Cn" 
+                    ? `您好，我對「${selectedProject.titleCn}（${selectedProject.locationCn}）」經典案例非常感興趣。我想索取該項目的定製方案概念包及商業合約報價。`
+                    : `Hello, I am highly interested in the "${selectedProject.titleEn} (${selectedProject.locationEn})" case study. Please send me the custom concept package and estimated contract bid for this project.`
+                  );
+                  setMarketingTab("Contact");
+                  setSelectedProject(null);
+                  setTimeout(() => {
+                    const el = document.getElementById("contact-section");
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }, 100);
+                }}
+              >
+                <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <span>{lang === "Cn" ? "索取本案定制方案" : "REQUEST CONCEPT PACKAGE"}</span>
+              </button>
+
+              <button 
+                className="btn-secondary" 
+                style={{ 
+                  padding: '0.9rem 1.5rem', 
+                  fontSize: '0.85rem',
+                  letterSpacing: '1px',
+                  borderColor: 'rgba(124, 114, 103, 0.3)',
+                  color: '#1C1B18'
+                }}
+                onClick={() => setSelectedProject(null)}
+              >
+                {lang === "Cn" ? "關閉" : "CLOSE"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderFooter = () => {
@@ -4805,6 +5105,12 @@ function App() {
                     locationEn: "Lake Como, Italy",
                     descCn: "为座落于意大利科莫湖畔的新建奢华别墅量身定制室内布局与高奢家具。Crafton 工匠以顶级美洲黑胡桃木打造手工格栅护墙，并提供精梳亚麻全定制休闲椅。全系列合规家具均通过严苛的 Crib 5 物理阻燃测试，完美融合自然触感与意式低调奢华。",
                     descEn: "Bespoke interior architecture and customized furnishings for a newly built estate on Lake Como. Our craftspeople delivered fluted timber joinery and custom-woven luxury linen loungers. Every piece of contract seating was custom-fabricated to achieve Crib 5 fire-safety standards while celebrating natural textures.",
+                    detailDescCn: "這座落於意大利科莫湖畔的新建奢華別墅，由 THE CRAFTON 與頂級設計師團隊協作完成。為了呼應窗外科莫湖粼粼波光與阿爾卑斯山脈的自然輪廓，我們為項目定制了全套室內實木格柵護牆及活動家具。工匠採用特級美洲黑胡桃木 (WD-01)，經過真空窯乾精準控制含水率，打造出經久不變形的手工格柵；休閒椅選用比利時進口奢級雨露麻面料 (BF-08)，展現出無與倫比的天然肌理與挺拔骨架。同時，所有填充海綿與面料均符合英國 BS 5852 Crib 5 商業消防安全標準，確保在提供極致美學和親膚觸感的同時，達到頂級別墅對公眾合約採購的最高安全合規要求。",
+                    detailDescEn: "Nestled on the prestigious shores of Lake Como, this newly built luxury estate represents a bespoke collaboration between THE CRAFTON and master interior architects. To mirror the shimmering lake views and the Alpine silhouette, we manufactured custom fluted American Black Walnut (WD-01) wall paneling and loose furniture. Handcrafted from vacuum kiln-dried timber to lock internal moisture, the joinery resists expansion in lakeside humidity. The accompanying lounge seating features custom-tailored Belgian Combed Linen (BF-08), presenting a sophisticated, tactile drape. Emphasizing high-end contract safety, all materials and fillings strictly comply with British BS 5852 Crib 5 flammability standards, beautifully unifying modern Italian minimalism with heritage engineering.",
+                    materials: [
+                      { code: "WD-01", nameCn: "FAS級美洲黑胡桃木", nameEn: "FAS American Black Walnut" },
+                      { code: "BF-08", nameCn: "比利時精梳雨露亞麻", nameEn: "Belgian Combed Linen" }
+                    ],
                     img: "https://fosseyarora.com/wp-content/uploads/2023/03/Villa-Ginestre-Header-Image-scaled.jpg",
                     tagCn: "顶级私宅",
                     tagEn: "Luxury Residence",
@@ -4820,6 +5126,11 @@ function App() {
                     locationEn: "Cotswolds, UK",
                     descCn: "紧邻科茨沃尔德 Chastleton 庄园的历史保护别馆的全盘修复与家具定制。Crafton 工匠将现代开放式居住体验与乡村传统美学无缝契合，手工雕琢白橡木大餐桌与配套实木靠背椅。选用橄榄绿、深红与沙色，在历史悠久的岁月质感中注入极高防燃耐久度。",
                     descEn: "A complete restoration of a historic cottage bordering the Chastleton Estate. Crafton blended contemporary open-plan living with rural heritage, hand-crafting a custom dining table and solid oak chairs. Rich natural tones of olive and deep red create an authentic, layered historic patina with modern structural durability.",
+                    detailDescCn: "格里布莊園別館是一次對科茨沃爾德二級保護歷史建築的深情致敬與極致翻新。在與業主和當地歷史保護學會的緊密協作下，THE CRAFTON 以現代開放式人居美學無縫契合英倫鄉村傳統。我們選用最頂級的歐洲白橡木 (WD-04) 打造宏大的手作大餐桌，表面採用古老的手工天然蜂蠟塗裝，在保留木材溫潤導管孔與獨特山形紋的同時，散發出優雅的歷史歲月質感。配套餐椅融合了高強度榫卯結構，兼備卓越的結構耐用度與極致美學比例，完美適應低頻家用與高頻會客等多元場景。",
+                    detailDescEn: "A heartfelt restoration and custom furnishing project for a historic Grade II listed cottage in the Cotswolds. Bordering the historic Chastleton Estate, Crafton blended contemporary open-plan flow with rural British heritage. Our artisans fabricated an expansive bespoke dining table and matching backrest chairs from Premium European White Oak (WD-04). Finished with traditional, organic beeswax hand-rubbing, the surface celebrates the wood's warm natural grain and open-pore character while establishing a resilient barrier. Constructed with authentic mortise-and-tenon joinery, the collection delivers peerless heritage charm combined with robust commercial-grade structural integrity.",
+                    materials: [
+                      { code: "WD-04", nameCn: "歐洲白橡木", nameEn: "European White Oak" }
+                    ],
                     img: "https://fosseyarora.com/wp-content/uploads/2023/03/Glebe-Cottage-Header-Image-1.jpg",
                     tagCn: "庄园别馆",
                     tagEn: "Historic Estate",
@@ -4835,6 +5146,12 @@ function App() {
                     locationEn: "Latvia",
                     descCn: "将一座宏大历史谷仓改造成前卫的艺术探索和启发空间。Crafton 汲取导演 Wes Anderson 的独特美学风格，特别研发全套儿童安全级几何软包游乐单椅、音乐工作室声学阻尼垫及定制科学实验室一体台。将极高安全合规性与天马行空的童趣设计完美结合。",
                     descEn: "Transformation of an expansive historic barn into an avant-garde creative and educational wonderland. Inspired by Wes Anderson's cinematic narratives, Crafton manufactured highly customized, kid-safe interactive geometric play seats, soft music room acoustics, and bespoke science lab workbenches.",
+                    detailDescCn: "Chastje 藝術探索空間將拉脫維亞一座宏偉的歷史谷倉徹底改造為前衛、充滿靈感與童心童趣的教育與創意冒險樂園。我們深度致敬導演韋斯·安德森（Wes Anderson）的對稱美學與高飽和度色彩對抗，為空間高定開發了極具藝術感的幾何遊樂單椅與防塵防霉阻尼背板。為了保證兒童及教育空間的嚴苛安全，全系列軟包製品精選天然抗菌的有機羊毛圈圈絨 (BF-02)，觸感如同雲朵般綿密舒適，且極易清潔維護。框架及金屬點綴採用手工拉絲香檳金 (MT-02)，100% 通過歐盟 EN 71-3 玩具級無毒無害安全環保合規認證，讓藝術想像與安全防護並行不悖。",
+                    detailDescEn: "Transforming a massive historic agricultural barn in Latvia into an avant-garde creative and educational sanctuary. Deeply inspired by Wes Anderson's cinematic symmetry and color blocking, Crafton produced whimsical geometric play seats, soft musical acoustic dampening, and safe laboratory workstations. Prioritizing child safety and institutional longevity, we upholstered the soft seating in ultra-soft, naturally anti-microbial Organic Bouclé (BF-02), while the structural nodes feature sand-polished Anodized Champagne Gold (MT-02). Every piece is fully compliant with the European EN 71-3 child safety standards and Crib 5 regulations, keeping spaces endlessly creative yet chemically pristine.",
+                    materials: [
+                      { code: "BF-02", nameCn: "有機羊毛圈圈絨", nameEn: "Organic Bouclé" },
+                      { code: "MT-02", nameCn: "手工拉絲香檳金", nameEn: "Hand-Brushed Champagne Gold" }
+                    ],
                     img: "https://fosseyarora.com/wp-content/uploads/2023/03/Chastje-Header-Image-2.jpg",
                     tagCn: "艺术创意空间",
                     tagEn: "Creative & Educational Hub",
@@ -4850,6 +5167,12 @@ function App() {
                     locationEn: "Wembley, London, UK",
                     descCn: "一座极富英伦幽默感与张扬个性的高尚共享生活空间。Crafton 为其定制了号称“伦敦最长的”的多彩拼色沙发组、高光木质护墙板及隔音丝绒电话亭。空间融合了达米安·赫斯特的色彩冲突，在完美通过 Crib 5 高频商用消防测试的同时，打造出极致吸睛的社交地标。",
                     descEn: "An unapologetic, highly eccentric co-living development. Crafton manufactured the spectacular 'longest lounge seating bank in London' for the residents' hub, alongside custom timber wall panels and velvet phone booths, balancing bold social-media-ready features with high-traffic Crib 5 safety compliance.",
+                    detailDescCn: "這是一次富有英倫幽默、反叛張揚個性與極高合約規格的共享生活空間實踐。為了替倫敦溫布利的 The Robinson 打造一個極具話題度的社交大堂，THE CRAFTON 為其高定製造了號稱「倫敦最長」的多彩拼色模塊沙發、高光煙熏尤加利 (WD-07) 護牆板，以及隔音私密絲絨電話亭。沙發選用頂級重磅奢級棉絨 (BF-12)，具備高達 100,000 次 Martindale 循環耐磨強度，並通過了高規格 Crib 5 商業消防安全防護測試。空間的色彩衝突與極高頻公共使用的耐候性在我們內部智能製造的閉環管控下得到了完美融合，成為倫敦新晉的網紅打卡地標。",
+                    detailDescEn: "A high-impact, eccentric B2B contract project designed to redefine luxury co-living in Wembley, London. Crafton manufactured the spectacular 'longest lounge seating bank in London' for the central residents' hub, alongside custom Smoked Eucalyptus (WD-07) millwork and acoustic velvet phone booths. The modular sofas are clad in our heavy-traffic Crimson Cotton Velvet (BF-12), carrying a 100k Martindale rub rate and fully certified to British Crib 5 fire-safety standards. This ambitious project showcases Crafton's capability to balance bold, social-media-ready custom aesthetics with heavy-duty commercial longevity and institutional compliance.",
+                    materials: [
+                      { code: "BF-12", nameCn: "重磅奢級棉絨", nameEn: "Heavyweight Cotton Velvet" },
+                      { code: "WD-07", nameCn: "煙熏尤加利實木", nameEn: "Smoked Eucalyptus" }
+                    ],
                     img: "https://fosseyarora.com/wp-content/uploads/2023/03/KILO-0358-0025-1-scaled.jpg",
                     tagCn: "奢华共享公寓",
                     tagEn: "Luxury Co-Living & Lifestyle",
@@ -4864,7 +5187,13 @@ function App() {
                     locationCn: "英国 伦敦切尔西",
                     locationEn: "Chelsea, London, UK",
                     descCn: "对伦敦切尔西核心区顶级大平层的奢华家具重塑。Crafton 为其定制了直通天花板的高光珍珠色软包大床头背板、手工抛光黄铜茶几及皇家深紫丝绒单椅。精美家具与大理石壁炉优雅互衬，展现了古典建筑比例与现代工艺的完美交融。",
-                    descEn: "Refining the interior of an ultra-exclusive Chelsea apartment. Crafton crafted an extraordinary ceiling-height shimmer headboard, bespoke gold-finished brass coffee tables, and tailored velvet accent chairs in rich Royal Purple, demonstrating a flawless fusion of classical volume with minimalist craftsmanship.",
+                    descEn: "Refining the interior of an ultra-exclusive Chelsea apartment. Crafton crafted an extraordinary ceiling-height headboard, bespoke gold-finished brass coffee tables, and tailored velvet accent chairs in rich Royal Purple, demonstrating a flawless fusion of classical volume with minimalist craftsmanship.",
+                    detailDescCn: "座落於倫敦切爾西核心街區，這是一次對挑高頂層豪華大平層的極致改造。THE CRAFTON 秉持意式奢華設計哲學，為業主定制了高達 4.5 米、直通天花板的高光珍珠色手工軟包床頭大背板，選用頂級防污重磅棉絨 (BF-12)，在視覺與觸覺上給予業主包裹式的奢華蠶繭體驗。客廳茶幾則由大理石與手工拉絲香檳金 (MT-02) 圓管組裝而成，金屬表面經過氟碳防指紋膜塗層防護，即使在自然光照射下也絕無炫目反光。每件家具的製造均經過 Crafton 專屬高定坊工藝大師簽名認證，古典對稱比例與現代精密金工在這裡和諧共生。",
+                    detailDescEn: "Located in the heart of Chelsea, London, this high-end residential project is an exploration of volumetric luxury. Crafton fabricated an extraordinary 4.5-meter ceiling-height headboard, individually upholstered in Royal Crimson Cotton Velvet (BF-12) to provide a soft, enveloping 'cocoon' experience in the master suite. This is paired with custom-engineered coffee tables featuring Hand-Brushed Champagne Gold (MT-02) structural legs, treated with an active anti-fingerprint layer to retain pristine metal luster. Signed off and certified by Master Cho at the Crafton Atelier, this collection showcases the flawless synthesis of classical British volumes with high-end Italian furniture tailoring.",
+                    materials: [
+                      { code: "MT-02", nameCn: "手工拉絲香檳金", nameEn: "Hand-Brushed Champagne Gold" },
+                      { code: "BF-12", nameCn: "重磅奢級棉絨", nameEn: "Heavyweight Cotton Velvet" }
+                    ],
                     img: "https://fosseyarora.com/wp-content/uploads/2022/10/cadogan-sq-15.png",
                     tagCn: "顶级高奢公寓",
                     tagEn: "Ultra-Luxury Penthouse",
@@ -4880,6 +5209,12 @@ function App() {
                     locationEn: "Knightsbridge, London, UK",
                     descCn: "座落于伦敦高档街区的触觉美学典范。Crafton 为其量身打造低重心现代极简沙发组，精选马海毛与真丝混纺面料，并配以手工对纹大理石圆茶几。深色亮漆实木收纳柜在水滴水晶吊灯的映照下，流淌出极具层次感且宁静祥和的安享氛围。",
                     descEn: "A masterclass in tactile luxury within London's most exclusive district. Crafton fabricated low-profile modernist lounge seating in sumptuous mohair and silk-blend fabrics, coupled with bespoke book-matched marble coffee tables, creating an exceptionally layered and calm interior retreat.",
+                    detailDescCn: "這座坐落於倫敦最貴街區騎士橋的公寓，是 THE CRAFTON 將觸覺美學與自然奢石推向極致的代表作。客廳中央的主茶几選用奢華意式卡拉卡塔紫大理石 (ST-01)，工匠在車間進行了精準的手工對紋拼接，保留了大理石原生的魅惑紫色脈絡與象牙白背景的鮮明對比；低重心休閒沙發椅則選用比利時進口精梳雨露麻 (BF-08) 搭配馬海毛與真絲混紡。全系列護牆及實木收納櫃表面採用不遮蓋木紋的啞光烤漆工藝，搭配水滴形水晶瀑布吊燈的暖色光暈，在喧囂的倫敦市中心為精英業主開闢了一方極其奢雅、安寧祥和的私人安享殿堂。",
+                    detailDescEn: "A masterpiece of tactile luxury within London's most exclusive Knightsbridge enclave. Crafton fabricated low-profile lounge chairs finished in organic Belgian Combed Linen (BF-08), paired with custom-crafted coffee tables featuring book-matched Italian Calacatta Viola (ST-01) marble. Our stonemasons precision-cut the marble block to display its deep claret veins and cream-white breccia in seamless symmetrical harmony. Supported by rich, matte-lacquered ash cabinetry, the light reflecting from crystal waterfalls bounces softly across raw textures, creating an incredibly serene, deeply layered luxury retreat from the urban pulse.",
+                    materials: [
+                      { code: "ST-01", nameCn: "意大利卡拉卡塔紫大理石", nameEn: "Italian Calacatta Viola" },
+                      { code: "BF-08", nameCn: "比利時精梳雨露亞麻", nameEn: "Belgian Combed Linen" }
+                    ],
                     img: "https://fosseyarora.com/wp-content/uploads/2021/06/lancelot-knightsbridge-4.jpeg",
                     tagCn: "骑士桥奢雅公馆",
                     tagEn: "Premium Private Residence",
@@ -4895,6 +5230,12 @@ function App() {
                     locationEn: "Knightsbridge, London, UK",
                     descCn: "埃尼斯莫尔花园之内的贵族联排别馆。Crafton 为其打造全套手工雕刻大餐桌、奢华大堂扶手椅以及私人控温酒窖的定制实木博古架。将现代都市的前卫细节融入伦敦经典的历史风貌，为业主量身缔造尊贵的英伦生活方式。",
                     descEn: "Exuding sophistication in Ennismore Gardens, this historic townhouse was fitted with Crafton's premium custom seating, hand-carved dining furniture, and bespoke wood panels for the temperature-controlled private wine cellar, harmonizing ultra-chic modern details with heritage architecture.",
+                    detailDescCn: "位於騎士橋埃尼斯莫爾花園之內的古典貴族聯排公館，是一場古典歷史外殼與前衛奢華室內的深度對話。THE CRAFTON 為這座受歷史保護的建築定制了整套餐廳及休閒區家具。寬大的手作餐廳大餐桌以美洲黑胡桃木 (WD-01) 與沙比利紅木拼花打造，搭配選用頂級全粒面馬鞍皮 (TL-09) 手工包裹縫裝的餐椅，皮質手感細膩，邊緣走線平整如畫。私人恆溫酒窖博古架與護牆則經由我們數位化 CAD 精密測量，完美契合拱頂。全案在完美契合 Crib 5 消防標準的基礎上，為當代貴族生活方式進行了尊貴的量身定制。",
+                    detailDescEn: "Exuding historical elegance within Ennismore Gardens, Knightsbridge, this heritage townhouse was completely refitted with Crafton's signature joinery and custom contract seating. In the formal dining room, we installed an artisan-crafted marquetry table made of American Black Walnut (WD-01), paired with dining chairs hand-wrapped in vegetable-tanned, Full-Grain Saddle Leather (TL-09) showcasing tight double-stitching. The private temperature-controlled wine cellar shelves are engineered with millimetric CAD tolerances to match the historic brick vaults, successfully blending high-end B2B safety certifications (Crib 5) with timeless, aristocratic lifestyle design.",
+                    materials: [
+                      { code: "WD-01", nameCn: "FAS級美洲黑胡桃木", nameEn: "FAS American Black Walnut" },
+                      { code: "TL-09", nameCn: "頂級全粒面馬鞍皮", nameEn: "Full-Grain Saddle Leather" }
+                    ],
                     img: "https://fosseyarora.com/wp-content/uploads/2022/10/ennismore_fetures.png",
                     tagCn: "定制私享公馆",
                     tagEn: "Bespoke Townhouse",
@@ -4910,6 +5251,12 @@ function App() {
                     locationEn: "Notting Hill, London, UK",
                     descCn: "座落于经典电影取景地诺丁山，屡获殊荣的马车房革新项目。Crafton 为其专属定制了“奢华蚕茧”家具套包，包含高定防污雪尼尔现代模块化沙发、手工胡桃木床头柜，以及用于私密屋顶露台的户外级缅甸柚木躺椅，展现了极致雅致的都市生活美学。",
                     descEn: "An award-winning Mews home transformation in iconic Notting Hill. Crafton developed a 'cozy cocoon' furniture package, featuring minimalist modular sofas in performance chenille, custom walnut bedside tables, and outdoor-grade teak loungers for the private rooftop terrace.",
+                    detailDescCn: "座落於經典電影《真愛至上》取景地諾丁山，這座屢獲殊榮的馬車房（Mews Home）翻新工程打破了常規室內佈局。設計師將生活起居空間置於頂層，以享受極致的自然採光。THE CRAFTON 為該項目量身定制了「奢華蠶繭」家具套包。客廳核心沙發選用防污、防潑水高定雪尼爾面料與比利時雨露麻 (BF-08) 混紡，並配有手工打磨的美洲黑胡桃木 (WD-01) 抽屜床頭櫃。而在屋頂花園露台，工匠則選用頂級緬甸金絲柚木，經多道手工戶外防腐油塗刷，打造出奢華的露天休閒躺椅，完美呈現都市隱逸與高奢功能主義的極致融合。",
+                    detailDescEn: "An award-winning carriage house (Mews) transformation located in the iconic, film-famous streets of Notting Hill. Embracing an upside-down open-plan penthouse layout to maximize skylight exposure, Crafton delivered a fully integrated 'cozy cocoon' residential package. The central lounge features modular seating upholstered in Belgian Combed Linen (BF-08) and performance chenille, paired with solid American Black Walnut (WD-01) bedside tables. On the private rooftop oasis, we deployed premium-grade Burma Teak loungers treated with marine-grade outdoor protectants, delivering an exquisite, highly functional retreat embodying London's finest urban living.",
+                    materials: [
+                      { code: "WD-01", nameCn: "FAS級美洲黑胡桃木", nameEn: "FAS American Black Walnut" },
+                      { code: "BF-08", nameCn: "比利時精梳雨露亞麻", nameEn: "Belgian Combed Linen" }
+                    ],
                     img: "https://fosseyarora.com/wp-content/uploads/2022/10/xLetC1cQ-2048x1365-1.jpeg",
                     tagCn: "诺丁山奢雅别院",
                     tagEn: "Bespoke Mews Renovation",
@@ -4921,6 +5268,7 @@ function App() {
                   <div 
                     key={c.id} 
                     className="case-study-card glass-card"
+                    onClick={() => setSelectedProject(c)}
                     style={{
                       padding: 0,
                       overflow: 'hidden',
@@ -6226,10 +6574,14 @@ function App() {
         </div>
       )}
 
+      {/* Interactive Case Studies Detail Modal Overlay */}
+      {selectedProject && renderProjectDetailModal()}
+
       {/* Premium Auth Gate Overlay */}
       {showAuthGate && renderAuthGate()}
     </div>
   );
+}
 }
 
 export default App;

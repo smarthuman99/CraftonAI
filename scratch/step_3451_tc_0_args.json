@@ -1,0 +1,12 @@
+{
+  "AllowMultiple": "false",
+  "Description": "\"Implement triggerIntakeUpload simulator function to simulate real-time multi-agent CAD parsing and Crib 5 flammability checking.\"",
+  "EndLine": "188",
+  "Instruction": "\"Insert triggerIntakeUpload right before renderMaterialStudio.\"",
+  "ReplacementContent": "\"  const triggerIntakeUpload = () => {\\n    setIsIntakeUploading(true);\\n    setParsingLogs([]);\\n    \\n    const demoLogs = [\\n      { role: \\\"system\\\", text: \\\"OpenClaw Daemon v2.1 啟動，正在監聽 Supabase Webhook 觸發信號...\\\", textEn: \\\"OpenClaw Daemon v2.1 initialized. Listening to Supabase Webhook triggers...\\\" },\\n      { role: \\\"system\\\", text: \\\"檢測到本地安全網關，讀取上傳的 CAD / PDF 設計圖紙數據...\\\", textEn: \\\"Detected secure local gateway, reading uploaded CAD / PDF drawing stream...\\\" },\\n      { role: \\\"thought\\\", text: \\\"正在解析圖紙圖層，自動提取家具三維數據、幾何形狀與裝配結構...\\\", textEn: \\\"Parsing drawing layers, auto-extracting 3D geometric dimensions and assembly joints...\\\" },\\n      { role: \\\"thought\\\", text: \\\"調用 Gemini 1.5 Pro 多模態模型分析附加留言要求：“40把大堂扶手椅、20把單人椅。要求符合英國 Crib 5 消防標準，使用海軍藍亞麻面料搭配黑色啞光金屬椅腿。”\\\", textEn: \\\"Invoked Gemini 1.5 Pro multimodal LLM to parse additional notes: '40 Lobby Armchairs & 20 Club Chairs. Must pass UK Crib 5 fire codes with navy linen and matte black legs.'\\\" },\\n      { role: \\\"action\\\", text: \\\"調用 `check_swatch_crib5_database` 檢測預選材质 Navy Classic Linen (L-4410) & Royal Blue Velvet (V-9082)。\\\", textEn: \\\"Invoked tool 'check_swatch_crib5_database' to query Navy Classic Linen (L-4410) & Royal Blue Velvet (V-9082).\\\" },\\n      { role: \\\"observation\\\", text: \\\"核對結果：預選面料物理防火性能優良，完全兼容英國 Crib 5 (Source 5) 法規標準！\\\", textEn: \\\"Verification result: Selected fabrics exhibit superior flame-retardant properties, fully Crib 5 (Source 5) compatible.\\\" },\\n      { role: \\\"action\\\", text: \\\"調用 `create_supabase_order` 創建新項目與訂單草稿。寫入 Supabase 表 `orders` 與 `projects`。\\\", textEn: \\\"Invoked tool 'create_supabase_order' to initialize project draft. Registering in Supabase tables 'orders' and 'proje\n<truncated 2843 bytes>",
+  "StartLine": "186",
+  "TargetContent": "\"  };\\n\\n  const renderMaterialStudio = () => {\"",
+  "TargetFile": "\"e:\\\\CraftonAI\\\\src\\\\app.jsx\"",
+  "toolAction": "\"Inserting triggerIntakeUpload into app.jsx\"",
+  "toolSummary": "\"Insert triggerIntakeUpload\""
+}

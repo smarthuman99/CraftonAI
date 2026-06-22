@@ -1,0 +1,1848 @@
+=== PORTFOLIO EXTRACTED DATA ===
+
+FOUND 35 UNIQUE IMAGES:
+  - https://fosseyarora.com/wp-content/uploads/2021/03/FOSSEY-ARORA1new-1024x129.png
+  - https://fosseyarora.com/wp-content/uploads/2021/03/FOSSEY-ARORA1new-1024x129.png 1024w, https://fosseyarora.com/wp-content/uploads/2021/03/FOSSEY-ARORA1new-300x38.png 300w, https://fosseyarora.com/wp-content/uploads/2021/03/FOSSEY-ARORA1new-768x97.png 768w, https://fosseyarora.com/wp-content/uploads/2021/03/FOSSEY-ARORA1new-1536x193.png 1536w, https://fosseyarora.com/wp-content/uploads/2021/03/FOSSEY-ARORA1new.png
+  - https://fosseyarora.com/wp-content/uploads/2021/06/lancelot-knightsbridge-4.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/1s_GgZOQ.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/7Ajbj5RQ.jpg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/7XmwWzxw.png
+  - https://fosseyarora.com/wp-content/uploads/2022/10/JTBf04kw.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/KILO-0316-0009-scaled-1.jpg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/OZs1oDQg.jpg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/VL0gAQgg-2048x1556-1.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/ZJ3bsRpA.jpg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/a9YSJDvg-768x512-1.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/cadogan-sq-15.png
+  - https://fosseyarora.com/wp-content/uploads/2022/10/campden-kensington-7-2048x1551-1.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/canada_gardens_1.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/eastheath3.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/ennismore_fetures.png
+  - https://fosseyarora.com/wp-content/uploads/2022/10/fet.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/gxMkz8QQ.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/kingsland.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/n_Y6DS2A.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/ogTtPyDw-2048x1448-1.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/rflVvE6Q.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/vbCrqlzA.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/w5L7vJNA.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/wiven_fet.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/wsbJ5NPA.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/xLetC1cQ-2048x1365-1.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2022/10/yello-interiors2-2048x1365-1.jpeg
+  - https://fosseyarora.com/wp-content/uploads/2023/03/Chastje-Header-Image-2.jpg
+  - https://fosseyarora.com/wp-content/uploads/2023/03/Glebe-Cottage-Header-Image-1.jpg
+  - https://fosseyarora.com/wp-content/uploads/2023/03/KILO-0358-0025-1-scaled.jpg
+  - https://fosseyarora.com/wp-content/uploads/2023/03/KILO-FOA-SK-0476.jpg
+  - https://fosseyarora.com/wp-content/uploads/2023/03/The-Robinson-Outdoor-1-scaled.jpg
+  - https://fosseyarora.com/wp-content/uploads/2023/03/Villa-Ginestre-Header-Image-scaled.jpg
+
+==================================================
+
+ELEMENTOR / WORDPRESS CONTAINER EXTRACIONS:
+FOUND 52 UNIQUE HREF LINKS:
+  - https://fosseyarora.com/portfolio/
+  - https://fosseyarora.com/projects/alameda/
+  - https://fosseyarora.com/projects/beton/
+  - https://fosseyarora.com/projects/borley/
+  - https://fosseyarora.com/projects/cadogan-square/
+  - https://fosseyarora.com/projects/campden-kensington/
+  - https://fosseyarora.com/projects/canada-gardens-2/
+  - https://fosseyarora.com/projects/canada-gardens-3/
+  - https://fosseyarora.com/projects/chastje/
+  - https://fosseyarora.com/projects/eastheath-garden/
+  - https://fosseyarora.com/projects/eastheath-house/
+  - https://fosseyarora.com/projects/ennismore/
+  - https://fosseyarora.com/projects/ferrum/
+  - https://fosseyarora.com/projects/grandwest-pre-prep-2/
+  - https://fosseyarora.com/projects/grandwest-pre-prep/
+  - https://fosseyarora.com/projects/holloway-circuit/
+  - https://fosseyarora.com/projects/kingsland-pre-prep-2/
+  - https://fosseyarora.com/projects/kingsland-pre-prep/
+  - https://fosseyarora.com/projects/lancelot-knightsbridge/
+  - https://fosseyarora.com/projects/lancelot-penthouse/
+  - https://fosseyarora.com/projects/landsby/
+  - https://fosseyarora.com/projects/madison-2/
+  - https://fosseyarora.com/projects/madison/
+  - https://fosseyarora.com/projects/old-church-street/
+  - https://fosseyarora.com/projects/queensgate-kensington/
+  - https://fosseyarora.com/projects/quintain-living-hq/
+  - https://fosseyarora.com/projects/quintain-the-yellow/
+  - https://fosseyarora.com/projects/st-lukes-mews/
+  - https://fosseyarora.com/projects/the-robinson-2/
+  - https://fosseyarora.com/projects/the-robinson/
+  - https://fosseyarora.com/projects/wentworth/
+  - https://fosseyarora.com/projects/wivenhoe-house/
+  - https://fosseyarora.com/wp-json/oembed/1.0/embed?url=https%3A%2F%2Ffosseyarora.com%2Fportfolio%2F
+  - https://fosseyarora.com/wp-json/oembed/1.0/embed?url=https%3A%2F%2Ffosseyarora.com%2Fportfolio%2F&#038;format=xml
+
+==================================================
+
+SEARCH FOR KEYWORD: cadogan
+--- MATCH SNIPPET ---
+                              </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/cadogan-square/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/cadogan-sq-15.png );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Cadogan Square
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/campden-kensington/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/campden-kensington-7-2048x1551-1.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="m
+---------------------
+
+--- MATCH SNIPPET ---
+            target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/cadogan-sq-15.png );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Cadogan Square
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/campden-kensington/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/campden-kensington-7-2048x1551-1.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Campden Kensington
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-
+---------------------
+
+--- MATCH SNIPPET ---
+seyarora.com/wp-content/uploads/2022/10/cadogan-sq-15.png );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Cadogan Square
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/campden-kensington/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/campden-kensington-7-2048x1551-1.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Campden Kensington
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/queensgate-kensington/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item md
+---------------------
+
+SEARCH FOR KEYWORD: Glebe
+--- MATCH SNIPPET ---
+                                       </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/glebe-cottage/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Glebe-Cottage-Header-Image-1.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Glebe Cottage
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/chastje/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Chastje-Header-Image-2.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imag
+---------------------
+
+--- MATCH SNIPPET ---
+            target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Glebe-Cottage-Header-Image-1.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Glebe Cottage
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/chastje/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Chastje-Header-Image-2.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Chastje
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-i
+---------------------
+
+--- MATCH SNIPPET ---
+-content/uploads/2023/03/Glebe-Cottage-Header-Image-1.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Glebe Cottage
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/chastje/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Chastje-Header-Image-2.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Chastje
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/canada-gardens-2/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+               
+---------------------
+
+SEARCH FOR KEYWORD: Robinson
+--- MATCH SNIPPET ---
+                          </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/the-robinson/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/KILO-0358-0025-1-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    The Robinson
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/the-robinson-2/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/The-Robinson-Outdoor-1-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imag
+---------------------
+
+--- MATCH SNIPPET ---
+p-content/uploads/2023/03/KILO-0358-0025-1-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    The Robinson
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/the-robinson-2/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/The-Robinson-Outdoor-1-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    The Robinson Outdoor
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/old-church-street/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid
+---------------------
+
+--- MATCH SNIPPET ---
+                          </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/the-robinson-2/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/The-Robinson-Outdoor-1-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    The Robinson Outdoor
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/old-church-street/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/KILO-0316-0009-scaled-1.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div cl
+---------------------
+
+--- MATCH SNIPPET ---
+        target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/The-Robinson-Outdoor-1-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    The Robinson Outdoor
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/old-church-street/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/KILO-0316-0009-scaled-1.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    OLD CHURCH STREET
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap
+---------------------
+
+--- MATCH SNIPPET ---
+ent/uploads/2023/03/The-Robinson-Outdoor-1-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    The Robinson Outdoor
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/old-church-street/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/KILO-0316-0009-scaled-1.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    OLD CHURCH STREET
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/borley/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+    
+---------------------
+
+SEARCH FOR KEYWORD: Chastje
+--- MATCH SNIPPET ---
+                              </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/chastje/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Chastje-Header-Image-2.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Chastje
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/canada-gardens-2/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/canada_gardens_1.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+ 
+---------------------
+
+--- MATCH SNIPPET ---
+            target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Chastje-Header-Image-2.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Chastje
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/canada-gardens-2/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/canada_gardens_1.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Canada Gardens
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imag
+---------------------
+
+--- MATCH SNIPPET ---
+com/wp-content/uploads/2023/03/Chastje-Header-Image-2.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Chastje
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/canada-gardens-2/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/canada_gardens_1.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Canada Gardens
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/canada-gardens-3/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+            
+---------------------
+
+SEARCH FOR KEYWORD: Ginestre
+--- MATCH SNIPPET ---
+widget_type="mdp-imager-elementor.default">
+				<div class="elementor-widget-container">
+			
+        <div class="mdp-imager-container">
+
+            
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/villa-ginestre/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Villa-Ginestre-Header-Image-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Villa Ginestre
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/glebe-cottage/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Glebe-Cottage-Header-Image-1.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-im
+---------------------
+
+--- MATCH SNIPPET ---
+      target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Villa-Ginestre-Header-Image-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Villa Ginestre
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/glebe-cottage/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Glebe-Cottage-Header-Image-1.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Glebe Cottage
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blu
+---------------------
+
+--- MATCH SNIPPET ---
+oads/2023/03/Villa-Ginestre-Header-Image-scaled.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Villa Ginestre
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/glebe-cottage/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/Glebe-Cottage-Header-Image-1.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Glebe Cottage
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/chastje/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                       
+---------------------
+
+SEARCH FOR KEYWORD: eastheath
+--- MATCH SNIPPET ---
+                              </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/eastheath-house/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/vbCrqlzA.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Eastheath House
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/eastheath-garden/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/eastheath3.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+      
+---------------------
+
+--- MATCH SNIPPET ---
+/fosseyarora.com/wp-content/uploads/2022/10/vbCrqlzA.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Eastheath House
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/eastheath-garden/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/eastheath3.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Eastheath Garden
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/ennismore/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                 
+---------------------
+
+--- MATCH SNIPPET ---
+                              </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/eastheath-garden/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/eastheath3.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Eastheath Garden
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/ennismore/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/ennismore_fetures.png );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+   
+---------------------
+
+--- MATCH SNIPPET ---
+            target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/eastheath3.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Eastheath Garden
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/ennismore/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/ennismore_fetures.png );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Ennismore
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-defau
+---------------------
+
+--- MATCH SNIPPET ---
+osseyarora.com/wp-content/uploads/2022/10/eastheath3.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Eastheath Garden
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/ennismore/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/ennismore_fetures.png );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Ennismore
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/lancelot-knightsbridge/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+           
+---------------------
+
+SEARCH FOR KEYWORD: canada_gardens
+--- MATCH SNIPPET ---
+            target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/canada_gardens_1.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Canada Gardens
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/canada-gardens-3/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2023/03/KILO-FOA-SK-0476.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Canada Gardens Outdoor
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-im
+---------------------
+
+SEARCH FOR KEYWORD: lancelot
+--- MATCH SNIPPET ---
+                              </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/lancelot-knightsbridge/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2021/06/lancelot-knightsbridge-4.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Lancelot Knightsbridge
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/lancelot-penthouse/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/ZJ3bsRpA.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class=
+---------------------
+
+--- MATCH SNIPPET ---
+            target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2021/06/lancelot-knightsbridge-4.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Lancelot Knightsbridge
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/lancelot-penthouse/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/ZJ3bsRpA.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Lancelot Penthouse
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager
+---------------------
+
+--- MATCH SNIPPET ---
+/wp-content/uploads/2021/06/lancelot-knightsbridge-4.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Lancelot Knightsbridge
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/lancelot-penthouse/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/ZJ3bsRpA.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Lancelot Penthouse
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/holloway-circuit/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+ 
+---------------------
+
+--- MATCH SNIPPET ---
+                              </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/lancelot-penthouse/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/ZJ3bsRpA.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Lancelot Penthouse
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/holloway-circuit/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/fet.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+       
+---------------------
+
+--- MATCH SNIPPET ---
+//fosseyarora.com/wp-content/uploads/2022/10/ZJ3bsRpA.jpg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Lancelot Penthouse
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        <div class="mdp-imager-wrap mdp-imager-blur mdp-imager-details-default-">
+
+                            <a href="https://fosseyarora.com/projects/holloway-circuit/"
+                   target=""
+                   rel="nofollow">
+            
+                <div class="mdp-imager-item mdp-imager-box-grid ">
+
+                            <div class="mdp-imager-box-image ">
+            <div style="background-image: url( https://fosseyarora.com/wp-content/uploads/2022/10/fet.jpeg );"
+                 class="mdp-imager-image"></div>
+        </div>
+                            <div class="mdp-imager-box-overlay">
+                        
+            <div class="mdp-imager-box-title">
+                
+                    Holloway Circuit
+                            </div>
+
+        
+                                            </div>
+                
+                </div>
+
+                            </a>
+        
+
+
+        </div>
+
+        
+        </div>
+
+        		</div>
+				</div>
+						</div>
+					</div>
+		</div>
+								</div>
+					</div>
+		</section>
+						</div>
+					</div>
+		</div>
+								</div>
+					</div>
+		</section>
+									</div>
+			</div>
+					</div>
+				<div data-elementor-type="footer" data-elementor-id="2800" class="elementor elementor-2800 eleme
+---------------------
+

@@ -1,0 +1,12 @@
+{
+  "AllowMultiple": "false",
+  "Description": "\"Fix missing closing bracket for handleLegSelect.\"",
+  "EndLine": "189",
+  "Instruction": "\"Add closing bracket for handleLegSelect before triggerIntakeUpload.\"",
+  "ReplacementContent": "\"  const handleLegSelect = async (legId) => {\\n    setSelectedLeg(legId);\\n    if (dbConnected && order.id) {\\n      try {\\n        const client = window.supabase.createClient(localStorage.getItem(\\\"supabase_url\\\"), localStorage.getItem(\\\"supabase_key\\\"));\\n        await client.from(\\\"projects\\\").update({ selected_leg: legId }).eq(\\\"id\\\", order.id);\\n      } catch (err) {\\n        console.error(\\\"Supabase leg sync error:\\\", err);\\n      }\\n    }\\n  };\\n\\n  const triggerIntakeUpload = () => {\\n    setIsIntakeUploading(true);\\n    setParsingLogs([]);\"",
+  "StartLine": "176",
+  "TargetContent": "\"  const handleLegSelect = async (legId) => {\\n    setSelectedLeg(legId);\\n    if (dbConnected && order.id) {\\n      try {\\n        const client = window.supabase.createClient(localStorage.getItem(\\\"supabase_url\\\"), localStorage.getItem(\\\"supabase_key\\\"));\\n        await client.from(\\\"projects\\\").update({ selected_leg: legId }).eq(\\\"id\\\", order.id);\\n      } catch (err) {\\n        console.error(\\\"Supabase leg sync error:\\\", err);\\n      }\\n    }\\n  const triggerIntakeUpload = () => {\\n    setIsIntakeUploading(true);\\n    setParsingLogs([]);\"",
+  "TargetFile": "\"e:\\\\CraftonAI\\\\src\\\\app.jsx\"",
+  "toolAction": "\"Fixing handleLegSelect closing bracket in app.jsx\"",
+  "toolSummary": "\"Fix brackets\""
+}

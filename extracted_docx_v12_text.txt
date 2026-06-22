@@ -1,0 +1,4 @@
+
+将网站导航栏的栏目修改为以下几个HOME “HOW IT WORKS” “CASE STUDY” “BESPOKE FURNITURE” “SET FURNITURE” “CONTACT”
+对于home page的修改.    1.Home page第一个Hero section 里面的 “simulate 17-stages”的按钮删除掉    2.Hero section下面紧接着展示“tell us what you need”section。文字内容，按照下边一张图嚟做，展示我哋可以以下边 4 种形式嚟接收客户嘅文件或者佢嘅需求。请你正确地表达一个资讯，排版可以按照你自己的设计来排版。
+对于“how it work”页面的修改，请参照以下图片修改，精确表达图片中的文字内容，但在排版和设计方面，你可以按自己的意思去做：
