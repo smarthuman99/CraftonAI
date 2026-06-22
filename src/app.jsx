@@ -116,6 +116,7 @@ const getLogActionEn = (cnText) => {
 };
 
 function App() {
+  console.log("=== APP COMPONENT EXECUTING ===");
   const [currentView, setCurrentStageView] = useState("Marketing"); // Views: "Marketing", "Backoffice", "ClientPortal"
   const [lang, setLang] = useState("Cn"); // Language: "Cn" or "En"
   const [marketingTab, setMarketingTab] = useState("Overview"); // "Overview", "CaseStudies", "OurStory", "Contact"
@@ -1589,6 +1590,7 @@ function App() {
 
   // Listen to postMessage from child loading-ai
   useEffect(() => {
+    console.log("=== APP COMPONENT MOUNTED (EFFECT) ===");
     const handleChildMessage = (e) => {
       if (e.data && e.data.type === 'CRAFTON_CHILD_LANG_CHANGE') {
         setLang(e.data.lang); // "Cn" or "En"
@@ -2912,6 +2914,8 @@ function App() {
         </div>
       </div>
     );
+  };
+
   const getSwatchBgColor = (code) => {
     switch (code) {
       case 'WD-01': return '#3a2d24'; // American Walnut
@@ -3383,6 +3387,7 @@ function App() {
     );
   };
 
+  console.log("=== APP RENDER STATEMENT REACHED ===");
   return (
     <div>
       {/* Supabase Connection Drawer */}
@@ -6607,7 +6612,6 @@ function App() {
       {showAuthGate && renderAuthGate()}
     </div>
   );
-}
 }
 
 export default App;
