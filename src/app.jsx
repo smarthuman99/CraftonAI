@@ -6993,80 +6993,7 @@ function App() {
           )}
 
           {marketingTab === "CaseStudies" && (
-            <div className="animate-fade-in" style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 2rem" }}>
-              {/* Full-bleed Header Banner */}
-              <div
-                style={{
-                  position: "relative",
-                  height: "350px",
-                  borderRadius: "8px",
-                  overflow: "hidden",
-                  marginBottom: "3rem",
-                  border: "1px solid var(--glass-border)",
-                  boxShadow: "0 15px 30px rgba(0,0,0,0.08)"
-                }}
-              >
-                <img
-                  src={IMAGES.masterShowwall}
-                  alt="THE CRAFTON Luxury Showwall"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: "linear-gradient(to right, rgba(26,25,24,0.95) 0%, rgba(26,25,24,0.3) 100%)",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    padding: "3rem"
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: "var(--font-tech)",
-                      fontSize: "0.85rem",
-                      letterSpacing: "3px",
-                      textTransform: "uppercase",
-                      color: "var(--accent-primary)",
-                      marginBottom: "0.8rem",
-                      display: "block"
-                    }}
-                  >
-                    {lang === "Cn" ? "全球高奢經典案卷" : "GLOBAL BESPOKE CASE ARCHIVES"}
-                  </span>
-                  <h2
-                    style={{
-                      fontSize: "2.2rem",
-                      color: "#FAF7F2",
-                      marginBottom: "1rem",
-                      fontWeight: "300",
-                      textAlign: "left"
-                    }}
-                  >
-                    {lang === "Cn"
-                      ? "將極致設計轉譯為不凡實景"
-                      : "Translating Extraordinary Visions into Living Realities"}
-                  </h2>
-                  <p
-                    style={{
-                      color: "var(--text-muted)",
-                      maxWidth: "600px",
-                      fontSize: "0.95rem",
-                      lineHeight: "1.6",
-                      textAlign: "left"
-                    }}
-                  >
-                    {lang === "Cn"
-                      ? "從倫敦梅費爾的對沖基金頂層沙發，到日內瓦落地窗前的極簡休閒椅。每一個經典項目均通過 THE CRAFTON 的全鏈路智能追溯，在物理阻燃、幾何精度與材料美學上達到極致融合。"
-                      : "From Geneva's full-bleed glass facades to Mayfair's executive lounges. Every signature case study is fully tracked and optimized by THE CRAFTON's workflows, guaranteeing structural safety and timeless styling."}
-                  </p>
-                </div>
-              </div>
-
+            <div className="animate-fade-in" style={{ maxWidth: "1200px", margin: "0 auto", padding: "4rem 2rem" }}>
               {/* Case Studies Grid - Asymmetrical Editorial Layout */}
               <div
                 style={{
@@ -7304,7 +7231,7 @@ function App() {
                   >
                     <div
                       style={{
-                        height: idx === 0 || idx === 3 ? "320px" : "220px",
+                        height: idx === 0 || idx === 3 ? "500px" : "360px",
                         overflow: "hidden",
                         position: "relative"
                       }}
@@ -7325,26 +7252,47 @@ function App() {
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          background: "linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(26,25,24,0.6) 100%)",
+                          background: "linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(26,25,24,0.85) 100%)",
                           zIndex: 1
                         }}
                       ></div>
-                      <span
+                      <div
                         style={{
                           position: "absolute",
-                          left: "1.2rem",
-                          bottom: "1rem",
+                          left: "1.5rem",
+                          bottom: "1.5rem",
                           zIndex: 2,
-                          fontFamily: "var(--font-tech)",
-                          color: "#FAF7F2",
-                          fontSize: "1.4rem",
-                          fontWeight: "300",
-                          letterSpacing: "1px",
-                          textShadow: "0 2px 4px rgba(0,0,0,0.4)"
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.3rem"
                         }}
                       >
-                        {c.initials}
-                      </span>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-tech)",
+                            color: "var(--accent-secondary)",
+                            fontSize: "0.8rem",
+                            fontWeight: "500",
+                            letterSpacing: "2px",
+                            textTransform: "uppercase"
+                          }}
+                        >
+                          {c.initials} &nbsp;|&nbsp; {lang === "Cn" ? c.locationCn : c.locationEn}
+                        </span>
+                        <h4
+                          style={{
+                            margin: 0,
+                            fontSize: idx === 0 || idx === 3 ? "1.6rem" : "1.3rem",
+                            color: "#FAF7F2",
+                            fontWeight: "300",
+                            fontFamily: "var(--font-tech)",
+                            letterSpacing: "1px",
+                            textShadow: "0 2px 4px rgba(0,0,0,0.6)"
+                          }}
+                        >
+                          {lang === "Cn" ? c.titleCn : c.titleEn}
+                        </h4>
+                      </div>
                       <span
                         style={{
                           position: "absolute",
@@ -7363,68 +7311,6 @@ function App() {
                       >
                         {lang === "Cn" ? c.tagCn : c.tagEn}
                       </span>
-                    </div>
-                    <div
-                      style={{
-                        padding: "1.5rem",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        flexGrow: 1
-                      }}
-                    >
-                      <div>
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "0.5rem"
-                          }}
-                        >
-                          <h4
-                            style={{
-                              margin: 0,
-                              fontSize: "1.15rem",
-                              color: "var(--text-primary)",
-                              fontWeight: "500",
-                              fontFamily: "var(--font-tech)"
-                            }}
-                          >
-                            {lang === "Cn" ? c.titleCn : c.titleEn}
-                          </h4>
-                          <span
-                            style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-tech)" }}
-                          >
-                            {lang === "Cn" ? c.locationCn : c.locationEn}
-                          </span>
-                        </div>
-                        <p
-                          style={{
-                            margin: 0,
-                            fontSize: "0.85rem",
-                            color: "var(--text-secondary)",
-                            lineHeight: "1.6",
-                            textAlign: "left"
-                          }}
-                        >
-                          {lang === "Cn" ? c.descCn : c.descEn}
-                        </p>
-                      </div>
-                      <div
-                        style={{
-                          marginTop: "1.2rem",
-                          paddingTop: "0.8rem",
-                          borderTop: "1px dashed var(--glass-border)",
-                          fontSize: "0.72rem",
-                          color: "var(--text-muted)",
-                          fontFamily: "var(--font-sans)",
-                          letterSpacing: "0.5px",
-                          textTransform: "uppercase"
-                        }}
-                      >
-                        {lang === "Cn" ? c.specsCn : c.specsEn}
-                      </div>
                     </div>
                   </div>
                 ))}
