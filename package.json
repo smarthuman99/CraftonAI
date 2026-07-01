@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "lint": "eslint src/app.jsx src/main.jsx src/components --report-unused-disable-directives --max-warnings 0",
     "format": "prettier --write .",
+    "support:ai": "node --env-file-if-exists=server/.env server/ai-support-server.mjs",
+    "worker:intake": "node --env-file-if-exists=server/.env server/intake-worker.mjs",
+    "worker:intake:once": "node --env-file-if-exists=server/.env server/intake-worker.mjs --once",
     "prepare": "husky install"
   },
   "dependencies": {

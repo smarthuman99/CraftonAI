@@ -46,7 +46,11 @@ export default [
         await: "readonly",
         alert: "readonly",
         confirm: "readonly",
-        prompt: "readonly"
+        prompt: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        File: "readonly",
+        AbortController: "readonly"
       }
     },
     plugins: {

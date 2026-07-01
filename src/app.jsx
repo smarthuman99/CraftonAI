@@ -60,8 +60,25 @@ const safeRemoveItem = (key) => {
   }
 };
 
+const clearSupabaseAuthStorage = () => {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("sb-") && key.includes("auth-token")) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  } catch (e) {
+    console.warn("Supabase auth token cleanup was skipped:", e);
+  }
+};
+
 // Inject into window for backward compatibility with legacy prototype code
 window.supabase = { createClient };
+
+const AI_SUPPORT_API_URL = import.meta.env.VITE_AI_SUPPORT_API_URL || "http://127.0.0.1:8787/api/ai-support-chat";
 
 // Initialize Supabase from localStorage with robust safety guards
 const savedUrl = safeGetItem("supabase_url");
@@ -75,6 +92,38 @@ if (savedUrl && savedKey && window.supabase) {
     console.error("Supabase initialization error:", err);
   }
 }
+
+const getSupabaseBrowserClient = () => {
+  const url = safeGetItem("supabase_url");
+  const key = safeGetItem("supabase_key");
+  if (!url || !key || !window.supabase) return null;
+  return window.supabase.createClient(url, key);
+};
+
+const getDisplayNameFromEmail = (email = "") => {
+  const nameFromEmail = email.split("@")[0] || "Client";
+  return nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+};
+
+const mapSupabaseUserToAppUser = (supabaseUser, fallback = {}) => {
+  const metadata = supabaseUser?.user_metadata || {};
+  const email = supabaseUser?.email || fallback.email || "";
+  return {
+    id: supabaseUser?.id || fallback.id || null,
+    name: metadata.full_name || metadata.name || fallback.name || getDisplayNameFromEmail(email),
+    email,
+    company: metadata.company || fallback.company || "Independent Designer",
+    messenger: metadata.preferred_messenger || fallback.messenger || "WhatsApp",
+    messengerId: metadata.messenger_id || fallback.messengerId || "N/A",
+    avatarUrl: metadata.avatar_url || fallback.avatarUrl || "",
+    authProvider: supabaseUser?.app_metadata?.provider || fallback.authProvider || "email"
+  };
+};
+
+const getOAuthRedirectUrl = () => {
+  if (typeof window === "undefined") return undefined;
+  return window.location.href.split("#")[0].split("?")[0];
+};
 
 const getLogActionEn = (cnText) => {
   if (!cnText) return "";
@@ -125,6 +174,116 @@ const getLogActionEn = (cnText) => {
   return cnText; // Fallback
 };
 
+const REVIEW_STATUS_META = {
+  pending: { label: "Needs Cho review", tone: "orange" },
+  revision_requested: { label: "Client answers needed", tone: "red" },
+  approved: { label: "Specs approved", tone: "green" },
+  rejected: { label: "Rejected", tone: "red" },
+  rfq_ready: { label: "RFQ draft ready", tone: "green" }
+};
+
+const PREQUOTE_SUPPLIERS = [
+  { name: "Foshan Gold-Sun Contract", leadTime: "45 days", terms: "50/40/10", score: 92 },
+  { name: "Dongguan Atelier Works", leadTime: "52 days", terms: "40/50/10", score: 86 },
+  { name: "Shenzhen Hospitality Mill", leadTime: "48 days", terms: "50/30/20", score: 83 }
+];
+
+const safeJsonObject = (value, fallback = {}) => {
+  if (!value) return fallback;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch (err) {
+    console.warn("Failed to parse JSON object:", err);
+    return fallback;
+  }
+};
+
+const normalizeReviewJob = (job = {}) => {
+  const result = safeJsonObject(job.result_json, {});
+  const project = result.project || {};
+  const items = Array.isArray(result.items) ? result.items : [];
+  const questions = Array.isArray(result.questions) ? result.questions : [];
+  const rfqDraft = safeJsonObject(job.rfq_draft_json, null);
+
+  return {
+    id: job.id || "LOCAL-INTAKE-DEMO",
+    projectId: job.project_id || null,
+    projectName: job.project_name || project.name || "",
+    destination: job.destination || project.destination || "",
+    quantityText: job.quantity_text || "",
+    status: job.status || "needs_review",
+    reviewStatus: job.review_status || (job.status === "completed" ? "approved" : "pending"),
+    rfqStatus: job.rfq_status || "not_started",
+    reviewNotes: job.review_notes || "",
+    clientAnswers: safeJsonObject(job.client_answers, {}),
+    sourceNotes: result.source_notes || job.brief_text || "",
+    summaryEn: result.summary_en || "Intake draft parsed from client materials.",
+    questions,
+    rfqDraft,
+    items: items.map((item, idx) => ({
+      id: item.id || `DRAFT-ITEM-${idx + 1}`,
+      typeCn: item.item_type_cn || item.typeCn || "Customer bespoke item",
+      typeEn: item.item_type_en || item.typeEn || "Submitted Bespoke Item",
+      qty: Number(item.quantity || item.qty || 0),
+      materialCn: item.material_cn || item.materialCn || "To confirm",
+      materialEn: item.material_en || item.materialEn || "To confirm",
+      originalUnitPrice: Number(
+        item.original_unit_price || item.originalUnitPrice || item.unit_price || item.unitPrice || 0
+      ),
+      unitPrice: Number(item.unit_price || item.unitPrice || item.original_unit_price || item.originalUnitPrice || 0),
+      notesCn: item.notes_cn || item.notesCn || "",
+      notesEn: item.notes_en || item.notesEn || item.note || ""
+    }))
+  };
+};
+
+const denormalizeReviewDraft = (draft) => ({
+  project: {
+    name: draft.projectName || "Crafton Intake Project",
+    client_name: "Portal Intake Client",
+    destination: draft.destination || ""
+  },
+  items: (draft.items || []).map((item) => ({
+    item_type_cn: item.typeCn || item.typeEn || "Custom item",
+    item_type_en: item.typeEn || "Custom item",
+    quantity: Number(item.qty || 0),
+    material_cn: item.materialCn || item.materialEn || "",
+    material_en: item.materialEn || "",
+    original_unit_price: Number(item.originalUnitPrice || item.unitPrice || 0),
+    unit_price: Number(item.unitPrice || item.originalUnitPrice || 0),
+    notes_cn: item.notesCn || item.notesEn || "",
+    notes_en: item.notesEn || ""
+  })),
+  questions: draft.questions || [],
+  summary_cn: "Cho reviewed the AI intake draft.",
+  summary_en: "Cho reviewed the AI intake draft and prepared it for pre-quote handling.",
+  source_notes: draft.sourceNotes || ""
+});
+
+const buildRfqDraft = (draft) => {
+  const items = draft.items || [];
+  const estimatedTotal = items.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.unitPrice || 0), 0);
+
+  return {
+    project_name: draft.projectName,
+    destination: draft.destination,
+    package_status: "draft",
+    generated_at: new Date().toISOString(),
+    items: items.map((item) => ({
+      item: item.typeEn,
+      quantity: Number(item.qty || 0),
+      material: item.materialEn,
+      target_unit_price: Number(item.unitPrice || 0),
+      notes: item.notesEn || ""
+    })),
+    suppliers: PREQUOTE_SUPPLIERS.map((supplier, idx) => ({
+      ...supplier,
+      estimatedTotal: Math.round(estimatedTotal * (0.95 + idx * 0.06))
+    }))
+  };
+};
+
 function App() {
   console.log("=== APP COMPONENT EXECUTING ===");
   const [currentView, setCurrentStageView] = useState("Marketing"); // Views: "Marketing", "Backoffice", "ClientPortal"
@@ -140,6 +299,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [authMode, setAuthMode] = useState("login"); // "login" or "signup"
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   // Custom Registration Input States
   const [signupName, setSignupName] = useState("");
@@ -150,9 +311,35 @@ function App() {
   const [signupMessengerId, setSignupMessengerId] = useState("");
 
   // B2B Client Intake Form States
-  const [intakeProjectName, setIntakeProjectName] = useState("St Albans Boutique Hotel Lobby");
-  const [intakeDestination, setIntakeDestination] = useState("London, UK");
-  const [intakeQuantity, setIntakeQuantity] = useState("40 Lobby Armchairs, 20 Club Chairs");
+  const [intakeProjectName, setIntakeProjectName] = useState("");
+  const [intakeDestination, setIntakeDestination] = useState("");
+  const [intakeQuantity, setIntakeQuantity] = useState("");
+  const [intakeSelectedFile, setIntakeSelectedFile] = useState(null);
+  const [intakeSelectedFileName, setIntakeSelectedFileName] = useState("");
+  const [latestIntakeJob, setLatestIntakeJob] = useState(null);
+  const [liveIntakeWarning, setLiveIntakeWarning] = useState("");
+  const [submittedTrackerProject, setSubmittedTrackerProject] = useState(null);
+  const [trackerPreviewUrl, setTrackerPreviewUrl] = useState("");
+  const [intakeReviewJobs, setIntakeReviewJobs] = useState([]);
+  const [selectedReviewJobId, setSelectedReviewJobId] = useState("");
+  const [reviewDraft, setReviewDraft] = useState(null);
+  const [reviewNote, setReviewNote] = useState("");
+  const [prequoteNotice, setPrequoteNotice] = useState("");
+  const [clientProjectJobs, setClientProjectJobs] = useState([]);
+  const [clientAnswerDrafts, setClientAnswerDrafts] = useState({});
+  const [supportMessages, setSupportMessages] = useState([
+    {
+      sender: "ai",
+      text: "您好，我是 Crafton AI 客服。您可以直接描述项目、数量、交付地、材质、防火要求，或上传 PDF / 图片 / Excel。我会先帮您整理需求，并提交给 Crafton 顾问团队跟进项目草稿。"
+    }
+  ]);
+  const [supportInput, setSupportInput] = useState("");
+  const [supportSelectedFile, setSupportSelectedFile] = useState(null);
+  const [supportSelectedFileName, setSupportSelectedFileName] = useState("");
+  const [supportUploadedFileId, setSupportUploadedFileId] = useState(null);
+  const [supportConversationId, setSupportConversationId] = useState(null);
+  const [supportIsTyping, setSupportIsTyping] = useState(false);
+  const [supportStatus, setSupportStatus] = useState("");
 
   const [currentStageIndex, setCurrentStageIndex] = useState(0); // S01 to S17
   const [order, setOrder] = useState(JSON.parse(JSON.stringify(mockData.initialOrder)));
@@ -170,6 +357,7 @@ function App() {
   const [splitDeliveryActive, setSplitDeliveryActive] = useState(false);
   const [isCrib5Blocked, setIsCrib5Blocked] = useState(false);
   const terminalEndRef = useRef(null);
+  const supportConversationIdRef = useRef(null);
 
   // Material Studio Swatch Configurator States
   const [selectedFabric, setSelectedFabric] = useState("FAB-02"); // default Navy Classic Linen
@@ -198,6 +386,7 @@ function App() {
   const [modalTextBrief, setModalTextBrief] = useState("");
   const [modalFilePreloaded, setModalFilePreloaded] = useState(false);
   const [modalFilePreloadedName, setModalFilePreloadedName] = useState("");
+  const [modalSelectedFile, setModalSelectedFile] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null); // null or project object for detail overlay modal
 
   // V1.3 Marketing Bespoke Simulation States (Now modularly encapsulated in CVQASimulator and ClientPortalTeaser)
@@ -245,6 +434,209 @@ function App() {
     setMarketingTab("Overview");
   };
 
+  const syncAuthenticatedUserProfile = async (supabaseUser, profilePatch = {}) => {
+    if (!supabaseUser) return;
+
+    const client = getSupabaseBrowserClient();
+    if (!client) return;
+
+    const appUser = mapSupabaseUserToAppUser(supabaseUser, profilePatch);
+
+    try {
+      await client.from("user_profiles").upsert(
+        {
+          user_id: supabaseUser.id,
+          full_name: appUser.name,
+          company: appUser.company,
+          preferred_messenger: appUser.messenger,
+          messenger_id: appUser.messengerId,
+          avatar_url: appUser.avatarUrl || null,
+          onboarding_status: "active"
+        },
+        { onConflict: "user_id" }
+      );
+
+      const identities = Array.isArray(supabaseUser.identities) ? supabaseUser.identities : [];
+      const providerRows =
+        identities.length > 0
+          ? identities
+              .map((identity) => ({
+                user_id: supabaseUser.id,
+                provider: identity.provider,
+                provider_subject: identity.id || identity.identity_id,
+                email: supabaseUser.email || identity.identity_data?.email || null,
+                email_verified: Boolean(supabaseUser.email_confirmed_at || identity.identity_data?.email_verified),
+                last_used_at: new Date().toISOString()
+              }))
+              .filter(
+                (identity) => ["email", "google", "apple"].includes(identity.provider) && identity.provider_subject
+              )
+          : [
+              {
+                user_id: supabaseUser.id,
+                provider: "email",
+                provider_subject: supabaseUser.id,
+                email: supabaseUser.email || null,
+                email_verified: Boolean(supabaseUser.email_confirmed_at),
+                last_used_at: new Date().toISOString()
+              }
+            ];
+
+      if (providerRows.length > 0) {
+        await client.from("account_identities").upsert(providerRows, { onConflict: "provider,provider_subject" });
+      }
+    } catch (err) {
+      console.warn("User profile sync failed. Has the identity migration been run?", err.message || err);
+    }
+  };
+
+  const handleAuthLogin = async (e) => {
+    if (e) e.preventDefault();
+    setAuthError("");
+
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setAuthError(lang === "Cn" ? "请先连接 Supabase 再登录。" : "Connect Supabase before signing in.");
+      return;
+    }
+
+    if (!signupEmail || !signupPassword) {
+      setAuthError(lang === "Cn" ? "请输入邮箱和密码。" : "Please enter email and password.");
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      const { data, error } = await client.auth.signInWithPassword({
+        email: signupEmail.trim(),
+        password: signupPassword
+      });
+
+      if (error) throw error;
+      if (!data?.user) throw new Error("No authenticated user returned.");
+
+      await syncAuthenticatedUserProfile(data.user);
+      setUser(mapSupabaseUserToAppUser(data.user));
+      setShowAuthGate(false);
+      await fetchSupabaseData();
+      await loadLatestSubmittedTrackerProject();
+    } catch (err) {
+      setAuthError(err.message || "Sign in failed.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleAuthSignUp = async (e) => {
+    if (e) e.preventDefault();
+    setAuthError("");
+
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setAuthError(lang === "Cn" ? "请先连接 Supabase 再注册。" : "Connect Supabase before registering.");
+      return;
+    }
+
+    if (!signupEmail || !signupName || !signupPassword) {
+      setAuthError(lang === "Cn" ? "请填写邮箱、姓名和密码。" : "Please fill in email, name, and password.");
+      return;
+    }
+
+    if (signupPassword.length < 8) {
+      setAuthError(lang === "Cn" ? "密码至少 8 位。" : "Password must be at least 8 characters.");
+      return;
+    }
+
+    setAuthLoading(true);
+    const profilePatch = {
+      name: signupName,
+      email: signupEmail,
+      company: signupCompany || "Independent Designer",
+      messenger: signupMessenger,
+      messengerId: signupMessengerId || "N/A"
+    };
+
+    try {
+      const { data, error } = await client.auth.signUp({
+        email: signupEmail.trim(),
+        password: signupPassword,
+        options: {
+          emailRedirectTo: getOAuthRedirectUrl(),
+          data: {
+            full_name: signupName,
+            company: signupCompany || "Independent Designer",
+            preferred_messenger: signupMessenger,
+            messenger_id: signupMessengerId || "N/A"
+          }
+        }
+      });
+
+      if (error) throw error;
+      if (data?.user) await syncAuthenticatedUserProfile(data.user, profilePatch);
+
+      if (data?.session && data?.user) {
+        setUser(mapSupabaseUserToAppUser(data.user, profilePatch));
+        setShowAuthGate(false);
+        await fetchSupabaseData();
+        await loadLatestSubmittedTrackerProject();
+      } else {
+        setAuthError(
+          lang === "Cn"
+            ? "注册已送出，请到邮箱完成验证后再登录。"
+            : "Registration submitted. Please verify your email, then sign in."
+        );
+      }
+    } catch (err) {
+      setAuthError(err.message || "Registration failed.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleAuthOAuthSignIn = async (provider) => {
+    setAuthError("");
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setAuthError(lang === "Cn" ? "请先连接 Supabase 再使用第三方登录。" : "Connect Supabase before OAuth sign in.");
+      return;
+    }
+
+    setAuthLoading(true);
+    const { error } = await client.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: getOAuthRedirectUrl()
+      }
+    });
+
+    if (error) {
+      setAuthError(error.message || `${provider} sign in failed.`);
+      setAuthLoading(false);
+    }
+  };
+
+  const handleAuthLogout = async () => {
+    const client = getSupabaseBrowserClient();
+    setAuthError("");
+    setAuthLoading(false);
+    setUser(null);
+    setSupportConversationId(null);
+    supportConversationIdRef.current = null;
+    setCurrentStageView("Marketing");
+    setMarketingTab("Overview");
+    setClientPortalTab("Intake");
+    setSubmittedTrackerProject(null);
+    setLatestIntakeJob(null);
+    setTrackerPreviewUrl("");
+    clearSupabaseAuthStorage();
+
+    if (client) {
+      client.auth
+        .signOut({ scope: "global" })
+        .catch((err) => console.warn("Supabase sign out failed:", err.message || err));
+    }
+  };
+
   const loginAsDemo = (role) => {
     if (role === "client") {
       setUser({
@@ -266,10 +658,413 @@ function App() {
     setShowAuthGate(false);
   };
 
-  const handleIntakeSubmit = (e) => {
+  const getPortalSupabaseContext = async ({ requireAuth = true } = {}) => {
+    if (!dbConnected || !window.supabase) return null;
+
+    const client = getSupabaseBrowserClient();
+    if (!client) return null;
+
+    const authResult = await client.auth.getUser().catch(() => ({ data: { user: null } }));
+    const supabaseUser = authResult?.data?.user || null;
+
+    if (requireAuth && !supabaseUser) {
+      setAuthMode("login");
+      setShowAuthGate(true);
+      setAuthError(
+        lang === "Cn"
+          ? "请先登录，系统才能把操作绑定到你的用户 ID。"
+          : "Please sign in so this action can be linked to your user ID."
+      );
+      return null;
+    }
+
+    return { client, supabaseUser };
+  };
+
+  const uploadIntakeFileRecord = async ({ file, fileType = "PORTAL_FORM", notes = "" }) => {
+    const context = await getPortalSupabaseContext();
+    if (!context) return null;
+
+    const { client, supabaseUser } = context;
+    const cleanName = file.name.replace(/[^\w.-]+/g, "_");
+    const storagePath = `${supabaseUser.id}/${Date.now()}-${cleanName}`;
+    const { error: uploadError } = await client.storage.from("intake-files").upload(storagePath, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false
+    });
+
+    if (uploadError) throw uploadError;
+
+    const { data: fileRow, error: fileError } = await client
+      .from("intake_files")
+      .insert({
+        user_id: supabaseUser.id,
+        uploaded_by: supabaseUser.id,
+        original_name: file.name,
+        storage_bucket: "intake-files",
+        storage_path: storagePath,
+        mime_type: file.type || null,
+        file_size: file.size || null,
+        intake_type: fileType,
+        notes
+      })
+      .select()
+      .single();
+
+    if (fileError) throw fileError;
+    return fileRow;
+  };
+
+  const createLiveIntakeJob = async ({
+    projectName,
+    destination,
+    quantity,
+    fileType,
+    textBrief,
+    file,
+    intakeFileId: existingIntakeFileId
+  }) => {
+    const context = await getPortalSupabaseContext();
+    if (!context) return null;
+
+    const { client, supabaseUser } = context;
+    let intakeFileId = existingIntakeFileId || null;
+
+    if (file && !intakeFileId) {
+      const fileRow = await uploadIntakeFileRecord({
+        file,
+        fileType: fileType || "PORTAL_FORM",
+        notes: textBrief || quantity || ""
+      });
+      intakeFileId = fileRow?.id || null;
+    }
+
+    const { data: job, error: jobError } = await client
+      .from("intake_jobs")
+      .insert({
+        intake_file_id: intakeFileId,
+        user_id: supabaseUser.id,
+        requested_by: supabaseUser.id,
+        project_name: projectName || null,
+        destination,
+        quantity_text: quantity,
+        brief_text: [projectName ? `Display project: ${projectName}` : "", textBrief || ""].filter(Boolean).join("\n"),
+        step: "parse_intake",
+        status: "queued"
+      })
+      .select()
+      .single();
+
+    if (jobError) throw jobError;
+    setLatestIntakeJob(job);
+    return job;
+  };
+
+  const summarizeSupportConversation = (messages = supportMessages) => {
+    return messages
+      .map((message) => `${message.sender === "client" ? "Client" : "Crafton AI"}: ${message.text}`)
+      .join("\n");
+  };
+
+  const ensureSupportConversation = async () => {
+    if (supportConversationIdRef.current) return supportConversationIdRef.current;
+
+    const context = await getPortalSupabaseContext();
+    if (!context) return null;
+
+    const { client, supabaseUser } = context;
+    const { data, error } = await client
+      .from("ai_support_conversations")
+      .insert({
+        user_id: supabaseUser.id,
+        requested_by: supabaseUser.id,
+        client_name: user?.name || null,
+        client_email: user?.email || null,
+        company: user?.company || null,
+        project_name: intakeProjectName || null,
+        destination: intakeDestination || null,
+        quantity_text: intakeQuantity || null,
+        status: "open"
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    supportConversationIdRef.current = data.id;
+    setSupportConversationId(data.id);
+    return data.id;
+  };
+
+  const saveSupportMessage = async ({ sender, text, attachmentFileId = null, aiPayload = {} }) => {
+    try {
+      const conversationId = await ensureSupportConversation();
+      if (!conversationId) return null;
+
+      const context = await getPortalSupabaseContext();
+      if (!context) return null;
+
+      const { client, supabaseUser } = context;
+      const { error } = await client.from("ai_support_messages").insert({
+        user_id: supabaseUser.id,
+        conversation_id: conversationId,
+        sender,
+        message_text: text,
+        attachment_file_id: attachmentFileId,
+        ai_payload: aiPayload
+      });
+
+      if (error) throw error;
+      return conversationId;
+    } catch (err) {
+      console.warn("AI support message was not persisted:", err.message || err);
+      return null;
+    }
+  };
+
+  const updateSupportConversationSummary = async ({ status = "open", summaryText = "" } = {}) => {
+    try {
+      const conversationId = await ensureSupportConversation();
+      if (!conversationId) return;
+
+      const context = await getPortalSupabaseContext();
+      if (!context) return;
+
+      await context.client
+        .from("ai_support_conversations")
+        .update({
+          status,
+          project_name: intakeProjectName || null,
+          destination: intakeDestination || null,
+          quantity_text: intakeQuantity || null,
+          summary_text: summaryText || summarizeSupportConversation(),
+          latest_intake_file_id: supportUploadedFileId || null
+        })
+        .eq("id", conversationId);
+    } catch (err) {
+      console.warn("AI support conversation summary was not persisted:", err.message || err);
+    }
+  };
+
+  const applySupportExtraction = (extracted = {}) => {
+    if (extracted.projectName) setIntakeProjectName(extracted.projectName);
+    if (extracted.destination) setIntakeDestination(extracted.destination);
+    if (extracted.quantityText) setIntakeQuantity(extracted.quantityText);
+  };
+
+  const requestAiSupportReply = async (messages) => {
+    let lastError;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        return await requestAiSupportReplyOnce(messages);
+      } catch (err) {
+        lastError = err;
+        if (attempt === 1) {
+          setSupportStatus("智能客服连接不稳定，正在自动重试...");
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        }
+      }
+    }
+
+    throw lastError;
+  };
+
+  const requestAiSupportReplyOnce = async (messages) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 110000);
+
+    let response;
+    try {
+      response = await fetch(AI_SUPPORT_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          messages,
+          context: {
+            projectName: intakeProjectName,
+            destination: intakeDestination,
+            quantity: intakeQuantity,
+            selectedFileName: supportSelectedFileName,
+            clientName: user?.name || "",
+            company: user?.company || "",
+            preferredLanguage: lang
+          }
+        })
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.error || "Crafton AI customer service is temporarily unavailable.");
+      error.requestId = payload.requestId;
+      throw error;
+    }
+
+    return payload;
+  };
+
+  const handleSupportSend = async (e) => {
     if (e) e.preventDefault();
+    const text = supportInput.trim();
+    if (!text || supportIsTyping) return;
+
+    const nextMessages = [...supportMessages, { sender: "client", text }];
+    setSupportMessages(nextMessages);
+    setSupportInput("");
+    setSupportIsTyping(true);
+    setSupportStatus("");
+    saveSupportMessage({ sender: "client", text }).catch(() => {});
+
+    try {
+      const result = await requestAiSupportReply(nextMessages);
+      applySupportExtraction(result.extracted);
+      setSupportMessages((prev) => [...prev, { sender: "ai", text: result.reply }]);
+      setSupportStatus("");
+      saveSupportMessage({ sender: "ai", text: result.reply, aiPayload: result }).catch(() => {});
+      updateSupportConversationSummary({ summaryText: result.extracted?.briefText || "" }).catch(() => {});
+    } catch (err) {
+      console.error("AI support reply failed:", err);
+      const fallbackText =
+        err.name === "AbortError"
+          ? "抱歉，这一轮智能回复超时了。对话没有结束，您可以继续发送消息，或稍后再试。"
+          : `抱歉，这一轮智能客服连接不稳定。对话没有结束，您可以继续发送消息，或直接提交项目需求给 Crafton 团队。${err.requestId ? `（错误编号：${err.requestId}）` : ""}`;
+      setSupportMessages((prev) => [
+        ...prev,
+        {
+          sender: "ai",
+          text: fallbackText
+        }
+      ]);
+      saveSupportMessage({ sender: "ai", text: fallbackText }).catch(() => {});
+    } finally {
+      setSupportIsTyping(false);
+    }
+  };
+
+  const handleSupportFileSelect = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    setSupportSelectedFile(file || null);
+    setSupportSelectedFileName(file?.name || "");
+    if (!file) return;
+
+    const clientFileMessage = `Uploaded file: ${file.name} (${file.type || "unknown type"})`;
+    setSupportMessages((prev) => [
+      ...prev,
+      {
+        sender: "client",
+        text: clientFileMessage
+      }
+    ]);
+
+    setSupportStatus("正在保存客户文件...");
+
+    try {
+      const fileRow = await uploadIntakeFileRecord({
+        file,
+        fileType: "AI_SUPPORT_FILE",
+        notes: summarizeSupportConversation()
+      });
+
+      setSupportUploadedFileId(fileRow?.id || null);
+      await saveSupportMessage({ sender: "client", text: clientFileMessage, attachmentFileId: fileRow?.id || null });
+
+      const aiFileReply =
+        "文件已安全保存。我会把它作为客户原始资料，连同对话摘要一起提交给 Crafton 顾问团队；目前系统会保存文件并读取表单/对话文字，PDF/图片内容解析会在下一步增强。";
+      setSupportMessages((prev) => [...prev, { sender: "ai", text: aiFileReply }]);
+      await saveSupportMessage({ sender: "ai", text: aiFileReply, attachmentFileId: fileRow?.id || null });
+      setSupportStatus(`文件已保存：${file.name}`);
+    } catch (err) {
+      console.error("Support file upload failed:", err);
+      const aiFileError =
+        "我已经在当前页面接收了这个文件，但暂时没有成功保存到云端。请稍后重试上传，或检查 Supabase 连接后再提交项目需求。";
+      setSupportMessages((prev) => [...prev, { sender: "ai", text: aiFileError }]);
+      setSupportStatus("文件暂时只保存在当前浏览器，尚未保存到 Supabase。");
+    }
+  };
+
+  const handleSupportHandoffToIntake = async () => {
+    const transcript = summarizeSupportConversation();
+    const transcriptFile =
+      supportSelectedFile ||
+      new File([transcript], `crafton-ai-support-transcript-${Date.now()}.txt`, { type: "text/plain" });
+
+    setSupportStatus("正在整理对话并提交项目需求...");
+    setLiveIntakeWarning("");
+
+    try {
+      const job = await createLiveIntakeJob({
+        projectName: intakeProjectName,
+        destination: intakeDestination,
+        quantity: intakeQuantity,
+        fileType: supportSelectedFile ? "AI_SUPPORT_FILE" : "AI_SUPPORT_CHAT",
+        textBrief: [
+          "Source: Crafton AI customer service chat",
+          `Client: ${user?.name || "Portal Client"} (${user?.company || "Unknown company"})`,
+          transcript
+        ].join("\n\n"),
+        file: supportUploadedFileId ? null : transcriptFile,
+        intakeFileId: supportUploadedFileId
+      });
+
+      if (job) {
+        setSupportStatus(`已提交项目需求。任务 ID：${job.id}`);
+        updateSupportConversationSummary({ status: "submitted" }).catch(() => {});
+        setSupportMessages((prev) => [
+          ...prev,
+          {
+            sender: "ai",
+            text: "已提交项目需求。后台会继续整理资料并生成项目草稿，完成后会交由 Cho 审核。"
+          }
+        ]);
+      } else {
+        setSupportStatus("当前未连接 Supabase，已保留本地对话摘要。连接后可再次提交项目需求。");
+      }
+    } catch (err) {
+      console.error("AI support handoff failed:", err);
+      setSupportStatus(err.message || "提交项目需求失败，请检查 Supabase 连接和文件类型。");
+    }
+  };
+
+  const handleIntakeSubmit = async (e, override = {}) => {
+    if (e) e.preventDefault();
+    const submitProjectName = override.projectName || intakeProjectName;
+    const submitDestination = override.destination || intakeDestination;
+    const submitQuantity = override.quantity || intakeQuantity;
+    const submitFileType = override.fileType || "PORTAL_FORM";
+    const submitTextBrief = override.textBrief || "";
+    const submitFile = override.file || intakeSelectedFile;
+
     setIsIntakeUploading(true);
     setParsingLogs([]);
+    setLiveIntakeWarning("");
+    let createdJob = null;
+
+    try {
+      const job = await createLiveIntakeJob({
+        projectName: submitProjectName,
+        destination: submitDestination,
+        quantity: submitQuantity,
+        fileType: submitFileType,
+        textBrief: submitTextBrief,
+        file: submitFile
+      });
+
+      if (job) {
+        createdJob = job;
+        setParsingLogs((prev) => [
+          ...prev,
+          {
+            cn: `已建立 Supabase Intake Job：${job.id}。VPS Worker 将接手后台解析。`,
+            en: `Supabase Intake Job created: ${job.id}. The VPS worker will process it in the background.`
+          }
+        ]);
+      }
+    } catch (err) {
+      console.error("Live intake job creation failed:", err);
+      setLiveIntakeWarning(err.message || "Live intake job creation failed. Falling back to local simulation.");
+    }
 
     // Simulate real-time parsing logs
     const simulatedLogs = [
@@ -312,63 +1107,41 @@ function App() {
     });
 
     setTimeout(() => {
-      // Create bespoke items based on user inputs
-      const qty1 = parseInt(intakeQuantity) || 40;
-      const newItems = [
-        {
-          id: "ITEM-01",
-          typeCn: "大堂定製扶手椅",
-          typeEn: "Custom Lobby Armchair",
-          qty: qty1,
-          materialCn: "海軍藍亞麻 (FAB-02)",
-          materialEn: "Navy Classic Linen (FAB-02)",
-          originalUnitPrice: 210,
-          unitPrice: 210,
-          status: "Active"
-        },
-        {
-          id: "ITEM-02",
-          typeCn: "貴賓單人休閒沙發",
-          typeEn: "VIP Club Chair",
-          qty: 20,
-          materialCn: "皇家藍絲絨 (FAB-01)",
-          materialEn: "Royal Velvet (FAB-01)",
-          originalUnitPrice: 280,
-          unitPrice: 280,
-          status: "Active"
-        }
-      ];
+      const submittedFile = submitFile || supportSelectedFile || intakeSelectedFile || null;
+      const submittedFileName = submittedFile?.name || supportSelectedFileName || intakeSelectedFileName || "";
+      const newItems = buildSubmittedOrderItems(submitQuantity);
+
+      setSubmittedTrackerProject({
+        projectName: submitProjectName || "",
+        destination: submitDestination || "",
+        quantityText: submitQuantity || "",
+        file: submittedFile,
+        fileName: submittedFileName,
+        jobId: createdJob?.id || null,
+        intakeFileId: createdJob?.intake_file_id || supportUploadedFileId || null,
+        quoteStatus: "pending_quote",
+        submittedAt: new Date().toISOString()
+      });
 
       setOrder({
         orderId: "CRAFT-" + new Date().getFullYear() + ("0" + (new Date().getMonth() + 1)).slice(-2) + "-BESPOKE",
         clientName: user ? user.company : "Bespoke Partner",
-        projectLocation: intakeDestination,
+        projectLocation: submitDestination,
         createdDate: new Date().toISOString().split("T")[0],
-        currentStageId: "S03",
+        currentStageId: "S02",
+        quoteStatus: "pending_quote",
         items: newItems,
         payments: [
           {
-            milestone: "50% Deposit (50% 首期定金)",
-            amount: (210 * qty1 + 280 * 20) * 0.5,
-            date: new Date().toISOString().split("T")[0],
-            status: "Paid"
-          },
-          {
-            milestone: "40% Shipping Release (40% 出货中款)",
-            amount: (210 * qty1 + 280 * 20) * 0.4,
+            milestone: "Supplier quotation pending",
+            amount: 0,
             date: "Pending",
-            status: "Pending"
-          },
-          {
-            milestone: "10% Handover Balance (10% 交付尾款)",
-            amount: (210 * qty1 + 280 * 20) * 0.1,
-            date: "Pending",
-            status: "Pending"
+            status: "Pending Quote"
           }
         ]
       });
 
-      setCurrentStageIndex(2); // S03
+      setCurrentStageIndex(1); // S02: specs received, supplier quote pending
       setIsIntakeUploading(false);
       setClientPortalTab("Tracker");
     }, 4000);
@@ -463,15 +1236,24 @@ function App() {
     );
   };
 
-  const handleIntakeFlowSubmit = (projectName, destination, quantity, fileType, textBrief) => {
-    setIntakeProjectName(projectName || "St Albans Boutique Hotel Lobby");
-    setIntakeDestination(destination || "London, UK");
-    setIntakeQuantity(quantity || "40");
+  const handleIntakeFlowSubmit = (projectName, destination, quantity, fileType, textBrief, file) => {
+    setIntakeProjectName(projectName || "");
+    setIntakeDestination(destination || "");
+    setIntakeQuantity(quantity || "");
+    setIntakeSelectedFile(file || null);
+    setIntakeSelectedFileName(file?.name || "");
     setClientPortalTab("Intake");
     setCurrentStageView("ClientPortal");
     setActiveIntakeModal(null);
     setTimeout(() => {
-      handleIntakeSubmit();
+      handleIntakeSubmit(null, {
+        projectName: projectName || "",
+        destination: destination || "",
+        quantity: quantity || "",
+        fileType,
+        textBrief,
+        file
+      });
     }, 100);
   };
 
@@ -845,7 +1627,9 @@ function App() {
                     }}
                     onChange={(e) => {
                       if (e.target.files && e.target.files[0]) {
-                        setModalFilePreloadedName(e.target.files[0].name);
+                        const file = e.target.files[0];
+                        setModalSelectedFile(file);
+                        setModalFilePreloadedName(file.name);
                         setModalFilePreloaded(true);
                       }
                     }}
@@ -891,7 +1675,8 @@ function App() {
                   modalDestination,
                   modalQuantity,
                   fileTypeLabel,
-                  modalTextBrief
+                  modalTextBrief,
+                  modalSelectedFile
                 );
               }}
             >
@@ -2191,6 +2976,33 @@ function App() {
     }
   }, [currentStageIndex, chatMessages]);
 
+  useEffect(() => {
+    const file = submittedTrackerProject?.file;
+    if (!file || !file.type?.startsWith("image/")) {
+      setTrackerPreviewUrl(submittedTrackerProject?.previewUrl || "");
+      return undefined;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setTrackerPreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [submittedTrackerProject]);
+
+  useEffect(() => {
+    if (intakeReviewJobs.length === 0) {
+      setSelectedReviewJobId("");
+      setReviewDraft(null);
+      return;
+    }
+
+    const selectedJob = intakeReviewJobs.find((job) => job.id === selectedReviewJobId) || intakeReviewJobs[0];
+    if (selectedJob.id !== selectedReviewJobId) {
+      setSelectedReviewJobId(selectedJob.id);
+    }
+    syncReviewDraftFromJob(selectedJob);
+  }, [intakeReviewJobs, selectedReviewJobId]);
+
   // Fetch real-time data from Supabase if connected
   const fetchSupabaseData = async (shouldThrow = false) => {
     if (!window.supabase || !safeGetItem("supabase_url") || !safeGetItem("supabase_key")) {
@@ -2205,11 +3017,37 @@ function App() {
       const url = safeGetItem("supabase_url");
       const key = safeGetItem("supabase_key");
       const client = window.supabase?.createClient(url, key);
+      const authResult = await client.auth.getUser().catch(() => ({ data: { user: null } }));
+      const supabaseUser = authResult?.data?.user || null;
+
+      if (!supabaseUser) {
+        setDbConnected(true);
+        return;
+      }
+
+      const resetPortalDraftState = () => {
+        setSubmittedTrackerProject(null);
+        setLatestIntakeJob(null);
+        setOrder((prev) => ({
+          ...prev,
+          id: null,
+          orderId: "",
+          clientName: user?.name || "",
+          projectLocation: "",
+          currentStageId: "S01",
+          quoteStatus: null,
+          items: [],
+          payments: []
+        }));
+        setLogs([]);
+        setCurrentStageIndex(0);
+      };
 
       // 1. Fetch live Project named 'CRAFT-202605-01'
       const { data: projectsData, error: projectErr } = await client
         .from("projects")
         .select("*")
+        .eq("user_id", supabaseUser.id)
         .eq("name", "CRAFT-202605-01")
         .limit(1);
 
@@ -2219,9 +3057,22 @@ function App() {
       let needToSeed = false;
 
       if (!projectsData || projectsData.length === 0) {
-        needToSeed = true;
+        resetPortalDraftState();
+        setDbConnected(true);
+        return;
       } else {
         dbProject = projectsData[0];
+
+        const isSeededDemoProject =
+          dbProject.name === "CRAFT-202605-01" &&
+          dbProject.client_name === "Client Design Studio (UK)" &&
+          dbProject.client_contact === "St Albans, UK";
+
+        if (isSeededDemoProject) {
+          resetPortalDraftState();
+          setDbConnected(true);
+          return;
+        }
 
         // Robustness integrity check: Ensure all child tables are actually populated
         const { data: specsCheck, error: specsErr } = await client
@@ -2245,11 +3096,11 @@ function App() {
           paymentsCheck.length === 0
         ) {
           console.log(
-            "Project CRAFT-202605-01 exists, but specifications or payments are empty. Deleting existing project to trigger cascade and clean re-seed..."
+            "Project CRAFT-202605-01 exists, but specifications or payments are empty. Skipping demo auto-seed for authenticated client."
           );
-          await client.from("projects").delete().eq("id", dbProject.id);
-          needToSeed = true;
-          dbProject = null;
+          resetPortalDraftState();
+          setDbConnected(true);
+          return;
         }
       }
 
@@ -2260,6 +3111,7 @@ function App() {
         const { data: newProjData, error: seedProjErr } = await client
           .from("projects")
           .insert({
+            user_id: supabaseUser.id,
             name: "CRAFT-202605-01",
             client_name: "Client Design Studio (UK)",
             client_contact: "St Albans, UK",
@@ -2283,6 +3135,7 @@ function App() {
           const { data: fallbackData, error: fallbackErr } = await client
             .from("projects")
             .select("*")
+            .eq("user_id", supabaseUser.id)
             .eq("name", "CRAFT-202605-01")
             .limit(1);
 
@@ -2299,6 +3152,7 @@ function App() {
           const { error: seedSpecsErr } = await client.from("specifications").insert([
             {
               project_id: insertedProj.id,
+              user_id: supabaseUser.id,
               item_type_cn: "大堂扶手椅",
               item_type_en: "Lobby Armchair",
               quantity: 40,
@@ -2576,6 +3430,357 @@ function App() {
     }
   };
 
+  const loadLatestSubmittedTrackerProject = async () => {
+    if (!window.supabase || !safeGetItem("supabase_url") || !safeGetItem("supabase_key")) return;
+
+    const context = await getPortalSupabaseContext({ requireAuth: false });
+    if (!context?.supabaseUser) return;
+
+    const { client, supabaseUser } = context;
+    const { data, error } = await client
+      .from("intake_jobs")
+      .select("*, intake_files(*)")
+      .eq("user_id", supabaseUser.id)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.warn("Latest submitted tracker project was not loaded:", error.message || error);
+      return;
+    }
+
+    const job = data?.[0];
+    if (!job) {
+      setLatestIntakeJob(null);
+      setSubmittedTrackerProject(null);
+      setTrackerPreviewUrl("");
+      return;
+    }
+
+    const file = Array.isArray(job.intake_files) ? job.intake_files[0] : job.intake_files;
+    let previewUrl = "";
+    if (file?.mime_type?.startsWith("image/") && file.storage_bucket && file.storage_path) {
+      const { data: signed } = await client.storage
+        .from(file.storage_bucket)
+        .createSignedUrl(file.storage_path, 60 * 60);
+      previewUrl = signed?.signedUrl || "";
+    }
+
+    const quantityText = job.quantity_text || "";
+    const trackerProject = {
+      projectName: job.project_name || "",
+      destination: job.destination || "",
+      quantityText,
+      file: null,
+      fileName: file?.original_name || "",
+      jobId: job.id,
+      intakeFileId: job.intake_file_id || file?.id || null,
+      quoteStatus: "pending_quote",
+      submittedAt: job.created_at || new Date().toISOString(),
+      previewUrl
+    };
+
+    setLatestIntakeJob(job);
+    setSubmittedTrackerProject(trackerProject);
+    setOrder((prev) => ({
+      ...prev,
+      orderId: job.project_name || prev.orderId,
+      projectLocation: job.destination || prev.projectLocation,
+      currentStageId: "S02",
+      quoteStatus: "pending_quote",
+      items: buildSubmittedOrderItems(quantityText),
+      payments: [
+        {
+          milestone: "Supplier quotation pending",
+          amount: 0,
+          date: "Pending",
+          status: "Pending Quote"
+        }
+      ]
+    }));
+    setCurrentStageIndex(1);
+  };
+
+  const getLocalReviewJobs = () => {
+    const baseJob =
+      latestIntakeJob ||
+      (submittedTrackerProject
+        ? {
+            id: submittedTrackerProject.jobId || "LOCAL-INTAKE-DEMO",
+            project_name: submittedTrackerProject.projectName,
+            destination: submittedTrackerProject.destination,
+            quantity_text: submittedTrackerProject.quantityText,
+            status: "needs_review",
+            review_status: "pending",
+            rfq_status: "not_started",
+            result_json: {
+              project: {
+                name: submittedTrackerProject.projectName,
+                client_name: user?.company || "Portal Intake Client",
+                destination: submittedTrackerProject.destination
+              },
+              items: buildSubmittedOrderItems(submittedTrackerProject.quantityText).map((item) => ({
+                item_type_cn: item.typeCn,
+                item_type_en: item.typeEn,
+                quantity: item.qty,
+                material_cn: item.materialCn,
+                material_en: item.materialEn,
+                original_unit_price: 0,
+                unit_price: 0,
+                notes_cn: item.note,
+                notes_en: item.note
+              })),
+              questions: [
+                "Confirm exact dimensions for each furniture type.",
+                "Confirm final fabric code and Crib 5 fire requirement.",
+                "Confirm target delivery date and receiving window."
+              ],
+              summary_en: "Local intake draft ready for Cho review.",
+              source_notes: submittedTrackerProject.fileName || "Portal intake submission"
+            }
+          }
+        : null);
+
+    return baseJob ? [baseJob] : [];
+  };
+
+  const loadPrequoteWorkspace = async () => {
+    const localJobs = getLocalReviewJobs();
+
+    if (!window.supabase || !safeGetItem("supabase_url") || !safeGetItem("supabase_key")) {
+      setIntakeReviewJobs(localJobs);
+      setClientProjectJobs(localJobs);
+      return;
+    }
+
+    const context = await getPortalSupabaseContext({ requireAuth: false });
+    if (!context?.client) {
+      setIntakeReviewJobs(localJobs);
+      setClientProjectJobs(localJobs);
+      return;
+    }
+
+    try {
+      const { client, supabaseUser } = context;
+      const { data: reviewData, error: reviewError } = await client
+        .from("intake_jobs")
+        .select("*, intake_files(*), projects(*)")
+        .in("status", ["needs_review", "completed"])
+        .order("created_at", { ascending: false })
+        .limit(12);
+
+      if (reviewError) throw reviewError;
+
+      const normalizedReviewJobs = reviewData && reviewData.length > 0 ? reviewData : localJobs;
+      setIntakeReviewJobs(normalizedReviewJobs);
+
+      if (supabaseUser) {
+        const { data: clientData, error: clientError } = await client
+          .from("intake_jobs")
+          .select("*, intake_files(*)")
+          .eq("user_id", supabaseUser.id)
+          .order("created_at", { ascending: false })
+          .limit(8);
+
+        if (clientError) throw clientError;
+        setClientProjectJobs(clientData && clientData.length > 0 ? clientData : localJobs);
+      } else {
+        setClientProjectJobs(localJobs);
+      }
+    } catch (err) {
+      console.warn("Pre-quote workspace was not loaded from Supabase:", err.message || err);
+      setIntakeReviewJobs(localJobs);
+      setClientProjectJobs(localJobs);
+    }
+  };
+
+  const updateLocalReviewJob = (jobId, patch) => {
+    const applyPatch = (job) => {
+      if (job.id !== jobId) return job;
+      return typeof patch === "function" ? patch(job) : { ...job, ...patch };
+    };
+
+    setIntakeReviewJobs((prev) => prev.map(applyPatch));
+    setClientProjectJobs((prev) => prev.map(applyPatch));
+    if (latestIntakeJob?.id === jobId) {
+      setLatestIntakeJob((prev) => (prev ? applyPatch(prev) : prev));
+    }
+  };
+
+  const persistIntakeJobUpdate = async (job, updates) => {
+    updateLocalReviewJob(job.id, updates);
+
+    if (
+      !window.supabase ||
+      !safeGetItem("supabase_url") ||
+      !safeGetItem("supabase_key") ||
+      String(job.id).startsWith("LOCAL-")
+    ) {
+      return { ...job, ...updates };
+    }
+
+    const context = await getPortalSupabaseContext({ requireAuth: false });
+    if (!context?.client) return { ...job, ...updates };
+
+    const { data, error } = await context.client.from("intake_jobs").update(updates).eq("id", job.id).select().single();
+    if (error) throw error;
+    updateLocalReviewJob(job.id, data);
+    return data;
+  };
+
+  const syncReviewDraftFromJob = (job) => {
+    const normalized = normalizeReviewJob(job);
+    setReviewDraft(normalized);
+    setReviewNote(normalized.reviewNotes || "");
+  };
+
+  const handleReviewItemChange = (idx, field, value) => {
+    setReviewDraft((prev) => {
+      if (!prev) return prev;
+      const items = prev.items.map((item, itemIdx) => (itemIdx === idx ? { ...item, [field]: value } : item));
+      return { ...prev, items };
+    });
+  };
+
+  const handleApproveIntakeReview = async () => {
+    const job = intakeReviewJobs.find((item) => item.id === selectedReviewJobId) || intakeReviewJobs[0];
+    if (!job || !reviewDraft) return;
+
+    const resultJson = denormalizeReviewDraft(reviewDraft);
+    const updates = {
+      status: "completed",
+      step: "cho_review_approved",
+      review_status: "approved",
+      review_notes: reviewNote || "Approved for RFQ preparation.",
+      result_json: resultJson,
+      reviewed_at: new Date().toISOString()
+    };
+
+    try {
+      const updated = await persistIntakeJobUpdate(job, updates);
+      if (dbConnected && updated.project_id) {
+        const client = getSupabaseBrowserClient();
+        await client
+          ?.from("projects")
+          .update({ current_stage: 4, name: reviewDraft.projectName, client_contact: reviewDraft.destination })
+          .eq("id", updated.project_id);
+      }
+      setPrequoteNotice("Intake draft approved. Specs are ready for RFQ package preparation.");
+      setCurrentStageIndex(3);
+      addLog("Cho", "Intake draft approved for RFQ preparation.", "Intake draft approved for RFQ preparation.");
+      await loadPrequoteWorkspace();
+    } catch (err) {
+      console.error("Approve intake review failed:", err);
+      setPrequoteNotice(`Approval could not be saved to Supabase: ${err.message || err}`);
+    }
+  };
+
+  const handleAskClientForRevision = async () => {
+    const job = intakeReviewJobs.find((item) => item.id === selectedReviewJobId) || intakeReviewJobs[0];
+    if (!job || !reviewDraft) return;
+
+    const resultJson = denormalizeReviewDraft(reviewDraft);
+    const updates = {
+      status: "needs_review",
+      step: "client_clarification_requested",
+      review_status: "revision_requested",
+      review_notes: reviewNote || "Please answer the missing specification questions before RFQ.",
+      result_json: resultJson
+    };
+
+    try {
+      await persistIntakeJobUpdate(job, updates);
+      setPrequoteNotice("Clarification request sent to the client portal.");
+      addLog("Cho", "Requested client clarification before RFQ.", "Requested client clarification before RFQ.");
+      await loadPrequoteWorkspace();
+    } catch (err) {
+      console.error("Client clarification request failed:", err);
+      setPrequoteNotice(`Clarification request could not be saved: ${err.message || err}`);
+    }
+  };
+
+  const handleRejectIntakeReview = async () => {
+    const job = intakeReviewJobs.find((item) => item.id === selectedReviewJobId) || intakeReviewJobs[0];
+    if (!job) return;
+
+    try {
+      await persistIntakeJobUpdate(job, {
+        status: "failed",
+        step: "cho_review_rejected",
+        review_status: "rejected",
+        review_notes: reviewNote || "Rejected by Cho during intake review."
+      });
+      setPrequoteNotice("Intake draft rejected and removed from the pre-quote path.");
+      addLog("Cho", "Rejected intake draft.", "Rejected intake draft.");
+      await loadPrequoteWorkspace();
+    } catch (err) {
+      console.error("Reject intake review failed:", err);
+      setPrequoteNotice(`Rejection could not be saved: ${err.message || err}`);
+    }
+  };
+
+  const handleCreateRfqDraft = async () => {
+    const job = intakeReviewJobs.find((item) => item.id === selectedReviewJobId) || intakeReviewJobs[0];
+    if (!job || !reviewDraft) return;
+
+    const rfqDraft = buildRfqDraft(reviewDraft);
+    try {
+      const updated = await persistIntakeJobUpdate(job, {
+        status: "completed",
+        step: "rfq_draft_ready",
+        review_status: "rfq_ready",
+        rfq_status: "draft",
+        rfq_draft_json: rfqDraft,
+        rfq_created_at: rfqDraft.generated_at
+      });
+
+      if (dbConnected && updated.project_id) {
+        const client = getSupabaseBrowserClient();
+        await client?.from("projects").update({ current_stage: 6 }).eq("id", updated.project_id);
+      }
+
+      setReviewDraft((prev) => (prev ? { ...prev, rfqDraft, reviewStatus: "rfq_ready", rfqStatus: "draft" } : prev));
+      setPrequoteNotice("RFQ draft package created with three supplier comparison slots.");
+      setCurrentStageIndex(5);
+      addLog("Cho", "RFQ draft package created.", "RFQ draft package created.");
+      await loadPrequoteWorkspace();
+    } catch (err) {
+      console.error("Create RFQ draft failed:", err);
+      setPrequoteNotice(`RFQ draft could not be saved: ${err.message || err}`);
+    }
+  };
+
+  const handleSubmitClientAnswers = async (job) => {
+    const normalized = normalizeReviewJob(job);
+    const answers = clientAnswerDrafts[job.id] || {};
+    const hasAnswer = Object.values(answers).some((value) => String(value || "").trim());
+    if (!hasAnswer) {
+      setPrequoteNotice("Add at least one clarification answer before submitting.");
+      return;
+    }
+
+    const resultJson = {
+      ...safeJsonObject(job.result_json, {}),
+      client_answers: answers
+    };
+
+    try {
+      await persistIntakeJobUpdate(job, {
+        status: "needs_review",
+        step: "client_answers_submitted",
+        review_status: "pending",
+        review_notes: "Client submitted clarification answers.",
+        client_answers: answers,
+        result_json: resultJson
+      });
+      setPrequoteNotice(`${normalized.projectName}: answers submitted back to Cho.`);
+      await loadPrequoteWorkspace();
+    } catch (err) {
+      console.error("Client answer submission failed:", err);
+      setPrequoteNotice(`Answers could not be saved: ${err.message || err}`);
+    }
+  };
+
   // Listen to postMessage from child loading-ai
   useEffect(() => {
     console.log("=== APP COMPONENT MOUNTED (EFFECT) ===");
@@ -2588,9 +3793,55 @@ function App() {
     return () => window.removeEventListener("message", handleChildMessage);
   }, []);
 
+  useEffect(() => {
+    const client = getSupabaseBrowserClient();
+    if (!client) return undefined;
+
+    let cancelled = false;
+
+    client.auth.getUser().then(async ({ data }) => {
+      if (cancelled) return;
+      const supabaseUser = data?.user || null;
+      setUser(supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null);
+      if (supabaseUser) {
+        await syncAuthenticatedUserProfile(supabaseUser);
+        await fetchSupabaseData();
+        await loadLatestSubmittedTrackerProject();
+        await loadPrequoteWorkspace();
+      }
+    });
+
+    const { data } = client.auth.onAuthStateChange(async (_event, session) => {
+      const supabaseUser = session?.user || null;
+      setUser(supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null);
+      if (supabaseUser) {
+        await syncAuthenticatedUserProfile(supabaseUser);
+        await fetchSupabaseData();
+        await loadLatestSubmittedTrackerProject();
+        await loadPrequoteWorkspace();
+      } else {
+        setSupportConversationId(null);
+        supportConversationIdRef.current = null;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      data?.subscription?.unsubscribe();
+    };
+  }, [dbConnected, dbUrl, dbKey]);
+
   // Re-fetch when connection variables or language change
   useEffect(() => {
-    fetchSupabaseData();
+    let cancelled = false;
+    (async () => {
+      await fetchSupabaseData();
+      if (!cancelled) await loadLatestSubmittedTrackerProject();
+      if (!cancelled) await loadPrequoteWorkspace();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [lang]);
 
   // Subscribe to real-time changes on Supabase when connected
@@ -2663,6 +3914,31 @@ function App() {
             },
             (payload) => {
               console.log("Realtime Change detected on 'agent_thought_logs':", payload);
+              fetchSupabaseData();
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "intake_jobs"
+            },
+            (payload) => {
+              console.log("Realtime Change detected on 'intake_jobs':", payload);
+              if (payload.new) setLatestIntakeJob(payload.new);
+              loadLatestSubmittedTrackerProject();
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "workflow_events"
+            },
+            (payload) => {
+              console.log("Realtime Change detected on 'workflow_events':", payload);
               fetchSupabaseData();
             }
           )
@@ -2746,9 +4022,22 @@ function App() {
 
     try {
       const client = window.supabase.createClient(url, key);
+      const authResult = await client.auth.getUser().catch(() => ({ data: { user: null } }));
+      const supabaseUser = authResult?.data?.user || null;
+      if (!supabaseUser) {
+        setAuthError(
+          lang === "Cn" ? "请先登录，才能重建你的项目数据。" : "Please sign in before re-seeding your project data."
+        );
+        setShowAuthGate(true);
+        return;
+      }
       console.log("Force Re-seed: Clearing projects named 'CRAFT-202605-01'...");
 
-      const { error: deleteErr } = await client.from("projects").delete().eq("name", "CRAFT-202605-01");
+      const { error: deleteErr } = await client
+        .from("projects")
+        .delete()
+        .eq("user_id", supabaseUser.id)
+        .eq("name", "CRAFT-202605-01");
 
       if (deleteErr) {
         console.warn("Delete of projects failed or returned error:", deleteErr);
@@ -3091,12 +4380,346 @@ function App() {
 
   // Calculate order total
   const getOrderTotal = () => {
-    return order.items.reduce((acc, item) => acc + item.unitPrice * item.qty, 0);
+    return order.items.reduce((acc, item) => acc + Number(item.unitPrice || 0) * Number(item.qty || 0), 0);
   };
+
+  function buildSubmittedOrderItems(quantityText = "") {
+    const cleanQuantityText = String(quantityText || "").trim();
+    const quantity = Number(cleanQuantityText.match(/\d+/)?.[0] || 1);
+
+    return [
+      {
+        id: "SUBMITTED-ITEM-01",
+        typeCn: "客户提交定制产品",
+        typeEn: "Submitted Bespoke Item",
+        qty: quantity,
+        qtyDisplay: cleanQuantityText || String(quantity),
+        materialCn: "待 Crafton 顾问与供应商确认",
+        materialEn: "To be confirmed by Crafton consultant and supplier",
+        originalUnitPrice: null,
+        unitPrice: null,
+        status: "Pending Quote",
+        quotePending: true,
+        note: "已接收需求；供应商报价完成后将主动通知客户。"
+      }
+    ];
+  }
 
   // =====================================================================
   // THE CRAFTON - PREMIUM EDITORIAL MODULES
   // =====================================================================
+  const renderStatusPill = (status) => {
+    const meta = REVIEW_STATUS_META[status] || REVIEW_STATUS_META.pending;
+    return <span className={`review-status-pill status-${meta.tone}`}>{meta.label}</span>;
+  };
+
+  const renderClientPrequoteWorkspace = () => {
+    const jobs = clientProjectJobs.length > 0 ? clientProjectJobs : getLocalReviewJobs();
+
+    return (
+      <div className="glass-card prequote-workspace">
+        <div className="panel-header">
+          <div className="panel-title">
+            <span className="stage-badge-dot dot-human"></span>
+            <span>{lang === "Cn" ? "报价前工作流" : "Pre-quote Workspace"}</span>
+          </div>
+          <span className="logo-badge">Intake Review</span>
+        </div>
+        <div className="panel-body prequote-client-list">
+          {jobs.length === 0 ? (
+            <div className="prequote-empty">
+              {lang === "Cn"
+                ? "还没有提交的 intake 项目。"
+                : "No intake projects yet. Submit a brief and the review path will appear here."}
+            </div>
+          ) : (
+            jobs.map((job) => {
+              const normalized = normalizeReviewJob(job);
+              const answers = clientAnswerDrafts[job.id] || normalized.clientAnswers || {};
+              const questions =
+                normalized.reviewStatus === "revision_requested" && normalized.questions.length === 0
+                  ? [normalized.reviewNotes || "Please provide the missing specification details."]
+                  : normalized.questions;
+
+              return (
+                <div key={job.id} className="prequote-client-card">
+                  <div className="prequote-card-topline">
+                    <div>
+                      <div className="prequote-project-name">{normalized.projectName}</div>
+                      <div className="prequote-project-meta">
+                        {normalized.destination || "Destination pending"} / Job {String(normalized.id).slice(0, 8)}
+                      </div>
+                    </div>
+                    {renderStatusPill(normalized.reviewStatus)}
+                  </div>
+
+                  <div className="prequote-steps">
+                    {["Submitted", "Cho Review", "Client Answers", "RFQ Draft"].map((step, idx) => {
+                      const activeIdx =
+                        normalized.reviewStatus === "rfq_ready"
+                          ? 3
+                          : normalized.reviewStatus === "approved"
+                            ? 2
+                            : normalized.reviewStatus === "revision_requested"
+                              ? 2
+                              : 1;
+                      return (
+                        <div key={step} className={`prequote-step ${idx <= activeIdx ? "active" : ""}`}>
+                          <span></span>
+                          {step}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {normalized.summaryEn && <p className="prequote-summary">{normalized.summaryEn}</p>}
+
+                  {questions.length > 0 && (
+                    <div className="prequote-questions">
+                      <div className="prequote-section-label">Clarification questions</div>
+                      {questions.map((question, qidx) => (
+                        <label key={`${job.id}-question-${qidx}`} className="prequote-answer-field">
+                          <span>{question}</span>
+                          <textarea
+                            value={answers[qidx] || ""}
+                            onChange={(e) =>
+                              setClientAnswerDrafts((prev) => ({
+                                ...prev,
+                                [job.id]: {
+                                  ...(prev[job.id] || normalized.clientAnswers || {}),
+                                  [qidx]: e.target.value
+                                }
+                              }))
+                            }
+                            placeholder="Type the client answer for Cho..."
+                          />
+                        </label>
+                      ))}
+                      <button className="btn-premium" onClick={() => handleSubmitClientAnswers(job)}>
+                        Submit answers to Cho
+                      </button>
+                    </div>
+                  )}
+
+                  {normalized.rfqDraft && (
+                    <div className="rfq-mini-table">
+                      <div className="prequote-section-label">RFQ draft comparison</div>
+                      {normalized.rfqDraft.suppliers?.map((supplier) => (
+                        <div key={supplier.name} className="rfq-mini-row">
+                          <span>{supplier.name}</span>
+                          <strong>${Number(supplier.estimatedTotal || 0).toLocaleString()}</strong>
+                          <span>{supplier.leadTime}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderIntakeReviewWorkspace = () => {
+    const jobs = intakeReviewJobs.length > 0 ? intakeReviewJobs : getLocalReviewJobs();
+    const selectedJob = jobs.find((job) => job.id === selectedReviewJobId) || jobs[0];
+    const selectedNormalized = selectedJob ? normalizeReviewJob(selectedJob) : null;
+    const draft = reviewDraft || selectedNormalized;
+    const draftRfq = draft?.rfqDraft || selectedNormalized?.rfqDraft;
+
+    return (
+      <div className="intake-review-shell">
+        <div className="glass-card intake-review-inbox">
+          <div className="panel-header">
+            <div className="panel-title">
+              <span className="stage-badge-dot dot-ai"></span>
+              <span>{lang === "Cn" ? "Intake 审核队列" : "Intake Review Inbox"}</span>
+            </div>
+            <span className="logo-badge">{jobs.length} Drafts</span>
+          </div>
+          <div className="panel-body review-list-body">
+            {jobs.length === 0 ? (
+              <div className="prequote-empty">No intake drafts are waiting for review.</div>
+            ) : (
+              jobs.map((job) => {
+                const normalized = normalizeReviewJob(job);
+                const isActive = selectedJob?.id === job.id;
+                return (
+                  <button
+                    key={job.id}
+                    type="button"
+                    className={`review-list-item ${isActive ? "active" : ""}`}
+                    onClick={() => setSelectedReviewJobId(job.id)}
+                  >
+                    <div>
+                      <strong>{normalized.projectName}</strong>
+                      <span>{normalized.destination || "Destination pending"}</span>
+                    </div>
+                    {renderStatusPill(normalized.reviewStatus)}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="glass-card intake-review-editor">
+          <div className="panel-header">
+            <div className="panel-title">
+              <span className="stage-badge-dot dot-human"></span>
+              <span>{lang === "Cn" ? "Cho 审核与 RFQ 准备" : "Cho Review & RFQ Prep"}</span>
+            </div>
+            {draft && renderStatusPill(draft.reviewStatus)}
+          </div>
+
+          <div className="panel-body">
+            {!draft ? (
+              <div className="prequote-empty">Select an intake draft to review.</div>
+            ) : (
+              <>
+                {prequoteNotice && <div className="prequote-notice">{prequoteNotice}</div>}
+
+                <div className="review-form-grid">
+                  <label>
+                    Project name
+                    <input
+                      value={draft.projectName || ""}
+                      onChange={(e) => setReviewDraft((prev) => ({ ...(prev || draft), projectName: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Destination
+                    <input
+                      value={draft.destination || ""}
+                      onChange={(e) => setReviewDraft((prev) => ({ ...(prev || draft), destination: e.target.value }))}
+                    />
+                  </label>
+                </div>
+
+                <div className="table-container">
+                  <table className="order-table review-edit-table">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Qty</th>
+                        <th>Material</th>
+                        <th>Target Price</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {draft.items.map((item, idx) => (
+                        <tr key={item.id || idx}>
+                          <td>
+                            <input
+                              value={item.typeEn || ""}
+                              onChange={(e) => handleReviewItemChange(idx, "typeEn", e.target.value)}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={item.qty || ""}
+                              onChange={(e) => handleReviewItemChange(idx, "qty", e.target.value)}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={item.materialEn || ""}
+                              onChange={(e) => handleReviewItemChange(idx, "materialEn", e.target.value)}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={item.unitPrice || ""}
+                              onChange={(e) => handleReviewItemChange(idx, "unitPrice", e.target.value)}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={item.notesEn || ""}
+                              onChange={(e) => handleReviewItemChange(idx, "notesEn", e.target.value)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="review-questions-grid">
+                  <div>
+                    <div className="prequote-section-label">AI missing questions</div>
+                    {(draft.questions || []).map((question, idx) => (
+                      <div key={`${draft.id}-missing-${idx}`} className="review-question-row">
+                        {question}
+                      </div>
+                    ))}
+                    {(draft.questions || []).length === 0 && (
+                      <div className="review-question-row">No missing questions detected.</div>
+                    )}
+                  </div>
+                  <label>
+                    Cho review note
+                    <textarea
+                      value={reviewNote}
+                      onChange={(e) => setReviewNote(e.target.value)}
+                      placeholder="Write a client-facing clarification or an internal approval note..."
+                    />
+                  </label>
+                </div>
+
+                {draft.clientAnswers && Object.keys(draft.clientAnswers).length > 0 && (
+                  <div className="client-answer-summary">
+                    <div className="prequote-section-label">Client answers received</div>
+                    {Object.entries(draft.clientAnswers).map(([key, value]) => (
+                      <div key={key}>
+                        <strong>Q{Number(key) + 1}:</strong> {value}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {draftRfq && (
+                  <div className="rfq-draft-panel">
+                    <div className="prequote-section-label">RFQ draft package</div>
+                    <div className="rfq-draft-grid">
+                      {draftRfq.suppliers?.map((supplier) => (
+                        <div key={supplier.name} className="rfq-supplier-card">
+                          <strong>{supplier.name}</strong>
+                          <span>Lead time: {supplier.leadTime}</span>
+                          <span>Terms: {supplier.terms}</span>
+                          <span>AI score: {supplier.score}/100</span>
+                          <b>${Number(supplier.estimatedTotal || 0).toLocaleString()}</b>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="review-action-row">
+                  <button className="btn-secondary" onClick={handleAskClientForRevision}>
+                    Ask client
+                  </button>
+                  <button className="btn-secondary" onClick={handleRejectIntakeReview}>
+                    Reject
+                  </button>
+                  <button className="btn-premium" onClick={handleApproveIntakeReview}>
+                    Approve specs
+                  </button>
+                  <button className="btn-premium" onClick={handleCreateRfqDraft}>
+                    Create RFQ draft
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderAuthGate = () => {
     return (
       <div
@@ -3258,7 +4881,7 @@ function App() {
             </div>
 
             <form
-              onSubmit={authMode === "login" ? handleLogin : handleSignUp}
+              onSubmit={authMode === "login" ? handleAuthLogin : handleAuthSignUp}
               style={{ display: "flex", flexDirection: "column", gap: "16px" }}
             >
               {authMode === "signup" && (
@@ -3447,8 +5070,25 @@ function App() {
                 </div>
               )}
 
+              {authError && (
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(170, 70, 55, 0.3)",
+                    background: "rgba(170, 70, 55, 0.08)",
+                    color: "#8E3B2F",
+                    fontSize: "12px",
+                    lineHeight: "1.4"
+                  }}
+                >
+                  {authError}
+                </div>
+              )}
+
               <button
                 type="submit"
+                disabled={authLoading}
                 style={{
                   width: "100%",
                   padding: "12px",
@@ -3458,10 +5098,11 @@ function App() {
                   borderRadius: "8px",
                   fontSize: "14px",
                   fontWeight: "600",
-                  cursor: "pointer",
+                  cursor: authLoading ? "wait" : "pointer",
                   letterSpacing: "0.05em",
                   transition: "background 0.3s",
-                  marginTop: "10px"
+                  marginTop: "10px",
+                  opacity: authLoading ? 0.75 : 1
                 }}
                 onMouseOver={(e) => (e.target.style.background = "#63594F")}
                 onMouseOut={(e) => (e.target.style.background = "#7C7267")}
@@ -3475,6 +5116,50 @@ function App() {
                     : "Register Partner Account"}
               </button>
             </form>
+
+            <div
+              style={{
+                margin: "18px 0 8px 0",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "10px"
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => handleAuthOAuthSignIn("google")}
+                disabled={authLoading}
+                style={{
+                  padding: "10px",
+                  background: "#FFFFFF",
+                  border: "1px solid rgba(124, 114, 103, 0.18)",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  color: "#1C1B18",
+                  cursor: authLoading ? "wait" : "pointer",
+                  fontWeight: "600"
+                }}
+              >
+                Google
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAuthOAuthSignIn("apple")}
+                disabled={authLoading}
+                style={{
+                  padding: "10px",
+                  background: "#1C1B18",
+                  border: "1px solid #1C1B18",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  color: "#FFFFFF",
+                  cursor: authLoading ? "wait" : "pointer",
+                  fontWeight: "600"
+                }}
+              >
+                Apple
+              </button>
+            </div>
 
             {/* Quick Demo Access Header */}
             <div
@@ -4389,6 +6074,31 @@ function App() {
         <div className="navbar-actions">
           <button
             className="btn-secondary"
+            onClick={() => setShowDbConfig(true)}
+            style={{
+              padding: "0.4rem 0.8rem",
+              fontSize: "0.8rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              borderColor: dbConnected ? "rgba(122, 135, 117, 0.45)" : "var(--glass-border)",
+              color: dbConnected ? "var(--accent-green)" : "var(--text-secondary)"
+            }}
+          >
+            <span
+              style={{
+                width: "7px",
+                height: "7px",
+                borderRadius: "50%",
+                background: dbConnected ? "var(--accent-green)" : "var(--accent-orange)",
+                display: "inline-block"
+              }}
+            />
+            <span>{dbConnected ? "Supabase Connected" : "Connect Supabase"}</span>
+          </button>
+
+          <button
+            className="btn-secondary"
             onClick={handleLangToggle}
             style={{ padding: "0.4rem 0.8rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px" }}
           >
@@ -4430,7 +6140,7 @@ function App() {
                 </span>
               )}
               <button
-                onClick={handleLogout}
+                onClick={handleAuthLogout}
                 style={{
                   background: "none",
                   border: "none",
@@ -8434,6 +10144,35 @@ function App() {
                       <span>{lang === "Cn" ? "需求詳情錄入 (Project Intake)" : "Project Intake (New Sketch)"}</span>
                     </span>
                     <span
+                      onClick={() => setClientPortalTab("Support")}
+                      style={{
+                        fontSize: "1rem",
+                        fontFamily: "var(--font-tech)",
+                        fontWeight: "600",
+                        color: clientPortalTab === "Support" ? "var(--accent-primary)" : "var(--text-secondary)",
+                        borderBottom: clientPortalTab === "Support" ? "2px solid var(--accent-primary)" : "none",
+                        paddingBottom: "0.4rem",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                        display: "inline-flex",
+                        alignItems: "center"
+                      }}
+                    >
+                      <svg
+                        style={{ width: "16px", height: "16px", marginRight: "6px" }}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
+                        <path d="M8 9h8M8 13h5" />
+                      </svg>
+                      <span>{lang === "Cn" ? "AI 客服接待" : "AI Concierge Chat"}</span>
+                    </span>
+                    <span
                       onClick={() => setClientPortalTab("Tracker")}
                       style={{
                         fontSize: "1rem",
@@ -8489,6 +10228,303 @@ function App() {
                   </span>
                 </div>
               </div>
+
+              {clientPortalTab === "Support" && (
+                <div
+                  className="dashboard-panels animate-fade-in"
+                  style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "2rem", marginTop: "1.5rem" }}
+                >
+                  <div
+                    className="glass-card"
+                    style={{ padding: "1.5rem", display: "flex", flexDirection: "column", minHeight: "620px" }}
+                  >
+                    <div
+                      className="panel-header"
+                      style={{
+                        marginBottom: "1rem",
+                        borderBottom: "1px solid rgba(124, 114, 103, 0.1)",
+                        paddingBottom: "1rem"
+                      }}
+                    >
+                      <div
+                        className="panel-title"
+                        style={{
+                          fontFamily: "var(--font-tech)",
+                          fontSize: "1.05rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px"
+                        }}
+                      >
+                        <svg
+                          style={{ width: "18px", height: "18px", color: "var(--accent-primary)" }}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
+                          <path d="M8 9h8M8 13h5" />
+                        </svg>
+                        <span>{lang === "Cn" ? "Crafton AI 客服接待" : "Crafton AI Concierge"}</span>
+                      </div>
+                      <p
+                        style={{
+                          margin: "0.5rem 0 0",
+                          fontSize: "0.8rem",
+                          color: "var(--text-muted)",
+                          lineHeight: "1.5"
+                        }}
+                      >
+                        {lang === "Cn"
+                          ? "请直接描述您的项目需求，也可以上传图纸、图片、PDF 或 Excel 清单。我们会整理成项目资料并安排专人跟进。"
+                          : "Describe your project brief or upload drawings, images, PDFs, or Excel lists. We will organize the materials and follow up with a project draft."}
+                      </p>
+                    </div>
+
+                    <div
+                      style={{
+                        flex: 1,
+                        overflowY: "auto",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.75rem",
+                        padding: "0.5rem",
+                        background: "rgba(124, 114, 103, 0.025)",
+                        border: "1px solid rgba(124, 114, 103, 0.12)",
+                        borderRadius: "4px"
+                      }}
+                    >
+                      {supportMessages.map((message, idx) => (
+                        <div
+                          key={`${message.sender}-${idx}`}
+                          style={{
+                            alignSelf: message.sender === "client" ? "flex-end" : "flex-start",
+                            maxWidth: "78%",
+                            padding: "0.75rem 0.85rem",
+                            borderRadius: "4px",
+                            background: message.sender === "client" ? "rgba(74, 61, 51, 0.92)" : "#FFFFFF",
+                            color: message.sender === "client" ? "#FFFFFF" : "var(--text-primary)",
+                            border:
+                              message.sender === "client"
+                                ? "1px solid rgba(74, 61, 51, 0.2)"
+                                : "1px solid rgba(124, 114, 103, 0.16)",
+                            boxShadow: "0 8px 24px rgba(0,0,0,0.04)",
+                            fontSize: "0.86rem",
+                            lineHeight: "1.55",
+                            whiteSpace: "pre-wrap"
+                          }}
+                        >
+                          {message.text}
+                        </div>
+                      ))}
+                      {supportIsTyping && (
+                        <div
+                          style={{
+                            alignSelf: "flex-start",
+                            padding: "0.65rem 0.8rem",
+                            borderRadius: "4px",
+                            background: "#FFFFFF",
+                            border: "1px solid rgba(124, 114, 103, 0.16)",
+                            color: "var(--text-muted)",
+                            fontSize: "0.82rem"
+                          }}
+                        >
+                          {lang === "Cn" ? "AI 客服正在整理回复..." : "AI concierge is drafting..."}
+                        </div>
+                      )}
+                    </div>
+
+                    <form
+                      onSubmit={handleSupportSend}
+                      style={{ marginTop: "1rem", display: "flex", gap: "0.65rem", alignItems: "stretch" }}
+                    >
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => document.getElementById("support-file-upload").click()}
+                        title={lang === "Cn" ? "上传客户文件" : "Upload client file"}
+                        style={{ width: "44px", minWidth: "44px", padding: 0, display: "grid", placeItems: "center" }}
+                      >
+                        <svg
+                          style={{ width: "17px", height: "17px" }}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21.44 11.05l-8.49 8.49a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                        </svg>
+                      </button>
+                      <input
+                        id="support-file-upload"
+                        type="file"
+                        style={{ display: "none" }}
+                        accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt"
+                        onChange={handleSupportFileSelect}
+                      />
+                      <input
+                        className="chat-input"
+                        value={supportInput}
+                        onChange={(e) => setSupportInput(e.target.value)}
+                        placeholder={
+                          lang === "Cn"
+                            ? "描述需求，例如：40把大堂扶手椅，伦敦酒店，海军蓝亚麻，需要 Crib 5..."
+                            : "Describe the brief, e.g. 40 lobby armchairs, London hotel, navy linen, Crib 5..."
+                        }
+                        style={{
+                          flex: 1,
+                          background: "#FFFFFF",
+                          border: "1px solid var(--glass-border)",
+                          color: "var(--text-primary)",
+                          borderRadius: "2px",
+                          padding: "0.75rem"
+                        }}
+                      />
+                      <button
+                        type="submit"
+                        className="btn-premium"
+                        disabled={!supportInput.trim() || supportIsTyping}
+                        style={{ padding: "0 1rem" }}
+                      >
+                        {lang === "Cn" ? "发送" : "Send"}
+                      </button>
+                    </form>
+
+                    {supportSelectedFileName && (
+                      <div
+                        style={{
+                          marginTop: "0.6rem",
+                          fontSize: "0.78rem",
+                          color: "var(--accent-primary)",
+                          wordBreak: "break-word"
+                        }}
+                      >
+                        {lang === "Cn" ? "已接收文件：" : "Received file: "}
+                        {supportSelectedFileName}
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    className="glass-card"
+                    style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+                  >
+                    <div>
+                      <h3
+                        style={{
+                          fontFamily: "var(--font-tech)",
+                          color: "var(--text-primary)",
+                          fontSize: "1rem",
+                          marginBottom: "0.4rem"
+                        }}
+                      >
+                        {lang === "Cn" ? "服务流程" : "Service Flow"}
+                      </h3>
+                      <p style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.65", margin: 0 }}>
+                        {lang === "Cn"
+                          ? "我会先帮您把零散需求整理清楚，包括数量、交付地、材质、防火要求、参考图纸和预算。资料齐全后，Crafton 团队会生成项目草稿并交由 Cho 审核。"
+                          : "We first organize your quantities, destination, materials, fire-safety needs, references, and budget. Once ready, the Crafton team prepares a project draft for Cho's review."}
+                      </p>
+                    </div>
+
+                    <div
+                      style={{
+                        border: "1px solid rgba(124, 114, 103, 0.14)",
+                        background: "rgba(255,255,255,0.55)",
+                        borderRadius: "4px",
+                        padding: "1rem",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.75rem"
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "0.78rem",
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em"
+                        }}
+                      >
+                        {lang === "Cn" ? "当前项目摘要" : "Current Project Summary"}
+                      </div>
+                      <div style={{ fontSize: "0.84rem", color: "var(--text-primary)", lineHeight: "1.6" }}>
+                        <strong>{lang === "Cn" ? "项目：" : "Project: "}</strong>
+                        {intakeProjectName || "-"}
+                        <br />
+                        <strong>{lang === "Cn" ? "目的地：" : "Destination: "}</strong>
+                        {intakeDestination || "-"}
+                        <br />
+                        <strong>{lang === "Cn" ? "数量：" : "Quantity: "}</strong>
+                        {intakeQuantity || "-"}
+                        <br />
+                        <strong>{lang === "Cn" ? "附件：" : "File: "}</strong>
+                        {supportSelectedFileName ||
+                          (lang === "Cn" ? "将生成对话摘要 TXT" : "Chat transcript TXT will be generated")}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn-premium"
+                      onClick={handleSupportHandoffToIntake}
+                      disabled={isIntakeUploading}
+                      style={{
+                        width: "100%",
+                        padding: "0.85rem",
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: "0.5rem"
+                      }}
+                    >
+                      <svg
+                        style={{ width: "16px", height: "16px" }}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M5 12h14M13 5l7 7-7 7" />
+                      </svg>
+                      <span>{lang === "Cn" ? "提交项目需求" : "Submit Project Brief"}</span>
+                    </button>
+
+                    {supportStatus && (
+                      <div
+                        style={{
+                          padding: "0.75rem",
+                          border: "1px solid rgba(122, 135, 117, 0.35)",
+                          background: "rgba(122, 135, 117, 0.08)",
+                          color: "var(--text-secondary)",
+                          fontSize: "0.8rem",
+                          lineHeight: "1.5",
+                          borderRadius: "3px",
+                          wordBreak: "break-word"
+                        }}
+                      >
+                        {supportStatus}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setClientPortalTab("Intake")}
+                      style={{ width: "100%", padding: "0.75rem" }}
+                    >
+                      {lang === "Cn" ? "打开完整需求表单" : "Open Full Intake Form"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {clientPortalTab === "Intake" && (
                 <div
@@ -8622,13 +10658,11 @@ function App() {
                             id="intake-file-upload"
                             type="file"
                             style={{ display: "none" }}
-                            onChange={() =>
-                              alert(
-                                lang === "Cn"
-                                  ? "檔案已成功預加載！點擊下方按鈕開始 AI 解析。"
-                                  : "File successfully preloaded! Click submit below to start parsing."
-                              )
-                            }
+                            onChange={(e) => {
+                              const file = e.target.files && e.target.files[0];
+                              setIntakeSelectedFile(file || null);
+                              setIntakeSelectedFileName(file?.name || "");
+                            }}
                           />
                           <svg
                             style={{
@@ -8653,8 +10687,56 @@ function App() {
                               ? "拖曳或點選上傳手繪草圖 / CAD 設計圖 (PDF, DXG, PNG)"
                               : "Drag & drop hand sketch or CAD blueprint here, or click to browse (PDF, DXG, PNG)"}
                           </span>
+                          {intakeSelectedFileName && (
+                            <span
+                              style={{
+                                display: "block",
+                                marginTop: "0.5rem",
+                                fontSize: "0.78rem",
+                                color: "var(--accent-primary)",
+                                wordBreak: "break-word"
+                              }}
+                            >
+                              {lang === "Cn" ? "已選文件：" : "Selected file: "}
+                              {intakeSelectedFileName}
+                            </span>
+                          )}
                         </div>
                       </div>
+
+                      {latestIntakeJob && (
+                        <div
+                          style={{
+                            padding: "0.65rem 0.75rem",
+                            border: "1px solid rgba(122, 135, 117, 0.35)",
+                            background: "rgba(122, 135, 117, 0.08)",
+                            color: "var(--text-secondary)",
+                            fontSize: "0.78rem",
+                            borderRadius: "3px"
+                          }}
+                        >
+                          {lang === "Cn" ? "后台任务已创建：" : "Background job created: "}
+                          <span style={{ color: "var(--accent-primary)", fontFamily: "var(--font-tech)" }}>
+                            {latestIntakeJob.id}
+                          </span>
+                        </div>
+                      )}
+
+                      {liveIntakeWarning && (
+                        <div
+                          style={{
+                            padding: "0.65rem 0.75rem",
+                            border: "1px solid rgba(169, 124, 115, 0.35)",
+                            background: "rgba(169, 124, 115, 0.08)",
+                            color: "var(--accent-red)",
+                            fontSize: "0.78rem",
+                            borderRadius: "3px"
+                          }}
+                        >
+                          {lang === "Cn" ? "实时后台暂未接通，已使用本地演示解析：" : "Live backend fallback: "}
+                          {liveIntakeWarning}
+                        </div>
+                      )}
 
                       <button
                         type="submit"
@@ -8838,7 +10920,10 @@ function App() {
                       configuratorCrib5Blocked={configuratorCrib5Blocked}
                       handleFabricSelect={handleFabricSelect}
                       handleLegSelect={handleLegSelect}
+                      submittedProject={submittedTrackerProject}
+                      submittedPreviewUrl={trackerPreviewUrl}
                     />
+                    {renderClientPrequoteWorkspace()}
                     <div className="glass-card">
                       <div className="panel-header">
                         <div className="panel-title" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -8859,7 +10944,11 @@ function App() {
                         <span
                           style={{ fontSize: "0.8rem", color: "var(--accent-green)", fontFamily: "var(--font-tech)" }}
                         >
-                          Total: ${getOrderTotal().toLocaleString()}
+                          {order.quoteStatus === "pending_quote"
+                            ? lang === "Cn"
+                              ? "报价待定"
+                              : "Quote pending"
+                            : `Total: $${getOrderTotal().toLocaleString()}`}
                         </span>
                       </div>
                       <div className="panel-body">
@@ -8898,7 +10987,7 @@ function App() {
                                       <strong style={{ color: "var(--accent-green)" }}>4</strong>
                                     </span>
                                   ) : (
-                                    item.qty
+                                    item.qtyDisplay || item.qty
                                   )}
                                 </td>
                                 <td style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
@@ -8911,12 +11000,42 @@ function App() {
                                     </div>
                                   )}
                                 </td>
-                                <td>${item.unitPrice}</td>
-                                <td style={{ fontWeight: "bold" }}>${(item.unitPrice * item.qty).toLocaleString()}</td>
+                                <td>
+                                  {item.quotePending || order.quoteStatus === "pending_quote"
+                                    ? lang === "Cn"
+                                      ? "待报价"
+                                      : "Pending quote"
+                                    : `$${item.unitPrice}`}
+                                </td>
+                                <td style={{ fontWeight: "bold" }}>
+                                  {item.quotePending || order.quoteStatus === "pending_quote"
+                                    ? lang === "Cn"
+                                      ? "待报价"
+                                      : "Pending quote"
+                                    : `$${(item.unitPrice * item.qty).toLocaleString()}`}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
+                        {order.quoteStatus === "pending_quote" && (
+                          <div
+                            style={{
+                              marginTop: "0.9rem",
+                              padding: "0.75rem 0.85rem",
+                              background: "rgba(122, 135, 117, 0.08)",
+                              border: "1px solid rgba(122, 135, 117, 0.28)",
+                              borderRadius: "4px",
+                              color: "var(--text-secondary)",
+                              fontSize: "0.82rem",
+                              lineHeight: "1.55"
+                            }}
+                          >
+                            {lang === "Cn"
+                              ? "报价状态：待供应商报价。Crafton 团队已接收您的产品资料与附件；供应商价格、交期和可行性确认后，我们会主动通知您。"
+                              : "Quote status: supplier quotation pending. The Crafton team has received your product details and attachment; we will notify you once pricing, timing, and feasibility are confirmed."}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -9258,6 +11377,8 @@ function App() {
                 )}
               </div>
             </div>
+
+            {renderIntakeReviewWorkspace()}
 
             {/* Admin Center Split Panels */}
             <div className="dashboard-panels">
