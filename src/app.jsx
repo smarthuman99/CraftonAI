@@ -5537,12 +5537,13 @@ function App() {
     const selectedJob = jobs.find((job) => job.id === selectedReviewJobId) || jobs[0];
     const selectedNormalized = selectedJob ? normalizeReviewJob(selectedJob) : null;
     const draft = reviewDraft || selectedNormalized;
-    const bomItems = draft?.items?.length ? draft.items : order.items;
+    const bomItems = draft?.items?.length ? draft.items : dbConnected ? [] : order.items;
     return { jobs, selectedJob, selectedNormalized, draft, bomItems };
   };
 
   const renderIntakeFlowWorkspace = () => {
     const { jobs, selectedJob, draft, bomItems } = getAdminDraftContext();
+    const hasActiveIntake = Boolean(draft) || (!dbConnected && Boolean(order.orderId));
     const sourceFile = selectedJob ? getIntakeFileFromJob(selectedJob) : null;
     const uploadedAssets = [
       sourceFile
@@ -5628,7 +5629,7 @@ function App() {
         <section className="intake-command-header">
           <div>
             <span className="logo-badge">S01-S05 / Integrated intake review</span>
-            <h4>{draft?.projectName || order.orderId || "No active customer order"}</h4>
+            <h4>{draft?.projectName || (!dbConnected ? order.orderId : "") || "No active customer order"}</h4>
             <p>
               Read the customer order first, then review AI missing fields, generate the BOM/spec draft, and approve the
               package.
@@ -5662,7 +5663,7 @@ function App() {
           </div>
         )}
 
-        {!draft && !order.orderId ? (
+        {!hasActiveIntake ? (
           renderAdminEmptyState(
             "No live intake draft",
             "When a client submits an order, intake_jobs and intake_files records will appear here as one readable review packet."
