@@ -486,6 +486,7 @@ function App() {
   const [reviewDraft, setReviewDraft] = useState(null);
   const [reviewNote, setReviewNote] = useState("");
   const [prequoteNotice, setPrequoteNotice] = useState("");
+  const [intakeBomDraftGenerated, setIntakeBomDraftGenerated] = useState(false);
   const [clientProjectJobs, setClientProjectJobs] = useState([]);
   const [clientAnswerDrafts, setClientAnswerDrafts] = useState({});
   const [clientAnswerSubmitState, setClientAnswerSubmitState] = useState({});
@@ -4133,6 +4134,7 @@ function App() {
     const normalized = normalizeReviewJob(job);
     setReviewDraft(normalized);
     setReviewNote(normalized.reviewNotes || "");
+    setIntakeBomDraftGenerated(false);
     setOrder(buildOrderFromReviewDraft(normalized));
     setCurrentStageIndex(0);
   };
@@ -5540,7 +5542,23 @@ function App() {
   };
 
   const renderIntakeFlowWorkspace = () => {
-    const { jobs, draft, bomItems } = getAdminDraftContext();
+    const { jobs, selectedJob, draft, bomItems } = getAdminDraftContext();
+    const sourceFile = selectedJob ? getIntakeFileFromJob(selectedJob) : null;
+    const uploadedAssets = [
+      sourceFile
+        ? {
+            id: sourceFile.id || sourceFile.storage_path || sourceFile.original_name,
+            name: sourceFile.original_name || "Uploaded source file",
+            type: sourceFile.mime_type || "file",
+            size: sourceFile.file_size ? `${Math.round(Number(sourceFile.file_size) / 1024)} KB` : "Saved in Supabase"
+          }
+        : null,
+      draft?.fileName && (!sourceFile || draft.fileName !== sourceFile.original_name)
+        ? { id: draft.fileName, name: draft.fileName, type: "client reference", size: "Attached to intake" }
+        : null
+    ].filter(Boolean);
+    const hasUploadedEvidence = uploadedAssets.length > 0 || Boolean(trackerPreviewUrl);
+
     const bomRows = bomItems.map((item) => [
       item.typeEn || item.typeCn || item.item_type_en || item.item_type_cn || "-",
       item.qty || item.quantity || item.qtyDisplay || "-",
@@ -5548,18 +5566,14 @@ function App() {
       item.unitPrice || item.unit_price ? formatAdminMoney(item.unitPrice || item.unit_price) : "Target pending",
       item.notesEn || item.notesCn || item.note || item.notes_en || item.notes_cn || "-"
     ]);
-    const specRows = bomItems.map((item) => [
-      item.typeEn || item.typeCn || item.item_type_en || item.item_type_cn || "-",
-      item.qty || item.quantity || "-",
+
+    const requirementRows = bomItems.map((item) => [
+      item.typeEn || item.typeCn || item.item_type_en || item.item_type_cn || "Submitted item",
+      item.qty || item.quantity || item.qtyDisplay || "Pending",
       item.materialEn || item.materialCn || item.material_en || item.material_cn || "To confirm",
       item.note || item.notesEn || item.notesCn || item.notes_en || item.notes_cn || "-"
     ]);
-    const materialRows = bomItems.map((item) => [
-      item.materialEn || item.materialCn || item.material_en || item.material_cn || "To confirm",
-      isCrib5Blocked ? "Blocked" : "Pending / Passed",
-      item.treatment || item.finish || item.payload?.treatment || "To verify",
-      item.risk || item.payload?.risk || "Needs compliance evidence"
-    ]);
+
     const approvalRows = getApprovalsForStage("S04").map((approval) => [
       approval.approval_type || approval.id,
       approval.status || "pending",
@@ -5567,158 +5581,297 @@ function App() {
       formatAdminDate(approval.reviewed_at || approval.created_at)
     ]);
 
+    const derivedMissingQuestions = [
+      draft?.clientName || order.clientName ? null : "Customer name is missing.",
+      draft?.destination || order.projectLocation ? null : "Delivery destination is missing.",
+      bomItems.length ? null : "Furniture item, quantity, or material rows are missing.",
+      hasUploadedEvidence ? null : "Furniture drawing, photo, or source file is missing."
+    ].filter(Boolean);
+    const missingQuestions = Array.from(new Set([...(draft?.questions || []), ...derivedMissingQuestions]));
+    const hasMissingInfo = missingQuestions.length > 0;
+
+    const completenessItems = [
+      {
+        label: "Customer and project",
+        value: draft?.clientName || order.clientName,
+        state: draft?.clientName || order.clientName ? "done" : "pending"
+      },
+      {
+        label: "Delivery destination",
+        value: draft?.destination || order.projectLocation,
+        state: draft?.destination || order.projectLocation ? "done" : "pending"
+      },
+      {
+        label: "Furniture items and quantity",
+        value: draft?.quantityText || `${bomItems.length} item rows`,
+        state: bomItems.length ? "done" : "pending"
+      },
+      {
+        label: "Drawings / photos / files",
+        value: hasUploadedEvidence ? `${uploadedAssets.length || 1} uploaded` : "No upload found",
+        state: hasUploadedEvidence ? "done" : "pending"
+      },
+      {
+        label: "Open clarification questions",
+        value: hasMissingInfo ? `${missingQuestions.length} missing` : "No missing fields",
+        state: hasMissingInfo ? "pending" : "done"
+      }
+    ];
+
+    const handleGenerateBomDraft = () => {
+      setIntakeBomDraftGenerated(true);
+      setPrequoteNotice("BOM and bilingual specification draft generated from the current intake data.");
+    };
+
     return (
-      <div className="admin-flow-grid intake-flow">
-        {renderAdminStagePanel({
-          stageId: "S01",
-          title: "Customer order intake",
-          status: jobs.length ? "needs_cho_review" : "pending",
-          subtitle:
-            "Reads intake_jobs, intake_files, and project records to turn customer source material into a reviewable order draft.",
-          children: (
-            <>
-              <div className="admin-metric-grid">
-                {renderAdminMetric("Review drafts", jobs.length || 0, jobs.length ? "warn" : "")}
-                {renderAdminMetric("Client", draft?.clientName || order.clientName || "-")}
-                {renderAdminMetric("Source", dbConnected ? "Supabase" : "Local preview", dbConnected ? "good" : "warn")}
-              </div>
-              {draft || order.orderId ? (
-                <div className="admin-detail-grid">
-                  <div className="admin-detail-block">
-                    <strong>Parsed intake fields</strong>
-                    <span>Project: {draft?.projectName || order.orderId || "-"}</span>
-                    <span>Destination: {draft?.destination || order.projectLocation || "-"}</span>
-                    <span>
-                      Quantity:{" "}
-                      {draft?.quantityText || (bomItems.length ? `${bomItems.length} specification rows` : "-")}
-                    </span>
+      <div className="intake-command-workspace">
+        <section className="intake-command-header">
+          <div>
+            <span className="logo-badge">S01-S05 / Integrated intake review</span>
+            <h4>{draft?.projectName || order.orderId || "No active customer order"}</h4>
+            <p>
+              Read the customer order first, then review AI missing fields, generate the BOM/spec draft, and approve the
+              package.
+            </p>
+          </div>
+          <div className="intake-command-status">
+            {renderAdminStatusPill(hasMissingInfo ? "ai_checking" : bomRows.length ? "ready" : "pending")}
+            <span>{dbConnected ? "Supabase data" : "Local preview"}</span>
+          </div>
+        </section>
+
+        {jobs.length > 1 && (
+          <div className="intake-order-switcher" aria-label="Intake order switcher">
+            {jobs.map((job) => {
+              const normalized = normalizeReviewJob(job);
+              const isActive = job.id === selectedReviewJobId || selectedJob?.id === job.id;
+              return (
+                <button
+                  key={job.id}
+                  type="button"
+                  className={`intake-order-tab ${isActive ? "active" : ""}`}
+                  onClick={() => setSelectedReviewJobId(job.id)}
+                >
+                  <strong>{normalized.projectName}</strong>
+                  <span>
+                    {normalized.clientName} / {normalized.destination || "Destination pending"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {!draft && !order.orderId ? (
+          renderAdminEmptyState(
+            "No live intake draft",
+            "When a client submits an order, intake_jobs and intake_files records will appear here as one readable review packet."
+          )
+        ) : (
+          <>
+            <div className="intake-review-grid">
+              <section className="intake-order-brief-panel">
+                <div className="intake-section-heading">
+                  <span>S01</span>
+                  <div>
+                    <h5>Customer order packet</h5>
+                    <p>
+                      Client identity, uploaded source material, order content, drawings, photos, and files in one
+                      place.
+                    </p>
                   </div>
                 </div>
-              ) : (
-                renderAdminEmptyState(
-                  "No live intake draft",
-                  "intake_jobs records will appear here after a client submits an order and the worker writes the parsed draft."
-                )
-              )}
-            </>
-          )
-        })}
-        {renderAdminStagePanel({
-          stageId: "S02",
-          title: "Bilingual specification completion",
-          status: specRows.length ? "ai_checking" : "pending",
-          subtitle:
-            "Displays structured item, quantity, material, and missing-field data from the intake draft or specifications table.",
-          className: "wide",
-          children: specRows.length ? (
-            <>
-              {renderAdminMiniTable(["Item", "Qty", "Material", "Notes"], specRows)}
-              {(draft?.questions || []).length > 0 && (
-                <div className="admin-note-box">Missing questions: {(draft.questions || []).join(" / ")}</div>
-              )}
-            </>
-          ) : (
-            renderAdminEmptyState(
-              "No specification rows",
-              "When intake_jobs.result_json or specifications contains item rows, this stage will show them for Cho review."
-            )
-          )
-        })}
-        {renderAdminStagePanel({
-          stageId: "S03",
-          title: "Technical BOM generation",
-          status: bomRows.length ? "ready" : "pending",
-          subtitle:
-            "Shows the real BOM fields Cho needs to review: item, quantity, material, target/unit price, and notes.",
-          className: "wide",
-          children: bomRows.length ? (
-            <>
-              {renderAdminMiniTable(["Item", "Qty", "Material", "Target / Unit", "Notes"], bomRows)}
-              <div className="admin-detail-grid three">
-                <div className="admin-detail-block">
-                  <strong>BOM rows</strong>
-                  <span>{bomRows.length}</span>
+
+                <div className="intake-client-strip">
+                  <div>
+                    <span>Client</span>
+                    <strong>{draft?.clientName || order.clientName || "Pending client"}</strong>
+                  </div>
+                  <div>
+                    <span>Destination</span>
+                    <strong>{draft?.destination || order.projectLocation || "Pending"}</strong>
+                  </div>
+                  <div>
+                    <span>Submitted</span>
+                    <strong>{formatAdminDate(draft?.createdAt || selectedJob?.created_at || order.createdDate)}</strong>
+                  </div>
                 </div>
-                <div className="admin-detail-block">
-                  <strong>Open questions</strong>
-                  <span>{draft?.questions?.length || 0}</span>
+
+                <div className="intake-upload-zone">
+                  <div className="intake-preview-frame">
+                    {trackerPreviewUrl ? (
+                      <img src={trackerPreviewUrl} alt="Customer uploaded furniture reference" />
+                    ) : (
+                      <div className="intake-preview-fallback">
+                        {renderChairSVG(selectedFabric, selectedLeg)}
+                        <span>Reference thumbnail</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="intake-upload-list">
+                    <strong>Uploaded drawings / photos / files</strong>
+                    {uploadedAssets.length ? (
+                      uploadedAssets.map((asset) => (
+                        <div className="intake-file-card" key={asset.id}>
+                          <span>{asset.type}</span>
+                          <strong>{asset.name}</strong>
+                          <small>{asset.size}</small>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="intake-file-card muted">
+                        <span>No source file found</span>
+                        <strong>Waiting for intake_files</strong>
+                        <small>Customer upload will appear here after Supabase receives it.</small>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="admin-detail-block">
-                  <strong>Project id</strong>
-                  <span>{order.id || draft?.projectId || "Pending"}</span>
+
+                {requirementRows.length
+                  ? renderAdminMiniTable(["Order item", "Qty", "Material request", "Client notes"], requirementRows)
+                  : renderAdminEmptyState("No order items", "The AI parser has not produced item rows yet.")}
+              </section>
+
+              <section className="intake-ai-review-panel">
+                <div className="intake-section-heading">
+                  <span>S02</span>
+                  <div>
+                    <h5>AI specification gap review</h5>
+                    <p>AI checks whether the customer brief has enough data for BOM and bilingual spec generation.</p>
+                  </div>
+                </div>
+
+                <div className="intake-completeness-list">
+                  {completenessItems.map((item) => (
+                    <div className={`intake-completeness-row ${item.state}`} key={item.label}>
+                      <span>{item.state === "done" ? "OK" : "Need"}</span>
+                      <div>
+                        <strong>{item.label}</strong>
+                        <small>{item.value || "Pending"}</small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className={`intake-ai-gap-box ${hasMissingInfo ? "needs-info" : "complete"}`}>
+                  <strong>
+                    {hasMissingInfo ? "Client must complete these fields" : "AI review result: ready for BOM"}
+                  </strong>
+                  {hasMissingInfo ? (
+                    <ul>
+                      {missingQuestions.map((question, idx) => (
+                        <li key={`${question}-${idx}`}>{question}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>
+                      AI found no blocking missing questions. Cho can generate the BOM and bilingual specification
+                      draft.
+                    </p>
+                  )}
+                </div>
+
+                <div className="intake-action-stack">
+                  <button className="btn-secondary" onClick={handleAskClientForRevision} disabled={!hasMissingInfo}>
+                    Ask client to complete missing info
+                  </button>
+                  <button
+                    className="btn-premium"
+                    onClick={handleGenerateBomDraft}
+                    disabled={hasMissingInfo || !bomRows.length}
+                  >
+                    Generate BOM and spec draft
+                  </button>
+                </div>
+              </section>
+            </div>
+
+            <section className="intake-bom-spec-panel">
+              <div className="intake-section-heading">
+                <span>S03</span>
+                <div>
+                  <h5>BOM and bilingual specification draft</h5>
+                  <p>Generated draft for Cho to check: BOM rows, dimensions, tolerance, material, and thumbnail.</p>
                 </div>
               </div>
-            </>
-          ) : (
-            renderAdminEmptyState(
-              "No BOM data",
-              "BOM rows are read from the selected intake draft or Supabase specifications for the current project."
-            )
-          )
-        })}
-        {renderAdminStagePanel({
-          stageId: "S04",
-          title: "Cho technical review",
-          status: draft?.reviewStatus || (approvalRows.length ? "needs_cho_review" : "pending"),
-          subtitle:
-            "Human gate for drawing, BOM, material, and RFQ readiness. Approval history is read from approvals when available.",
-          className: "wide",
-          children: (
-            <>
+
+              {bomRows.length ? (
+                <>
+                  <div className="intake-spec-summary-grid">
+                    <div className="intake-spec-thumb">{renderChairSVG(selectedFabric, selectedLeg)}</div>
+                    <div className="admin-detail-block">
+                      <strong>Draft status</strong>
+                      <span>
+                        {intakeBomDraftGenerated ? "Generated in this review" : "Available from intake/specifications"}
+                      </span>
+                      <span>{hasMissingInfo ? "Blocked by missing fields" : "Ready for Cho check"}</span>
+                    </div>
+                    <div className="admin-detail-block">
+                      <strong>Dimensions and tolerance</strong>
+                      <span>{draft?.dimensions || "Dimensions pending unless provided by customer file"}</span>
+                      <span>{draft?.tolerance || "Tolerance: to be confirmed by Cho"}</span>
+                    </div>
+                    <div className="admin-detail-block">
+                      <strong>Material basis</strong>
+                      <span>{bomItems[0]?.materialEn || bomItems[0]?.materialCn || "Material to confirm"}</span>
+                      <span>{isCrib5Blocked ? "Crib 5 blocked" : "Compliance check can continue"}</span>
+                    </div>
+                  </div>
+                  {renderAdminMiniTable(["Item", "Qty", "Material", "Target / Unit", "Notes"], bomRows)}
+                </>
+              ) : (
+                renderAdminEmptyState(
+                  "BOM not generated",
+                  "Complete the missing customer fields first, then generate BOM and specs."
+                )
+              )}
+            </section>
+
+            <section className="intake-approval-panel">
+              <div className="intake-section-heading">
+                <span>S04-S05</span>
+                <div>
+                  <h5>Cho final approval</h5>
+                  <p>
+                    Approve after BOM, bilingual spec, material, compliance, dimensions, tolerance, and thumbnail are
+                    checked.
+                  </p>
+                </div>
+              </div>
+
               {approvalRows.length
                 ? renderAdminMiniTable(["Approval", "Status", "Reviewer", "Date"], approvalRows)
-                : renderAdminEmptyState("No S04 approval records", getAdminTableMissingText("approvals"))}
+                : null}
+              {prequoteNotice && <div className="prequote-notice">{prequoteNotice}</div>}
               <textarea
                 className="admin-review-textarea"
                 value={reviewNote}
                 onChange={(e) => setReviewNote(e.target.value)}
-                placeholder="Cho review note for drawing/BOM approval..."
+                placeholder="Cho review note for drawing, BOM, material, dimensions, tolerance, and RFQ readiness..."
               />
-            </>
-          ),
-          actions: (
-            <>
-              <button className="btn-secondary" onClick={handleAskClientForRevision}>
-                Ask client
-              </button>
-              <button className="btn-premium" onClick={handleApproveIntakeReview}>
-                Approve specs
-              </button>
-              <button className="btn-premium" onClick={handleCreateRfqDraft}>
-                Create RFQ package
-              </button>
-            </>
-          )
-        })}
-        {renderAdminStagePanel({
-          stageId: "S05",
-          title: "Crib 5 and compliance gate",
-          status: materialRows.length ? (isCrib5Blocked ? "blocked" : "passed") : "pending",
-          subtitle:
-            "Uses real material rows from the intake draft/specifications, then tracks whether each material can enter RFQ and production.",
-          className: "wide",
-          children: materialRows.length ? (
-            <>
-              {renderAdminMiniTable(["Material", "Crib 5", "Treatment", "Risk"], materialRows)}
-              <div className={`admin-note-box ${isCrib5Blocked ? "danger" : "success"}`}>
-                {isCrib5Blocked
-                  ? "Compliance is blocked. Cho must select a compliant material before RFQ."
-                  : "Current material rows can continue to supplier quotation once evidence is complete."}
+              <div className="intake-approval-actions">
+                <button className="btn-secondary" onClick={handleAskClientForRevision} disabled={!hasMissingInfo}>
+                  Request clarification
+                </button>
+                <button
+                  className="btn-premium"
+                  onClick={handleApproveIntakeReview}
+                  disabled={hasMissingInfo || !bomRows.length}
+                >
+                  Approve checked BOM and specs
+                </button>
+                <button
+                  className="btn-premium"
+                  onClick={handleCreateRfqDraft}
+                  disabled={hasMissingInfo || !bomRows.length}
+                >
+                  Create RFQ package
+                </button>
               </div>
-            </>
-          ) : (
-            renderAdminEmptyState(
-              "No material data",
-              "Material and compliance rows are generated from intake/specification records for the selected project."
-            )
-          ),
-          actions: isCrib5Blocked ? (
-            <button className="btn-premium" onClick={() => handleBypassCrib5("Navy Classic Linen")}>
-              Use compliant linen
-            </button>
-          ) : null
-        })}
-        <div className="admin-stage-detail wide">{renderIntakeReviewWorkspace()}</div>
+            </section>
+          </>
+        )}
       </div>
     );
   };
