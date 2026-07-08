@@ -24,8 +24,8 @@ jobs:
 
       - name: Build project
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL || 'https://rilwhmaeyqkrjxovtyaa.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpbHdobWFleXFrcmp4b3Z0eWFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwOTU3NTMsImV4cCI6MjA5NDY3MTc1M30.rsN_B3ZmknRXzI0JgtGV5pLZU2r2IKMrX1psiiEibGg' }}
           VITE_AI_SUPPORT_API_URL: ${{ secrets.VITE_AI_SUPPORT_API_URL }}
         run: npm run build
 
