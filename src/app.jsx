@@ -1040,8 +1040,8 @@ function App() {
             .filter(Boolean)
             .join("\n"),
           result_json: structuredBrief || null,
-          step: "parse_intake",
-          status: "queued"
+          step: structuredBrief?.schema_version === "portal_intake_v2" ? "cho_review" : "parse_intake",
+          status: structuredBrief?.schema_version === "portal_intake_v2" ? "needs_review" : "queued"
         })
         .select()
         .single(),
