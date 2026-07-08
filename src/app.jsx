@@ -487,6 +487,13 @@ function App() {
   const [reviewNote, setReviewNote] = useState("");
   const [prequoteNotice, setPrequoteNotice] = useState("");
   const [intakeBomDraftGenerated, setIntakeBomDraftGenerated] = useState(false);
+  const [intakeBomDraftMessage, setIntakeBomDraftMessage] = useState("");
+  const [adminIntakePreview, setAdminIntakePreview] = useState({
+    jobId: "",
+    url: "",
+    status: "idle",
+    message: ""
+  });
   const [clientProjectJobs, setClientProjectJobs] = useState([]);
   const [clientAnswerDrafts, setClientAnswerDrafts] = useState({});
   const [clientAnswerSubmitState, setClientAnswerSubmitState] = useState({});
@@ -3376,6 +3383,7 @@ function App() {
     if (intakeReviewJobs.length === 0) {
       setSelectedReviewJobId("");
       setReviewDraft(null);
+      setAdminIntakePreview({ jobId: "", url: "", status: "idle", message: "" });
       return;
     }
 
@@ -3385,6 +3393,79 @@ function App() {
     }
     syncReviewDraftFromJob(selectedJob);
   }, [intakeReviewJobs, selectedReviewJobId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const selectedJob = intakeReviewJobs.find((job) => job.id === selectedReviewJobId) || intakeReviewJobs[0];
+    const sourceFile = selectedJob ? getIntakeFileFromJob(selectedJob) : null;
+
+    const setPreview = (preview) => {
+      if (!cancelled) setAdminIntakePreview(preview);
+    };
+
+    if (!selectedJob || !sourceFile) {
+      setPreview({ jobId: selectedJob?.id || "", url: "", status: "idle", message: "" });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!sourceFile.mime_type?.startsWith("image/")) {
+      setPreview({
+        jobId: selectedJob.id,
+        url: "",
+        status: "unsupported",
+        message: "Uploaded source file is not an image preview."
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!sourceFile.storage_bucket || !sourceFile.storage_path || !dbConnected) {
+      setPreview({
+        jobId: selectedJob.id,
+        url: "",
+        status: "missing",
+        message: "Image metadata exists, but storage path is missing."
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setPreview({ jobId: selectedJob.id, url: "", status: "loading", message: "Loading thumbnail..." });
+
+    const loadSignedPreview = async () => {
+      try {
+        const client = getSupabaseBrowserClient();
+        const { data, error } = await client.storage
+          .from(sourceFile.storage_bucket)
+          .createSignedUrl(sourceFile.storage_path, 60 * 60);
+        if (error) throw error;
+        setPreview({
+          jobId: selectedJob.id,
+          url: data?.signedUrl || "",
+          status: data?.signedUrl ? "ready" : "missing",
+          message: data?.signedUrl ? "" : "Supabase did not return an image preview URL."
+        });
+      } catch (err) {
+        console.warn("Admin intake thumbnail could not be loaded:", err.message || err);
+        setPreview({
+          jobId: selectedJob.id,
+          url: "",
+          status: "error",
+          message: err.message || "Thumbnail could not be loaded from Supabase Storage."
+        });
+      }
+    };
+
+    loadSignedPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dbConnected, intakeReviewJobs, selectedReviewJobId]);
 
   useEffect(() => {
     if (currentView === "Backoffice" && reviewDraft) {
@@ -4135,6 +4216,7 @@ function App() {
     setReviewDraft(normalized);
     setReviewNote(normalized.reviewNotes || "");
     setIntakeBomDraftGenerated(false);
+    setIntakeBomDraftMessage("");
     setOrder(buildOrderFromReviewDraft(normalized));
     setCurrentStageIndex(0);
   };
@@ -5545,6 +5627,7 @@ function App() {
     const { jobs, selectedJob, draft, bomItems } = getAdminDraftContext();
     const hasActiveIntake = Boolean(draft) || (!dbConnected && Boolean(order.orderId));
     const sourceFile = selectedJob ? getIntakeFileFromJob(selectedJob) : null;
+    const orderPreviewUrl = adminIntakePreview.url || trackerPreviewUrl;
     const uploadedAssets = [
       sourceFile
         ? {
@@ -5558,7 +5641,7 @@ function App() {
         ? { id: draft.fileName, name: draft.fileName, type: "client reference", size: "Attached to intake" }
         : null
     ].filter(Boolean);
-    const hasUploadedEvidence = uploadedAssets.length > 0 || Boolean(trackerPreviewUrl);
+    const hasUploadedEvidence = uploadedAssets.length > 0 || Boolean(orderPreviewUrl);
 
     const bomRows = bomItems.map((item) => [
       item.typeEn || item.typeCn || item.item_type_en || item.item_type_cn || "-",
@@ -5620,8 +5703,25 @@ function App() {
     ];
 
     const handleGenerateBomDraft = () => {
+      if (!bomRows.length) {
+        const message = "BOM/spec draft cannot be generated yet because no order item rows were parsed.";
+        setIntakeBomDraftMessage(message);
+        setPrequoteNotice(message);
+        return;
+      }
+
+      if (hasMissingInfo) {
+        const message = `BOM/spec draft is blocked: ${missingQuestions.join(" / ")}`;
+        setIntakeBomDraftMessage(message);
+        setPrequoteNotice(message);
+        return;
+      }
+
       setIntakeBomDraftGenerated(true);
-      setPrequoteNotice("BOM and bilingual specification draft generated from the current intake data.");
+      const message =
+        "BOM and bilingual specification draft generated. Review S03 dimensions, tolerance, material, thumbnail, and BOM rows before approval.";
+      setIntakeBomDraftMessage(message);
+      setPrequoteNotice(message);
     };
 
     return (
@@ -5700,12 +5800,12 @@ function App() {
 
                 <div className="intake-upload-zone">
                   <div className="intake-preview-frame">
-                    {trackerPreviewUrl ? (
-                      <img src={trackerPreviewUrl} alt="Customer uploaded furniture reference" />
+                    {orderPreviewUrl ? (
+                      <img src={orderPreviewUrl} alt="Customer uploaded furniture reference" />
                     ) : (
                       <div className="intake-preview-fallback">
                         {renderChairSVG(selectedFabric, selectedLeg)}
-                        <span>Reference thumbnail</span>
+                        <span>{adminIntakePreview.message || "Reference thumbnail"}</span>
                       </div>
                     )}
                   </div>
@@ -5777,14 +5877,18 @@ function App() {
                   <button className="btn-secondary" onClick={handleAskClientForRevision} disabled={!hasMissingInfo}>
                     Ask client to complete missing info
                   </button>
-                  <button
-                    className="btn-premium"
-                    onClick={handleGenerateBomDraft}
-                    disabled={hasMissingInfo || !bomRows.length}
-                  >
-                    Generate BOM and spec draft
+                  <button className="btn-premium" onClick={handleGenerateBomDraft} disabled={!bomRows.length}>
+                    {intakeBomDraftGenerated ? "BOM/spec draft generated" : "Generate BOM and spec draft"}
                   </button>
                 </div>
+                {intakeBomDraftMessage && (
+                  <div
+                    className={`intake-generation-status ${intakeBomDraftGenerated ? "success" : "blocked"}`}
+                    role="status"
+                  >
+                    {intakeBomDraftMessage}
+                  </div>
+                )}
               </section>
             </div>
 
@@ -5800,7 +5904,13 @@ function App() {
               {bomRows.length ? (
                 <>
                   <div className="intake-spec-summary-grid">
-                    <div className="intake-spec-thumb">{renderChairSVG(selectedFabric, selectedLeg)}</div>
+                    <div className="intake-spec-thumb">
+                      {orderPreviewUrl ? (
+                        <img src={orderPreviewUrl} alt="Generated specification thumbnail" />
+                      ) : (
+                        renderChairSVG(selectedFabric, selectedLeg)
+                      )}
+                    </div>
                     <div className="admin-detail-block">
                       <strong>Draft status</strong>
                       <span>
