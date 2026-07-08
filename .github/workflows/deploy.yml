@@ -58,5 +58,44 @@ jobs:
           # Upload the tarball
           scp release.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
           
-          # Clean up previous web assets on VPS to prevent bloat, then extract and clean tarball
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} "cd ${{ secrets.VPS_TARGET_DIR }} && rm -rf assets loading-ai index.html furniture_scan.mp4 hero_chair.jpg && tar -xzf release.tar.gz && rm release.tar.gz"
+          # Clean up previous web assets on VPS to prevent bloat, then extract and clean tarball.
+          #
+          # Some VPS/Nginx installs point the live HTTPS vhost at a directory
+          # that is different from VPS_TARGET_DIR. Deploy to the configured
+          # target first, then also update any existing Crafton static roots
+          # discovered under common web directories.
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} '
+            set -e
+            release="${{ secrets.VPS_TARGET_DIR }}/release.tar.gz"
+            targets="${{ secrets.VPS_TARGET_DIR }}"
+
+            index_list="$(mktemp)"
+            for base in /var/www /home /usr/share/nginx/html; do
+              [ -d "$base" ] || continue
+              find "$base" -maxdepth 5 -type f -name index.html 2>/dev/null >> "$index_list" || true
+            done
+
+            while IFS= read -r index_file; do
+              [ -n "$index_file" ] || continue
+              [ -f "$index_file" ] || continue
+              dir="$(dirname "$index_file")"
+              if grep -q "assets/index-" "$index_file"; then
+                case " $targets " in
+                  *" $dir "*) ;;
+                  *) targets="$targets $dir" ;;
+                esac
+              fi
+            done < "$index_list"
+            rm -f "$index_list"
+
+            for dir in $targets; do
+              mkdir -p "$dir"
+              if [ "$dir" != "${{ secrets.VPS_TARGET_DIR }}" ]; then
+                cp "$release" "$dir/release.tar.gz"
+              fi
+              cd "$dir"
+              rm -rf assets loading-ai index.html furniture_scan.mp4 hero_chair.jpg
+              tar -xzf release.tar.gz
+              rm release.tar.gz
+            done
+          '
