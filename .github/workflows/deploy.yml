@@ -69,16 +69,17 @@ jobs:
             targets="${{ secrets.VPS_TARGET_DIR }}"
 
             index_list="$(mktemp)"
-            for base in /var/www /home /usr/share/nginx/html; do
+            for base in /var/www /home /usr/share/nginx/html /usr/local/nginx/html /www /srv /opt /root; do
               [ -d "$base" ] || continue
-              find "$base" -maxdepth 5 -type f -name index.html 2>/dev/null >> "$index_list" || true
+              find "$base" -maxdepth 7 -type f -name index.html 2>/dev/null >> "$index_list" || true
             done
 
             while IFS= read -r index_file; do
               [ -n "$index_file" ] || continue
               [ -f "$index_file" ] || continue
               dir="$(dirname "$index_file")"
-              if grep -q "assets/index-" "$index_file"; then
+              asset="$(grep -o "assets/index-[^\"[:space:]]*\.js" "$index_file" 2>/dev/null | head -n 1 || true)"
+              if [ -n "$asset" ] && { grep -qi "crafton" "$index_file" 2>/dev/null || grep -qi "crafton" "$dir/$asset" 2>/dev/null; }; then
                 case " $targets " in
                   *" $dir "*) ;;
                   *) targets="$targets $dir" ;;
