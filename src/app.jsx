@@ -79,25 +79,64 @@ const clearSupabaseAuthStorage = () => {
 window.supabase = { createClient };
 
 const AI_SUPPORT_API_URL = import.meta.env.VITE_AI_SUPPORT_API_URL || "http://127.0.0.1:8787/api/ai-support-chat";
+const INTAKE_UPLOAD_TIMEOUT_MS = 45000;
+const INTAKE_DB_TIMEOUT_MS = 30000;
+const ENV_SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || "").trim();
+const ENV_SUPABASE_ANON_KEY = (
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  import.meta.env.VITE_SUPABASE_KEY ||
+  ""
+).trim();
+const isSupabaseConfiguredByEnv = Boolean(ENV_SUPABASE_URL && ENV_SUPABASE_ANON_KEY);
 
-// Initialize Supabase from localStorage with robust safety guards
-const savedUrl = safeGetItem("supabase_url");
-const savedKey = safeGetItem("supabase_key");
+const getSupabaseUrl = () => ENV_SUPABASE_URL || safeGetItem("supabase_url");
+const getSupabaseKey = () => ENV_SUPABASE_ANON_KEY || safeGetItem("supabase_key");
+
+// Initialize Supabase from deploy-time env vars first, then browser storage as a fallback.
+const savedUrl = getSupabaseUrl();
+const savedKey = getSupabaseKey();
 let supabaseClient = null;
+let supabaseClientCacheKey = "";
 
 if (savedUrl && savedKey && window.supabase) {
   try {
     supabaseClient = window.supabase.createClient(savedUrl, savedKey);
+    supabaseClientCacheKey = `${savedUrl}::${savedKey}`;
   } catch (err) {
     console.error("Supabase initialization error:", err);
   }
 }
 
-const getSupabaseBrowserClient = () => {
-  const url = safeGetItem("supabase_url");
-  const key = safeGetItem("supabase_key");
+const getSupabaseBrowserClient = (urlOverride = "", keyOverride = "") => {
+  const url = (urlOverride || getSupabaseUrl()).trim();
+  const key = (keyOverride || getSupabaseKey()).trim();
   if (!url || !key || !window.supabase) return null;
-  return window.supabase.createClient(url, key);
+
+  const cacheKey = `${url}::${key}`;
+  if (supabaseClient && supabaseClientCacheKey === cacheKey) {
+    return supabaseClient;
+  }
+
+  if (supabaseClient && supabaseClientCacheKey !== cacheKey) {
+    try {
+      supabaseClient.removeAllChannels?.();
+    } catch (err) {
+      console.warn("Previous Supabase realtime channels were not fully cleared:", err.message || err);
+    }
+  }
+
+  supabaseClient = window.supabase.createClient(url, key);
+  supabaseClientCacheKey = cacheKey;
+  return supabaseClient;
+};
+
+const withTimeout = (promise, timeoutMs, message) => {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
 };
 
 const getDisplayNameFromEmail = (email = "") => {
@@ -105,9 +144,16 @@ const getDisplayNameFromEmail = (email = "") => {
   return nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
 };
 
+const isCraftonStaffEmail = (email = "") =>
+  String(email || "")
+    .toLowerCase()
+    .endsWith("@crafton.com");
+
 const mapSupabaseUserToAppUser = (supabaseUser, fallback = {}) => {
   const metadata = supabaseUser?.user_metadata || {};
+  const appMetadata = supabaseUser?.app_metadata || {};
   const email = supabaseUser?.email || fallback.email || "";
+  const role = appMetadata.role || fallback.role || "";
   return {
     id: supabaseUser?.id || fallback.id || null,
     name: metadata.full_name || metadata.name || fallback.name || getDisplayNameFromEmail(email),
@@ -116,7 +162,9 @@ const mapSupabaseUserToAppUser = (supabaseUser, fallback = {}) => {
     messenger: metadata.preferred_messenger || fallback.messenger || "WhatsApp",
     messengerId: metadata.messenger_id || fallback.messengerId || "N/A",
     avatarUrl: metadata.avatar_url || fallback.avatarUrl || "",
-    authProvider: supabaseUser?.app_metadata?.provider || fallback.authProvider || "email"
+    authProvider: appMetadata.provider || fallback.authProvider || "email",
+    role,
+    isStaff: role === "staff" || role === "admin" || isCraftonStaffEmail(email) || Boolean(fallback.isStaff)
   };
 };
 
@@ -199,19 +247,33 @@ const safeJsonObject = (value, fallback = {}) => {
   }
 };
 
+const normalizeGroupingText = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+const getIntakeFileFromJob = (job = {}) => {
+  if (Array.isArray(job.intake_files)) return job.intake_files[0] || null;
+  return job.intake_files || null;
+};
+
 const normalizeReviewJob = (job = {}) => {
   const result = safeJsonObject(job.result_json, {});
   const project = result.project || {};
   const items = Array.isArray(result.items) ? result.items : [];
+  const payments = Array.isArray(result.payments) ? result.payments : [];
   const questions = Array.isArray(result.questions) ? result.questions : [];
   const rfqDraft = safeJsonObject(job.rfq_draft_json, null);
+  const intakeFile = getIntakeFileFromJob(job);
 
   return {
     id: job.id || "LOCAL-INTAKE-DEMO",
     projectId: job.project_id || null,
-    projectName: job.project_name || project.name || "",
-    destination: job.destination || project.destination || "",
-    quantityText: job.quantity_text || "",
+    projectName: job.project_name || project.name || job.projectName || "To confirm",
+    clientName: project.client_name || job.projects?.client_name || "Portal Intake Client",
+    destination: job.destination || project.destination || job.destination || "",
+    quantityText: job.quantity_text || job.quantityText || "",
     status: job.status || "needs_review",
     reviewStatus: job.review_status || (job.status === "completed" ? "approved" : "pending"),
     rfqStatus: job.rfq_status || "not_started",
@@ -219,6 +281,8 @@ const normalizeReviewJob = (job = {}) => {
     clientAnswers: safeJsonObject(job.client_answers, {}),
     sourceNotes: result.source_notes || job.brief_text || "",
     summaryEn: result.summary_en || "Intake draft parsed from client materials.",
+    createdAt: job.created_at || job.submittedAt || "",
+    fileName: intakeFile?.original_name || job.fileName || "",
     questions,
     rfqDraft,
     items: items.map((item, idx) => ({
@@ -234,6 +298,99 @@ const normalizeReviewJob = (job = {}) => {
       unitPrice: Number(item.unit_price || item.unitPrice || item.original_unit_price || item.originalUnitPrice || 0),
       notesCn: item.notes_cn || item.notesCn || "",
       notesEn: item.notes_en || item.notesEn || item.note || ""
+    })),
+    payments: payments.map((payment, idx) => ({
+      id: payment.id || `DRAFT-PAYMENT-${idx + 1}`,
+      milestoneCn: payment.milestone_cn || payment.milestoneCn || payment.milestone_en || payment.milestone || "",
+      milestoneEn: payment.milestone_en || payment.milestoneEn || payment.milestone_cn || payment.milestone || "",
+      amount: Number(payment.amount || 0),
+      status: payment.status || "Pending",
+      date: payment.payment_date || payment.date || "Pending"
+    }))
+  };
+};
+
+const buildProjectGroupsFromJobs = (jobs = []) => {
+  const groups = new Map();
+
+  jobs
+    .map((job) => normalizeReviewJob(job))
+    .forEach((job) => {
+      const projectKey =
+        job.projectId ||
+        [normalizeGroupingText(job.projectName), normalizeGroupingText(job.destination)].filter(Boolean).join("|") ||
+        job.id;
+      const existing = groups.get(projectKey);
+
+      if (existing) {
+        existing.jobs.push(job);
+        if (!existing.destination && job.destination) existing.destination = job.destination;
+        if ((!existing.projectName || existing.projectName === "To confirm") && job.projectName) {
+          existing.projectName = job.projectName;
+        }
+        return;
+      }
+
+      groups.set(projectKey, {
+        key: projectKey,
+        projectId: job.projectId,
+        projectName: job.projectName || "To confirm",
+        destination: job.destination || "",
+        jobs: [job]
+      });
+    });
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    jobs: group.jobs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+  }));
+};
+
+const buildAiProjectOverviewFromJobs = (jobs = [], currentDraft = {}) => {
+  const groups = buildProjectGroupsFromJobs(jobs);
+  const allJobs = groups.flatMap((group) => group.jobs);
+  const latestOrder = allJobs[0] || null;
+
+  return {
+    totalProjects: groups.length,
+    totalOrders: allJobs.length,
+    latestOrder: latestOrder
+      ? {
+          jobId: latestOrder.id,
+          projectName: latestOrder.projectName,
+          destination: latestOrder.destination,
+          quantityText: latestOrder.quantityText,
+          status: latestOrder.status,
+          reviewStatus: latestOrder.reviewStatus,
+          rfqStatus: latestOrder.rfqStatus,
+          summary: latestOrder.summaryEn,
+          fileName: latestOrder.fileName
+        }
+      : null,
+    currentDraft,
+    projects: groups.slice(0, 8).map((group) => ({
+      projectId: group.projectId,
+      projectName: group.projectName,
+      destination: group.destination,
+      orderCount: group.jobs.length,
+      orders: group.jobs.slice(0, 6).map((job) => ({
+        jobId: job.id,
+        quantityText: job.quantityText,
+        status: job.status,
+        reviewStatus: job.reviewStatus,
+        rfqStatus: job.rfqStatus,
+        summary: job.summaryEn,
+        questions: job.questions,
+        clientAnswers: job.clientAnswers,
+        items: job.items.map((item) => ({
+          item: item.typeEn || item.typeCn,
+          quantity: item.qty,
+          material: item.materialEn || item.materialCn,
+          notes: item.notesEn || item.notesCn
+        })),
+        fileName: job.fileName,
+        createdAt: job.createdAt
+      }))
     }))
   };
 };
@@ -301,6 +458,7 @@ function App() {
   const [authMode, setAuthMode] = useState("login"); // "login" or "signup"
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const isStaffUser = Boolean(user?.isStaff);
 
   // Custom Registration Input States
   const [signupName, setSignupName] = useState("");
@@ -316,6 +474,9 @@ function App() {
   const [intakeQuantity, setIntakeQuantity] = useState("");
   const [intakeSelectedFile, setIntakeSelectedFile] = useState(null);
   const [intakeSelectedFileName, setIntakeSelectedFileName] = useState("");
+  const [intakeUploadedFileId, setIntakeUploadedFileId] = useState(null);
+  const [intakeUploadStatus, setIntakeUploadStatus] = useState("");
+  const [intakeFileUploading, setIntakeFileUploading] = useState(false);
   const [latestIntakeJob, setLatestIntakeJob] = useState(null);
   const [liveIntakeWarning, setLiveIntakeWarning] = useState("");
   const [submittedTrackerProject, setSubmittedTrackerProject] = useState(null);
@@ -327,6 +488,15 @@ function App() {
   const [prequoteNotice, setPrequoteNotice] = useState("");
   const [clientProjectJobs, setClientProjectJobs] = useState([]);
   const [clientAnswerDrafts, setClientAnswerDrafts] = useState({});
+  const [clientAnswerSubmitState, setClientAnswerSubmitState] = useState({});
+  const [adminRfqBatches, setAdminRfqBatches] = useState([]);
+  const [adminSupplierQuotes, setAdminSupplierQuotes] = useState([]);
+  const [adminApprovals, setAdminApprovals] = useState([]);
+  const [adminInspectionReports, setAdminInspectionReports] = useState([]);
+  const [adminShipmentDocuments, setAdminShipmentDocuments] = useState([]);
+  const [adminWorkflowEvents, setAdminWorkflowEvents] = useState([]);
+  const [adminProjectFiles, setAdminProjectFiles] = useState([]);
+  const [adminDataStatus, setAdminDataStatus] = useState({ loaded: false, missingTables: [] });
   const [supportMessages, setSupportMessages] = useState([
     {
       sender: "ai",
@@ -342,6 +512,7 @@ function App() {
   const [supportStatus, setSupportStatus] = useState("");
 
   const [currentStageIndex, setCurrentStageIndex] = useState(0); // S01 to S17
+  const [activeAdminFlow, setActiveAdminFlow] = useState("intake");
   const [order, setOrder] = useState(JSON.parse(JSON.stringify(mockData.initialOrder)));
   const [logs, setLogs] = useState(JSON.parse(JSON.stringify(mockData.changeLogs)));
   const [chatMessages, setChatMessages] = useState([
@@ -358,6 +529,8 @@ function App() {
   const [isCrib5Blocked, setIsCrib5Blocked] = useState(false);
   const terminalEndRef = useRef(null);
   const supportConversationIdRef = useRef(null);
+  const intakeFileInputRef = useRef(null);
+  const lastProfileSyncRef = useRef("");
 
   // Material Studio Swatch Configurator States
   const [selectedFabric, setSelectedFabric] = useState("FAB-02"); // default Navy Classic Linen
@@ -407,7 +580,8 @@ function App() {
       email: signupEmail,
       company: "Contract Design Ltd",
       messenger: "WhatsApp",
-      messengerId: "+44 7700 900077"
+      messengerId: "+44 7700 900077",
+      isStaff: isCraftonStaffEmail(signupEmail)
     });
     setShowAuthGate(false);
   };
@@ -423,7 +597,8 @@ function App() {
       email: signupEmail,
       company: signupCompany || "Independent Designer",
       messenger: signupMessenger,
-      messengerId: signupMessengerId || "N/A"
+      messengerId: signupMessengerId || "N/A",
+      isStaff: isCraftonStaffEmail(signupEmail)
     });
     setShowAuthGate(false);
   };
@@ -441,6 +616,19 @@ function App() {
     if (!client) return;
 
     const appUser = mapSupabaseUserToAppUser(supabaseUser, profilePatch);
+    const hasExplicitProfilePatch = Object.keys(profilePatch || {}).length > 0;
+    const profileFingerprint = JSON.stringify({
+      id: supabaseUser.id,
+      name: appUser.name,
+      company: appUser.company,
+      messenger: appUser.messenger,
+      messengerId: appUser.messengerId,
+      avatarUrl: appUser.avatarUrl || null
+    });
+
+    if (!hasExplicitProfilePatch && lastProfileSyncRef.current === profileFingerprint) {
+      return;
+    }
 
     try {
       await client.from("user_profiles").upsert(
@@ -485,6 +673,7 @@ function App() {
       if (providerRows.length > 0) {
         await client.from("account_identities").upsert(providerRows, { onConflict: "provider,provider_subject" });
       }
+      lastProfileSyncRef.current = profileFingerprint;
     } catch (err) {
       console.warn("User profile sync failed. Has the identity migration been run?", err.message || err);
     }
@@ -515,11 +704,8 @@ function App() {
       if (error) throw error;
       if (!data?.user) throw new Error("No authenticated user returned.");
 
-      await syncAuthenticatedUserProfile(data.user);
       setUser(mapSupabaseUserToAppUser(data.user));
       setShowAuthGate(false);
-      await fetchSupabaseData();
-      await loadLatestSubmittedTrackerProject();
     } catch (err) {
       setAuthError(err.message || "Sign in failed.");
     } finally {
@@ -577,8 +763,6 @@ function App() {
       if (data?.session && data?.user) {
         setUser(mapSupabaseUserToAppUser(data.user, profilePatch));
         setShowAuthGate(false);
-        await fetchSupabaseData();
-        await loadLatestSubmittedTrackerProject();
       } else {
         setAuthError(
           lang === "Cn"
@@ -622,6 +806,7 @@ function App() {
     setUser(null);
     setSupportConversationId(null);
     supportConversationIdRef.current = null;
+    lastProfileSyncRef.current = "";
     setCurrentStageView("Marketing");
     setMarketingTab("Overview");
     setClientPortalTab("Intake");
@@ -644,7 +829,8 @@ function App() {
         email: "sarah@jenkins-design.co.uk",
         company: "Jenkins Contract Interior Studio",
         messenger: "WhatsApp",
-        messengerId: "+44 7700 900077"
+        messengerId: "+44 7700 900077",
+        isStaff: false
       });
     } else if (role === "cho") {
       setUser({
@@ -652,7 +838,8 @@ function App() {
         email: "cho@crafton.com",
         company: "The Crafton Ltd",
         messenger: "WeChat",
-        messengerId: "cho_crafton"
+        messengerId: "cho_crafton",
+        isStaff: true
       });
     }
     setShowAuthGate(false);
@@ -688,28 +875,36 @@ function App() {
     const { client, supabaseUser } = context;
     const cleanName = file.name.replace(/[^\w.-]+/g, "_");
     const storagePath = `${supabaseUser.id}/${Date.now()}-${cleanName}`;
-    const { error: uploadError } = await client.storage.from("intake-files").upload(storagePath, file, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false
-    });
+    const { error: uploadError } = await withTimeout(
+      client.storage.from("intake-files").upload(storagePath, file, {
+        contentType: file.type || "application/octet-stream",
+        upsert: false
+      }),
+      INTAKE_UPLOAD_TIMEOUT_MS,
+      "File upload to Supabase timed out. Please check the network, Storage bucket policy, and file size."
+    );
 
     if (uploadError) throw uploadError;
 
-    const { data: fileRow, error: fileError } = await client
-      .from("intake_files")
-      .insert({
-        user_id: supabaseUser.id,
-        uploaded_by: supabaseUser.id,
-        original_name: file.name,
-        storage_bucket: "intake-files",
-        storage_path: storagePath,
-        mime_type: file.type || null,
-        file_size: file.size || null,
-        intake_type: fileType,
-        notes
-      })
-      .select()
-      .single();
+    const { data: fileRow, error: fileError } = await withTimeout(
+      client
+        .from("intake_files")
+        .insert({
+          user_id: supabaseUser.id,
+          uploaded_by: supabaseUser.id,
+          original_name: file.name,
+          storage_bucket: "intake-files",
+          storage_path: storagePath,
+          mime_type: file.type || null,
+          file_size: file.size || null,
+          intake_type: fileType,
+          notes
+        })
+        .select()
+        .single(),
+      INTAKE_DB_TIMEOUT_MS,
+      "File metadata was uploaded, but saving the intake_files row timed out."
+    );
 
     if (fileError) throw fileError;
     return fileRow;
@@ -739,24 +934,31 @@ function App() {
       intakeFileId = fileRow?.id || null;
     }
 
-    const { data: job, error: jobError } = await client
-      .from("intake_jobs")
-      .insert({
-        intake_file_id: intakeFileId,
-        user_id: supabaseUser.id,
-        requested_by: supabaseUser.id,
-        project_name: projectName || null,
-        destination,
-        quantity_text: quantity,
-        brief_text: [projectName ? `Display project: ${projectName}` : "", textBrief || ""].filter(Boolean).join("\n"),
-        step: "parse_intake",
-        status: "queued"
-      })
-      .select()
-      .single();
+    const { data: job, error: jobError } = await withTimeout(
+      client
+        .from("intake_jobs")
+        .insert({
+          intake_file_id: intakeFileId,
+          user_id: supabaseUser.id,
+          requested_by: supabaseUser.id,
+          project_name: projectName || null,
+          destination,
+          quantity_text: quantity,
+          brief_text: [projectName ? `Display project: ${projectName}` : "", textBrief || ""]
+            .filter(Boolean)
+            .join("\n"),
+          step: "parse_intake",
+          status: "queued"
+        })
+        .select()
+        .single(),
+      INTAKE_DB_TIMEOUT_MS,
+      "Creating the intake job timed out. Please retry after confirming Supabase is connected."
+    );
 
     if (jobError) throw jobError;
     setLatestIntakeJob(job);
+    setClientProjectJobs((prev) => [job, ...prev.filter((item) => item.id !== job.id)]);
     return job;
   };
 
@@ -851,6 +1053,71 @@ function App() {
     if (extracted.quantityText) setIntakeQuantity(extracted.quantityText);
   };
 
+  const getPortalContextJobs = () => {
+    const merged = new Map();
+    [...clientProjectJobs, ...getLocalReviewJobs()].forEach((job) => {
+      const key =
+        job.id || `${job.project_name || job.projectName || "local"}-${job.created_at || job.submittedAt || ""}`;
+      if (!merged.has(key)) merged.set(key, job);
+    });
+    return Array.from(merged.values());
+  };
+
+  const buildSupportProjectContext = () =>
+    buildAiProjectOverviewFromJobs(getPortalContextJobs(), {
+      projectName: intakeProjectName,
+      destination: intakeDestination,
+      quantityText: intakeQuantity,
+      selectedFileName: supportSelectedFileName || intakeSelectedFileName || "",
+      draftSource: supportSelectedFileName ? "ai_concierge" : "manual_intake"
+    });
+
+  /* legacy tracker fallback disabled after unified project context upgrade
+  const buildTrackerContextReply = (latestText) => {
+    const overview = buildSupportProjectContext();
+    const latestOrder = overview.latestOrder;
+    const wantsProgress = /progress|status|stage|when|ready|done|進度|进度|狀態|状态|完成|幾時|什么时候|何時/i.test(latestText);
+
+    if (wantsProgress && latestOrder) {
+      return lang === "Cn"
+        ? `我看到最新订单是「${latestOrder.projectName || "待确认项目"}」，状态为 ${latestOrder.reviewStatus || latestOrder.status}。${latestOrder.summary || "Crafton 团队正在整理需求草稿。"}`
+        : `The latest order I can see is "${latestOrder.projectName || "To confirm"}", currently ${latestOrder.reviewStatus || latestOrder.status}. ${latestOrder.summary || "The Crafton team is preparing the intake draft."}`;
+    }
+
+    if (latestOrder) {
+      return lang === "Cn"
+        ? `收到。我会参考当前项目概览：${latestOrder.projectName || "待确认项目"}，${latestOrder.destination || "目的地待确认"}，${latestOrder.quantityText || "数量待确认"}。请继续补充要新增、修改或查询的内容。`
+        : `Received. I will use the current project overview: ${latestOrder.projectName || "To confirm"}, ${latestOrder.destination || "destination pending"}, ${latestOrder.quantityText || "quantity pending"}. Please tell me whether this is a new order, a modification, or a progress question.`;
+    }
+
+    return lang === "Cn"
+      ? "收到。我还没有看到已提交的项目概览，请先提交一份需求或告诉我项目名、地点、数量和参考资料。"
+      : "Received. I do not see a submitted project overview yet, so please share the project name, destination, quantity, and reference files first.";
+  };
+
+  */
+  const buildTrackerContextReply = (latestText) => {
+    const overview = buildSupportProjectContext();
+    const latestOrder = overview.latestOrder;
+    const wantsProgress = /progress|status|stage|when|ready|done|進度|进度|狀態|状态|完成|幾時|什么时候|何時/i.test(
+      latestText
+    );
+
+    if (wantsProgress && latestOrder) {
+      return `The latest order I can see is "${latestOrder.projectName || "To confirm"}", currently ${
+        latestOrder.reviewStatus || latestOrder.status
+      }. ${latestOrder.summary || "The Crafton team is preparing the intake draft."}`;
+    }
+
+    if (latestOrder) {
+      return `Received. I will use the current project overview: ${latestOrder.projectName || "To confirm"}, ${
+        latestOrder.destination || "destination pending"
+      }, ${latestOrder.quantityText || "quantity pending"}. Please tell me whether this is a new order, a modification, or a progress question.`;
+    }
+
+    return "Received. I do not see a submitted project overview yet, so please share the project name, destination, quantity, and reference files first.";
+  };
+
   const requestAiSupportReply = async (messages) => {
     let lastError;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -871,6 +1138,7 @@ function App() {
   const requestAiSupportReplyOnce = async (messages) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 110000);
+    const projectOverview = buildSupportProjectContext();
 
     let response;
     try {
@@ -887,7 +1155,8 @@ function App() {
             selectedFileName: supportSelectedFileName,
             clientName: user?.name || "",
             company: user?.company || "",
-            preferredLanguage: lang
+            preferredLanguage: lang,
+            projectOverview
           }
         })
       });
@@ -950,13 +1219,8 @@ function App() {
     if (!file) return;
 
     const clientFileMessage = `Uploaded file: ${file.name} (${file.type || "unknown type"})`;
-    setSupportMessages((prev) => [
-      ...prev,
-      {
-        sender: "client",
-        text: clientFileMessage
-      }
-    ]);
+    const nextMessages = [...supportMessages, { sender: "client", text: clientFileMessage }];
+    setSupportMessages(nextMessages);
 
     setSupportStatus("正在保存客户文件...");
 
@@ -970,13 +1234,26 @@ function App() {
       setSupportUploadedFileId(fileRow?.id || null);
       await saveSupportMessage({ sender: "client", text: clientFileMessage, attachmentFileId: fileRow?.id || null });
 
+      setSupportStatus("File saved. Crafton AI is updating the project overview...");
+      setSupportIsTyping(true);
+      const result = await requestAiSupportReply(nextMessages);
+      applySupportExtraction(result.extracted);
       const aiFileReply =
+        result.reply ||
         "文件已安全保存。我会把它作为客户原始资料，连同对话摘要一起提交给 Crafton 顾问团队；目前系统会保存文件并读取表单/对话文字，PDF/图片内容解析会在下一步增强。";
       setSupportMessages((prev) => [...prev, { sender: "ai", text: aiFileReply }]);
-      await saveSupportMessage({ sender: "ai", text: aiFileReply, attachmentFileId: fileRow?.id || null });
+      await saveSupportMessage({
+        sender: "ai",
+        text: aiFileReply,
+        attachmentFileId: fileRow?.id || null,
+        aiPayload: result
+      });
+      updateSupportConversationSummary({ summaryText: result.extracted?.briefText || "" }).catch(() => {});
+      setSupportIsTyping(false);
       setSupportStatus(`文件已保存：${file.name}`);
     } catch (err) {
       console.error("Support file upload failed:", err);
+      setSupportIsTyping(false);
       const aiFileError =
         "我已经在当前页面接收了这个文件，但暂时没有成功保存到云端。请稍后重试上传，或检查 Supabase 连接后再提交项目需求。";
       setSupportMessages((prev) => [...prev, { sender: "ai", text: aiFileError }]);
@@ -1011,6 +1288,8 @@ function App() {
       if (job) {
         setSupportStatus(`已提交项目需求。任务 ID：${job.id}`);
         updateSupportConversationSummary({ status: "submitted" }).catch(() => {});
+        loadPrequoteWorkspace().catch((err) => console.warn("Prequote refresh after AI handoff failed:", err));
+        setClientPortalTab("Tracker");
         setSupportMessages((prev) => [
           ...prev,
           {
@@ -1027,6 +1306,50 @@ function App() {
     }
   };
 
+  const handleIntakeFileSelect = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    setIntakeSelectedFile(file || null);
+    setIntakeSelectedFileName(file?.name || "");
+    setIntakeUploadedFileId(null);
+    setIntakeUploadStatus("");
+    setIntakeFileUploading(false);
+    if (!file) return;
+
+    setLiveIntakeWarning("");
+    setIntakeFileUploading(true);
+    setIntakeUploadStatus(
+      lang === "Cn" ? "\u6b63\u5728\u4fdd\u5b58\u6587\u4ef6\u5230 Supabase..." : "Saving file to Supabase..."
+    );
+
+    try {
+      const fileRow = await uploadIntakeFileRecord({
+        file,
+        fileType: "PORTAL_FORM",
+        notes: [intakeProjectName, intakeDestination, intakeQuantity].filter(Boolean).join(" | ")
+      });
+
+      if (fileRow?.id) {
+        setIntakeUploadedFileId(fileRow.id);
+        setIntakeUploadStatus(
+          `${lang === "Cn" ? "\u5df2\u4fdd\u5b58\u5230 intake_files\uff1a" : "Saved to intake_files: "}${file.name}`
+        );
+      } else {
+        setIntakeUploadStatus(
+          lang === "Cn"
+            ? "\u6587\u4ef6\u5df2\u9009\u4e2d\u3002\u8bf7\u5148\u767b\u5f55\u5e76\u4fdd\u6301 Supabase \u8fde\u63a5\uff0c\u63d0\u4ea4\u65f6\u4f1a\u518d\u6b21\u4e0a\u4f20\u3002"
+            : "File selected. Please sign in and keep Supabase connected before submitting."
+        );
+      }
+    } catch (err) {
+      console.error("Intake file upload failed:", err);
+      setIntakeUploadedFileId(null);
+      setIntakeUploadStatus("");
+      setLiveIntakeWarning(err.message || "File upload failed. Please check Supabase Storage and table permissions.");
+    } finally {
+      setIntakeFileUploading(false);
+    }
+  };
+
   const handleIntakeSubmit = async (e, override = {}) => {
     if (e) e.preventDefault();
     const submitProjectName = override.projectName || intakeProjectName;
@@ -1035,6 +1358,7 @@ function App() {
     const submitFileType = override.fileType || "PORTAL_FORM";
     const submitTextBrief = override.textBrief || "";
     const submitFile = override.file || intakeSelectedFile;
+    const submitIntakeFileId = override.intakeFileId || intakeUploadedFileId;
 
     setIsIntakeUploading(true);
     setParsingLogs([]);
@@ -1048,7 +1372,8 @@ function App() {
         quantity: submitQuantity,
         fileType: submitFileType,
         textBrief: submitTextBrief,
-        file: submitFile
+        file: submitFile,
+        intakeFileId: submitIntakeFileId
       });
 
       if (job) {
@@ -1118,7 +1443,7 @@ function App() {
         file: submittedFile,
         fileName: submittedFileName,
         jobId: createdJob?.id || null,
-        intakeFileId: createdJob?.intake_file_id || supportUploadedFileId || null,
+        intakeFileId: createdJob?.intake_file_id || submitIntakeFileId || supportUploadedFileId || null,
         quoteStatus: "pending_quote",
         submittedAt: new Date().toISOString()
       });
@@ -1162,7 +1487,7 @@ function App() {
 
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
+        const client = getSupabaseBrowserClient();
         await client
           .from("projects")
           .update({
@@ -1181,7 +1506,7 @@ function App() {
     setSelectedLeg(legId);
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
+        const client = getSupabaseBrowserClient();
         await client.from("projects").update({ selected_leg: legId }).eq("id", order.id);
       } catch (err) {
         console.error("Supabase leg sync error:", err);
@@ -1242,6 +1567,9 @@ function App() {
     setIntakeQuantity(quantity || "");
     setIntakeSelectedFile(file || null);
     setIntakeSelectedFileName(file?.name || "");
+    setIntakeUploadedFileId(null);
+    setIntakeUploadStatus("");
+    setIntakeFileUploading(false);
     setClientPortalTab("Intake");
     setCurrentStageView("ClientPortal");
     setActiveIntakeModal(null);
@@ -2968,6 +3296,60 @@ function App() {
 
   const stages = mockData.stages;
   const currentStage = stages[currentStageIndex];
+  const adminProgressFlows = [
+    {
+      id: "intake",
+      stageIndexes: [0, 1, 2, 3, 4],
+      titleCn: "接收客户订单",
+      titleEn: "Client Order Intake",
+      descCn: "客户需求接入、规格补齐、BOM、Cho 图纸/技术审核与 Crib 5 合规闸口。",
+      descEn: "Client requirements, spec completion, BOM, Cho drawing review, and Crib 5 compliance gate."
+    },
+    {
+      id: "sourcing",
+      stageIndexes: [5, 6, 7],
+      titleCn: "供应商报价与最优报价",
+      titleEn: "Supplier RFQ & Best Quote",
+      descCn: "向供应商发出 RFQ，收集报价，由 Cho 审核并选定最优供应商。",
+      descEn: "Dispatch RFQs, compare supplier bids, and let Cho select the best offer."
+    },
+    {
+      id: "production",
+      stageIndexes: [8, 9, 10],
+      titleCn: "生产进度",
+      titleEn: "Production Progress",
+      descCn: "工厂接单、二维码图纸联动、延期风险跟进与 AI 视觉质检。",
+      descEn: "Factory kickoff, QR drawing linkage, delay follow-up, and AI visual inspection."
+    },
+    {
+      id: "shipping",
+      stageIndexes: [11, 12, 13, 14, 15, 16],
+      titleCn: "出货与交付",
+      titleEn: "Shipping & Handover",
+      descCn: "装柜、出货合规、物流追踪、分批交付、验收与归档。",
+      descEn: "Container loading, export checks, shipping, split delivery, handover, and archive."
+    }
+  ];
+  const activeAdminFlowConfig = adminProgressFlows.find((flow) => flow.id === activeAdminFlow) || adminProgressFlows[0];
+  const adminStageCopy = {
+    S01: { cn: "订单需求接入", en: "Order Intake" },
+    S02: { cn: "双语补齐规格", en: "Spec Completion" },
+    S03: { cn: "生成技术 BOM", en: "Technical BOM" },
+    S04: { cn: "Cho 技术审核", en: "Cho Technical Review" },
+    S05: { cn: "Crib 5 消防拦截", en: "Crib 5 Compliance" },
+    S06: { cn: "供应商智能询价", en: "Supplier RFQ Dispatch" },
+    S07: { cn: "多厂报价比较", en: "Bid Comparison" },
+    S08: { cn: "Cho 比价决策", en: "Cho Supplier Decision" },
+    S09: { cn: "生产状态联动", en: "Production Kickoff" },
+    S10: { cn: "延期风险跟进", en: "Delay Risk Follow-up" },
+    S11: { cn: "AI 视觉实物对比", en: "AI Visual Inspection" },
+    S12: { cn: "集装箱装柜规划", en: "Container Loading Plan" },
+    S13: { cn: "出货合规检查", en: "Export Compliance" },
+    S14: { cn: "物流货运追踪", en: "Shipping Tracker" },
+    S15: { cn: "分批到货核销", en: "Split Delivery Audit" },
+    S16: { cn: "客户交付验收", en: "Client Handover" },
+    S17: { cn: "项目审计归档", en: "Project Archive" }
+  };
 
   // Auto scroll terminal logs
   useEffect(() => {
@@ -3003,9 +3385,15 @@ function App() {
     syncReviewDraftFromJob(selectedJob);
   }, [intakeReviewJobs, selectedReviewJobId]);
 
+  useEffect(() => {
+    if (currentView === "Backoffice" && reviewDraft) {
+      setOrder(buildOrderFromReviewDraft(reviewDraft));
+    }
+  }, [currentView, reviewDraft, lang]);
+
   // Fetch real-time data from Supabase if connected
   const fetchSupabaseData = async (shouldThrow = false) => {
-    if (!window.supabase || !safeGetItem("supabase_url") || !safeGetItem("supabase_key")) {
+    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
       setDbConnected(false);
       return;
     }
@@ -3014,9 +3402,9 @@ function App() {
     setDbError("");
 
     try {
-      const url = safeGetItem("supabase_url");
-      const key = safeGetItem("supabase_key");
-      const client = window.supabase?.createClient(url, key);
+      const url = getSupabaseUrl();
+      const key = getSupabaseKey();
+      const client = getSupabaseBrowserClient(url, key);
       const authResult = await client.auth.getUser().catch(() => ({ data: { user: null } }));
       const supabaseUser = authResult?.data?.user || null;
 
@@ -3431,7 +3819,7 @@ function App() {
   };
 
   const loadLatestSubmittedTrackerProject = async () => {
-    if (!window.supabase || !safeGetItem("supabase_url") || !safeGetItem("supabase_key")) return;
+    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) return;
 
     const context = await getPortalSupabaseContext({ requireAuth: false });
     if (!context?.supabaseUser) return;
@@ -3544,10 +3932,90 @@ function App() {
     return baseJob ? [baseJob] : [];
   };
 
+  const isMissingSupabaseTableError = (error) => {
+    const message = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+    return message.includes("42p01") || message.includes("does not exist") || message.includes("schema cache");
+  };
+
+  const resetAdminOperationalData = () => {
+    setAdminRfqBatches([]);
+    setAdminSupplierQuotes([]);
+    setAdminApprovals([]);
+    setAdminInspectionReports([]);
+    setAdminShipmentDocuments([]);
+    setAdminWorkflowEvents([]);
+    setAdminProjectFiles([]);
+    setAdminDataStatus({ loaded: false, missingTables: [] });
+  };
+
+  const queryOptionalAdminTable = async (client, table, options = {}) => {
+    const {
+      select = "*",
+      orderColumn = "created_at",
+      ascending = false,
+      limit = 50,
+      projectColumn = "project_id",
+      projectId = order.id
+    } = options;
+
+    try {
+      let query = client.from(table).select(select);
+      if (projectId && projectColumn) query = query.eq(projectColumn, projectId);
+      if (orderColumn) query = query.order(orderColumn, { ascending });
+      if (limit) query = query.limit(limit);
+      const { data, error } = await query;
+      if (error) throw error;
+      return { rows: data || [], missing: false };
+    } catch (error) {
+      if (isMissingSupabaseTableError(error)) {
+        return { rows: [], missing: true };
+      }
+      console.warn(`Admin table ${table} could not be loaded:`, error.message || error);
+      return { rows: [], missing: false, error };
+    }
+  };
+
+  const loadAdminOperationalData = async () => {
+    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
+      resetAdminOperationalData();
+      return;
+    }
+
+    const context = await getPortalSupabaseContext({ requireAuth: false });
+    if (!context?.client) {
+      resetAdminOperationalData();
+      return;
+    }
+
+    const tableSpecs = [
+      { key: "rfq_batches", setter: setAdminRfqBatches },
+      { key: "supplier_quotes", setter: setAdminSupplierQuotes, select: "*, suppliers(*)" },
+      { key: "approvals", setter: setAdminApprovals },
+      { key: "inspection_reports", setter: setAdminInspectionReports },
+      { key: "shipment_documents", setter: setAdminShipmentDocuments },
+      { key: "workflow_events", setter: setAdminWorkflowEvents },
+      { key: "project_files", setter: setAdminProjectFiles }
+    ];
+
+    const missingTables = [];
+    await Promise.all(
+      tableSpecs.map(async (spec) => {
+        let result = await queryOptionalAdminTable(context.client, spec.key, { select: spec.select || "*" });
+        if (result.error && spec.select && spec.select !== "*") {
+          result = await queryOptionalAdminTable(context.client, spec.key, { select: "*" });
+        }
+        spec.setter(result.rows);
+        if (result.missing) missingTables.push(spec.key);
+      })
+    );
+
+    setAdminDataStatus({ loaded: true, missingTables });
+  };
+
   const loadPrequoteWorkspace = async () => {
     const localJobs = getLocalReviewJobs();
 
-    if (!window.supabase || !safeGetItem("supabase_url") || !safeGetItem("supabase_key")) {
+    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
       setIntakeReviewJobs(localJobs);
       setClientProjectJobs(localJobs);
       return;
@@ -3567,30 +4035,30 @@ function App() {
         .select("*, intake_files(*), projects(*)")
         .in("status", ["needs_review", "completed"])
         .order("created_at", { ascending: false })
-        .limit(12);
+        .limit(24);
 
       if (reviewError) throw reviewError;
 
-      const normalizedReviewJobs = reviewData && reviewData.length > 0 ? reviewData : localJobs;
+      const normalizedReviewJobs = reviewData && reviewData.length > 0 ? reviewData : [];
       setIntakeReviewJobs(normalizedReviewJobs);
 
       if (supabaseUser) {
         const { data: clientData, error: clientError } = await client
           .from("intake_jobs")
-          .select("*, intake_files(*)")
+          .select("*, intake_files(*), projects(*)")
           .eq("user_id", supabaseUser.id)
           .order("created_at", { ascending: false })
-          .limit(8);
+          .limit(24);
 
         if (clientError) throw clientError;
-        setClientProjectJobs(clientData && clientData.length > 0 ? clientData : localJobs);
+        setClientProjectJobs(clientData && clientData.length > 0 ? clientData : []);
       } else {
-        setClientProjectJobs(localJobs);
+        setClientProjectJobs([]);
       }
     } catch (err) {
       console.warn("Pre-quote workspace was not loaded from Supabase:", err.message || err);
-      setIntakeReviewJobs(localJobs);
-      setClientProjectJobs(localJobs);
+      setIntakeReviewJobs([]);
+      setClientProjectJobs([]);
     }
   };
 
@@ -3610,12 +4078,7 @@ function App() {
   const persistIntakeJobUpdate = async (job, updates) => {
     updateLocalReviewJob(job.id, updates);
 
-    if (
-      !window.supabase ||
-      !safeGetItem("supabase_url") ||
-      !safeGetItem("supabase_key") ||
-      String(job.id).startsWith("LOCAL-")
-    ) {
+    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey() || String(job.id).startsWith("LOCAL-")) {
       return { ...job, ...updates };
     }
 
@@ -3628,10 +4091,50 @@ function App() {
     return data;
   };
 
+  const buildOrderFromReviewDraft = (draft) => ({
+    id: draft.projectId || null,
+    orderId: draft.projectName || "S01 Intake Draft",
+    clientName: draft.clientName || "Portal Intake Client",
+    projectLocation: draft.destination || "Destination pending",
+    createdDate: new Date().toISOString().split("T")[0],
+    currentStageId: "S01",
+    quoteStatus: draft.reviewStatus || "pending",
+    items: (draft.items || []).map((item, idx) => ({
+      id: item.id || `DRAFT-ITEM-${idx + 1}`,
+      typeCn: item.typeCn || item.typeEn || "客户提交定制产品",
+      typeEn: item.typeEn || item.typeCn || "Submitted Bespoke Item",
+      qty: Number(item.qty || 0),
+      materialCn: item.materialCn || "待确认",
+      materialEn: item.materialEn || "To confirm",
+      originalUnitPrice: Number(item.originalUnitPrice || item.unitPrice || 0),
+      unitPrice: Number(item.unitPrice || item.originalUnitPrice || 0),
+      status: "Draft",
+      note: item.notesCn || item.notesEn || ""
+    })),
+    payments:
+      draft.payments && draft.payments.length > 0
+        ? draft.payments.map((payment) => ({
+            milestone: lang === "Cn" ? payment.milestoneCn : payment.milestoneEn,
+            amount: Number(payment.amount || 0),
+            date: payment.date || "Pending",
+            status: payment.status || "Pending"
+          }))
+        : [
+            {
+              milestone: "Draft quotation pending",
+              amount: 0,
+              date: "Pending",
+              status: "Pending"
+            }
+          ]
+  });
+
   const syncReviewDraftFromJob = (job) => {
     const normalized = normalizeReviewJob(job);
     setReviewDraft(normalized);
     setReviewNote(normalized.reviewNotes || "");
+    setOrder(buildOrderFromReviewDraft(normalized));
+    setCurrentStageIndex(0);
   };
 
   const handleReviewItemChange = (idx, field, value) => {
@@ -3669,6 +4172,7 @@ function App() {
       setCurrentStageIndex(3);
       addLog("Cho", "Intake draft approved for RFQ preparation.", "Intake draft approved for RFQ preparation.");
       await loadPrequoteWorkspace();
+      await loadAdminOperationalData();
     } catch (err) {
       console.error("Approve intake review failed:", err);
       setPrequoteNotice(`Approval could not be saved to Supabase: ${err.message || err}`);
@@ -3693,6 +4197,7 @@ function App() {
       setPrequoteNotice("Clarification request sent to the client portal.");
       addLog("Cho", "Requested client clarification before RFQ.", "Requested client clarification before RFQ.");
       await loadPrequoteWorkspace();
+      await loadAdminOperationalData();
     } catch (err) {
       console.error("Client clarification request failed:", err);
       setPrequoteNotice(`Clarification request could not be saved: ${err.message || err}`);
@@ -3713,6 +4218,7 @@ function App() {
       setPrequoteNotice("Intake draft rejected and removed from the pre-quote path.");
       addLog("Cho", "Rejected intake draft.", "Rejected intake draft.");
       await loadPrequoteWorkspace();
+      await loadAdminOperationalData();
     } catch (err) {
       console.error("Reject intake review failed:", err);
       setPrequoteNotice(`Rejection could not be saved: ${err.message || err}`);
@@ -3744,6 +4250,7 @@ function App() {
       setCurrentStageIndex(5);
       addLog("Cho", "RFQ draft package created.", "RFQ draft package created.");
       await loadPrequoteWorkspace();
+      await loadAdminOperationalData();
     } catch (err) {
       console.error("Create RFQ draft failed:", err);
       setPrequoteNotice(`RFQ draft could not be saved: ${err.message || err}`);
@@ -3755,6 +4262,13 @@ function App() {
     const answers = clientAnswerDrafts[job.id] || {};
     const hasAnswer = Object.values(answers).some((value) => String(value || "").trim());
     if (!hasAnswer) {
+      setClientAnswerSubmitState((prev) => ({
+        ...prev,
+        [job.id]: {
+          status: "error",
+          message: "Add at least one answer before submitting."
+        }
+      }));
       setPrequoteNotice("Add at least one clarification answer before submitting.");
       return;
     }
@@ -3765,6 +4279,13 @@ function App() {
     };
 
     try {
+      setClientAnswerSubmitState((prev) => ({
+        ...prev,
+        [job.id]: {
+          status: "submitting",
+          message: "Submitting answers to Cho..."
+        }
+      }));
       await persistIntakeJobUpdate(job, {
         status: "needs_review",
         step: "client_answers_submitted",
@@ -3773,10 +4294,25 @@ function App() {
         client_answers: answers,
         result_json: resultJson
       });
+      setClientAnswerSubmitState((prev) => ({
+        ...prev,
+        [job.id]: {
+          status: "success",
+          message: "Answers submitted successfully. Cho can now see your updates."
+        }
+      }));
       setPrequoteNotice(`${normalized.projectName}: answers submitted back to Cho.`);
       await loadPrequoteWorkspace();
+      await loadAdminOperationalData();
     } catch (err) {
       console.error("Client answer submission failed:", err);
+      setClientAnswerSubmitState((prev) => ({
+        ...prev,
+        [job.id]: {
+          status: "error",
+          message: `Answers could not be saved: ${err.message || err}`
+        }
+      }));
       setPrequoteNotice(`Answers could not be saved: ${err.message || err}`);
     }
   };
@@ -3799,37 +4335,54 @@ function App() {
 
     let cancelled = false;
 
-    client.auth.getUser().then(async ({ data }) => {
+    const hydrateAuthenticatedUser = async (supabaseUser) => {
       if (cancelled) return;
-      const supabaseUser = data?.user || null;
       setUser(supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null);
       if (supabaseUser) {
         await syncAuthenticatedUserProfile(supabaseUser);
+        if (cancelled) return;
         await fetchSupabaseData();
+        if (cancelled) return;
         await loadLatestSubmittedTrackerProject();
+        if (cancelled) return;
         await loadPrequoteWorkspace();
+        if (cancelled) return;
+        await loadAdminOperationalData();
       }
-    });
+    };
 
-    const { data } = client.auth.onAuthStateChange(async (_event, session) => {
+    const { data } = client.auth.onAuthStateChange((event, session) => {
       const supabaseUser = session?.user || null;
-      setUser(supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null);
-      if (supabaseUser) {
-        await syncAuthenticatedUserProfile(supabaseUser);
-        await fetchSupabaseData();
-        await loadLatestSubmittedTrackerProject();
-        await loadPrequoteWorkspace();
-      } else {
+      if (!supabaseUser) {
         setSupportConversationId(null);
         supportConversationIdRef.current = null;
+        lastProfileSyncRef.current = "";
+        setUser(null);
+        return;
       }
+
+      setUser(mapSupabaseUserToAppUser(supabaseUser));
+
+      if (!["INITIAL_SESSION", "SIGNED_IN", "USER_UPDATED"].includes(event)) {
+        return;
+      }
+
+      setTimeout(() => {
+        hydrateAuthenticatedUser(supabaseUser).catch((err) =>
+          console.warn("Authenticated user hydration failed:", err.message || err)
+        );
+      }, 0);
     });
 
     return () => {
       cancelled = true;
       data?.subscription?.unsubscribe();
     };
-  }, [dbConnected, dbUrl, dbKey]);
+  }, [dbUrl, dbKey]);
+
+  useEffect(() => {
+    if (clientPortalTab === "Support") setClientPortalTab("Intake");
+  }, [clientPortalTab]);
 
   // Re-fetch when connection variables or language change
   useEffect(() => {
@@ -3838,6 +4391,7 @@ function App() {
       await fetchSupabaseData();
       if (!cancelled) await loadLatestSubmittedTrackerProject();
       if (!cancelled) await loadPrequoteWorkspace();
+      if (!cancelled) await loadAdminOperationalData();
     })();
     return () => {
       cancelled = true;
@@ -3849,13 +4403,14 @@ function App() {
     if (!dbConnected) return;
 
     let channel = null;
+    let realtimeClient = null;
     try {
-      const url = safeGetItem("supabase_url");
-      const key = safeGetItem("supabase_key");
+      const url = getSupabaseUrl();
+      const key = getSupabaseKey();
       if (url && key && window.supabase) {
-        const client = window.supabase?.createClient(url, key);
+        realtimeClient = getSupabaseBrowserClient(url, key);
 
-        channel = client
+        channel = realtimeClient
           .channel("schema-db-changes")
           .on(
             "postgres_changes",
@@ -3928,6 +4483,7 @@ function App() {
               console.log("Realtime Change detected on 'intake_jobs':", payload);
               if (payload.new) setLatestIntakeJob(payload.new);
               loadLatestSubmittedTrackerProject();
+              loadPrequoteWorkspace();
             }
           )
           .on(
@@ -3940,6 +4496,79 @@ function App() {
             (payload) => {
               console.log("Realtime Change detected on 'workflow_events':", payload);
               fetchSupabaseData();
+              loadAdminOperationalData();
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "rfq_batches"
+            },
+            (payload) => {
+              console.log("Realtime Change detected on 'rfq_batches':", payload);
+              loadAdminOperationalData();
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "supplier_quotes"
+            },
+            (payload) => {
+              console.log("Realtime Change detected on 'supplier_quotes':", payload);
+              loadAdminOperationalData();
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "approvals"
+            },
+            (payload) => {
+              console.log("Realtime Change detected on 'approvals':", payload);
+              loadAdminOperationalData();
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "inspection_reports"
+            },
+            (payload) => {
+              console.log("Realtime Change detected on 'inspection_reports':", payload);
+              loadAdminOperationalData();
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "shipment_documents"
+            },
+            (payload) => {
+              console.log("Realtime Change detected on 'shipment_documents':", payload);
+              loadAdminOperationalData();
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "project_files"
+            },
+            (payload) => {
+              console.log("Realtime Change detected on 'project_files':", payload);
+              loadAdminOperationalData();
             }
           )
           .subscribe((status) => {
@@ -3951,12 +4580,9 @@ function App() {
     }
 
     return () => {
-      if (channel && window.supabase) {
+      if (channel && realtimeClient) {
         try {
-          const url = safeGetItem("supabase_url");
-          const key = safeGetItem("supabase_key");
-          const client = window.supabase?.createClient(url, key);
-          client.removeChannel(channel);
+          realtimeClient.removeChannel(channel);
           console.log("Supabase Realtime subscription unsubscribed successfully.");
         } catch (err) {
           console.error("Failed to clean up realtime channel:", err);
@@ -3968,6 +4594,25 @@ function App() {
   // Handle saving and testing Supabase configuration
   const handleSaveDbConfig = async (e) => {
     e.preventDefault();
+    if (isSupabaseConfiguredByEnv) {
+      setDbLoading(true);
+      setDbError("");
+      try {
+        setDbUrl(savedUrl);
+        setDbKey(savedKey);
+        await fetchSupabaseData(true);
+        setDbConnected(true);
+        setShowDbConfig(false);
+      } catch (err) {
+        console.error("Environment Supabase connection failed:", err);
+        setDbError(err.message || "Connection failed. Please check VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.");
+        setDbConnected(false);
+      } finally {
+        setDbLoading(false);
+      }
+      return;
+    }
+
     if (!dbUrl.trim() || !dbKey.trim()) {
       safeRemoveItem("supabase_url");
       safeRemoveItem("supabase_key");
@@ -3981,7 +4626,7 @@ function App() {
 
     try {
       // Test the client connection
-      const testClient = window.supabase.createClient(dbUrl.trim(), dbKey.trim());
+      const testClient = getSupabaseBrowserClient(dbUrl.trim(), dbKey.trim());
       const { error } = await testClient.from("projects").select("id").limit(1);
 
       if (error) throw error;
@@ -4010,8 +4655,8 @@ function App() {
       setDbError("Supabase client is not loaded in window.");
       return;
     }
-    const url = safeGetItem("supabase_url");
-    const key = safeGetItem("supabase_key");
+    const url = getSupabaseUrl();
+    const key = getSupabaseKey();
     if (!url || !key) {
       setDbError("Please save a valid database connection first before seeding.");
       return;
@@ -4021,7 +4666,7 @@ function App() {
     setDbError("");
 
     try {
-      const client = window.supabase.createClient(url, key);
+      const client = getSupabaseBrowserClient(url, key);
       const authResult = await client.auth.getUser().catch(() => ({ data: { user: null } }));
       const supabaseUser = authResult?.data?.user || null;
       if (!supabaseUser) {
@@ -4073,7 +4718,7 @@ function App() {
     // Sync to Supabase if connected
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
+        const client = getSupabaseBrowserClient();
         const stageId = stages[index].id;
         const currentStageInt = parseInt(stageId.substring(1), 10);
         await client.from("projects").update({ current_stage: currentStageInt }).eq("id", order.id);
@@ -4119,7 +4764,7 @@ function App() {
 
         if (dbConnected && order.id) {
           try {
-            const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
+            const client = getSupabaseBrowserClient();
             await client
               .from("projects")
               .update({
@@ -4139,6 +4784,60 @@ function App() {
     }, 1200);
   };
 
+  const handleTrackerAiMessage = async () => {
+    const text = inputText.trim();
+    if (!text) return;
+
+    const nextMessages = [...chatMessages, { sender: "client", text }];
+    setChatMessages(nextMessages);
+    setInputText("");
+    saveSupportMessage({ sender: "client", text }).catch(() => {});
+
+    let replyText = "";
+    const mentionsSilk = /silk|pure silk|satin|涓濈桓|绾笣/i.test(text);
+
+    try {
+      const aiMessages = nextMessages.map((message) => ({
+        sender: message.sender === "client" ? "client" : "ai",
+        text: message.text
+      }));
+      const result = await requestAiSupportReply(aiMessages);
+      applySupportExtraction(result.extracted);
+      replyText = result.reply || buildTrackerContextReply(text);
+      saveSupportMessage({ sender: "ai", text: replyText, aiPayload: result }).catch(() => {});
+    } catch (err) {
+      console.warn("Tracker AI reply failed:", err.message || err);
+      replyText = buildTrackerContextReply(text);
+      saveSupportMessage({ sender: "ai", text: replyText }).catch(() => {});
+    }
+
+    if (mentionsSilk) {
+      setFabricCompatibilityTest("blocked");
+      setIsCrib5Blocked(true);
+      replyText = `${replyText}\n\nCompliance alert: Pure silk/satin may be blocked for UK Crib 5 because flame-retardant coating can cause shrinkage or discoloration. Please confirm an alternative such as linen or leather.`;
+      setCurrentStageIndex(4);
+
+      if (dbConnected && order.id) {
+        try {
+          const client = getSupabaseBrowserClient();
+          await client
+            .from("projects")
+            .update({
+              current_stage: 5,
+              selected_fabric: "FAB-03",
+              is_crib5_blocked: true,
+              fabric_compatibility_test: "blocked"
+            })
+            .eq("id", order.id);
+        } catch (err) {
+          console.error("Supabase silk block update error:", err);
+        }
+      }
+    }
+
+    setChatMessages((prev) => [...prev, { sender: "agent", text: replyText }]);
+  };
+
   // Simulate Cho's review check-off in S04
   const handleChoApproval = async () => {
     const nextIndex = currentStageIndex + 1;
@@ -4151,7 +4850,7 @@ function App() {
 
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
+        const client = getSupabaseBrowserClient();
         const nextStageId = stages[nextIndex].id;
         const nextStageInt = parseInt(nextStageId.substring(1), 10);
         await client.from("projects").update({ current_stage: nextStageInt }).eq("id", order.id);
@@ -4180,7 +4879,7 @@ function App() {
 
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
+        const client = getSupabaseBrowserClient();
         await client
           .from("projects")
           .update({
@@ -4232,7 +4931,7 @@ function App() {
 
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
+        const client = getSupabaseBrowserClient();
         await client
           .from("projects")
           .update({
@@ -4305,7 +5004,7 @@ function App() {
 
     if (dbConnected && order.id) {
       try {
-        const client = window.supabase?.createClient(safeGetItem("supabase_url"), safeGetItem("supabase_key"));
+        const client = getSupabaseBrowserClient();
         await client.from("projects").update({ split_delivery_active: true }).eq("id", order.id);
 
         // Update specifications quantities and notes in database
@@ -4413,8 +5112,115 @@ function App() {
     return <span className={`review-status-pill status-${meta.tone}`}>{meta.label}</span>;
   };
 
+  const renderAiConciergePanel = ({ embedded = false } = {}) => {
+    const overview = buildSupportProjectContext();
+    const latestOrder = overview.latestOrder;
+
+    const content = (
+      <div className="ai-concierge-panel">
+        <div className="panel-header ai-concierge-header">
+          <div className="panel-title">
+            <span className="stage-badge-dot dot-ai"></span>
+            <span>{lang === "Cn" ? "Crafton AI 客服录入" : "Crafton AI Concierge Intake"}</span>
+          </div>
+          <span className="logo-badge">Live</span>
+        </div>
+
+        <div className="ai-context-strip">
+          <strong>Current overview</strong>
+          <span>
+            {latestOrder
+              ? `${latestOrder.projectName || "To confirm"} / ${latestOrder.destination || "Destination pending"} / ${
+                  latestOrder.quantityText || "Quantity pending"
+                }`
+              : "No submitted order overview yet."}
+          </span>
+        </div>
+
+        <div className="ai-concierge-messages">
+          {supportMessages.map((message, idx) => (
+            <div
+              key={`${message.sender}-${idx}`}
+              className={`chat-bubble ${message.sender === "client" ? "bubble-client" : "bubble-agent"}`}
+            >
+              {message.text}
+            </div>
+          ))}
+          {supportIsTyping && <div className="chat-bubble bubble-agent">Crafton AI is updating the brief...</div>}
+        </div>
+
+        <form className="ai-concierge-input" onSubmit={handleSupportSend}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => document.getElementById("support-file-upload").click()}
+            title="Upload reference file"
+          >
+            +
+          </button>
+          <input
+            id="support-file-upload"
+            type="file"
+            style={{ display: "none" }}
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt"
+            onChange={handleSupportFileSelect}
+          />
+          <input
+            className="chat-input"
+            value={supportInput}
+            onChange={(e) => setSupportInput(e.target.value)}
+            placeholder="Tell AI the requirement, change, or progress question..."
+          />
+          <button type="submit" className="btn-premium" disabled={!supportInput.trim() || supportIsTyping}>
+            Send
+          </button>
+        </form>
+
+        {supportSelectedFileName && <div className="ai-file-chip">File received: {supportSelectedFileName}</div>}
+
+        <button
+          type="button"
+          className="btn-premium"
+          onClick={handleSupportHandoffToIntake}
+          disabled={isIntakeUploading}
+          style={{ width: "100%", justifyContent: "center" }}
+        >
+          Submit AI brief to Crafton
+        </button>
+
+        {supportStatus && <div className="ai-support-status">{supportStatus}</div>}
+      </div>
+    );
+
+    return embedded ? content : <div className="glass-card">{content}</div>;
+  };
+
   const renderClientPrequoteWorkspace = () => {
     const jobs = clientProjectJobs.length > 0 ? clientProjectJobs : getLocalReviewJobs();
+    const projectGroups = [];
+    const groupIndex = new Map();
+
+    jobs.forEach((job) => {
+      const normalized = normalizeReviewJob(job);
+      const groupKey =
+        normalized.projectId ||
+        [normalizeGroupingText(normalized.projectName), normalizeGroupingText(normalized.destination)]
+          .filter(Boolean)
+          .join("|") ||
+        normalized.id;
+      let group = groupIndex.get(groupKey);
+      if (!group) {
+        group = {
+          key: groupKey,
+          projectName: normalized.projectName || "To confirm",
+          destination: normalized.destination || "",
+          jobs: []
+        };
+        groupIndex.set(groupKey, group);
+        projectGroups.push(group);
+      }
+      group.jobs.push({ job, normalized });
+    });
 
     return (
       <div className="glass-card prequote-workspace">
@@ -4426,104 +5232,911 @@ function App() {
           <span className="logo-badge">Intake Review</span>
         </div>
         <div className="panel-body prequote-client-list">
-          {jobs.length === 0 ? (
+          {projectGroups.length === 0 ? (
             <div className="prequote-empty">
               {lang === "Cn"
                 ? "还没有提交的 intake 项目。"
                 : "No intake projects yet. Submit a brief and the review path will appear here."}
             </div>
           ) : (
-            jobs.map((job) => {
-              const normalized = normalizeReviewJob(job);
-              const answers = clientAnswerDrafts[job.id] || normalized.clientAnswers || {};
-              const questions =
-                normalized.reviewStatus === "revision_requested" && normalized.questions.length === 0
-                  ? [normalized.reviewNotes || "Please provide the missing specification details."]
-                  : normalized.questions;
+            projectGroups.flatMap((group) =>
+              group.jobs.map(({ job, normalized }, groupJobIndex) => {
+                const answers = clientAnswerDrafts[job.id] || normalized.clientAnswers || {};
+                const answerSubmitState = clientAnswerSubmitState[job.id] || {};
+                const isSubmittingAnswers = answerSubmitState.status === "submitting";
+                const questions =
+                  normalized.reviewStatus === "revision_requested" && normalized.questions.length === 0
+                    ? [normalized.reviewNotes || "Please provide the missing specification details."]
+                    : normalized.questions;
 
-              return (
-                <div key={job.id} className="prequote-client-card">
-                  <div className="prequote-card-topline">
-                    <div>
-                      <div className="prequote-project-name">{normalized.projectName}</div>
-                      <div className="prequote-project-meta">
-                        {normalized.destination || "Destination pending"} / Job {String(normalized.id).slice(0, 8)}
+                return (
+                  <React.Fragment key={`${group.key}-${job.id}`}>
+                    {groupJobIndex === 0 && (
+                      <div className="prequote-project-group-header">
+                        <div>
+                          <div className="prequote-project-group-title">{group.projectName}</div>
+                          <div className="prequote-project-group-meta">
+                            {group.destination || "Destination pending"} / {group.jobs.length} order
+                            {group.jobs.length > 1 ? "s" : ""}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    {renderStatusPill(normalized.reviewStatus)}
-                  </div>
-
-                  <div className="prequote-steps">
-                    {["Submitted", "Cho Review", "Client Answers", "RFQ Draft"].map((step, idx) => {
-                      const activeIdx =
-                        normalized.reviewStatus === "rfq_ready"
-                          ? 3
-                          : normalized.reviewStatus === "approved"
-                            ? 2
-                            : normalized.reviewStatus === "revision_requested"
-                              ? 2
-                              : 1;
-                      return (
-                        <div key={step} className={`prequote-step ${idx <= activeIdx ? "active" : ""}`}>
-                          <span></span>
-                          {step}
+                    )}
+                    <div className="prequote-client-card">
+                      <div className="prequote-card-topline">
+                        <div>
+                          <div className="prequote-project-name">{normalized.projectName}</div>
+                          <div className="prequote-project-meta">
+                            {normalized.destination || "Destination pending"} / Job {String(normalized.id).slice(0, 8)}
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                        {renderStatusPill(normalized.reviewStatus)}
+                      </div>
 
-                  {normalized.summaryEn && <p className="prequote-summary">{normalized.summaryEn}</p>}
+                      <div className="prequote-steps">
+                        {["Submitted", "Cho Review", "Client Answers", "RFQ Draft"].map((step, idx) => {
+                          const activeIdx =
+                            normalized.reviewStatus === "rfq_ready"
+                              ? 3
+                              : normalized.reviewStatus === "approved"
+                                ? 2
+                                : normalized.reviewStatus === "revision_requested"
+                                  ? 2
+                                  : 1;
+                          return (
+                            <div key={step} className={`prequote-step ${idx <= activeIdx ? "active" : ""}`}>
+                              <span></span>
+                              {step}
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                  {questions.length > 0 && (
-                    <div className="prequote-questions">
-                      <div className="prequote-section-label">Clarification questions</div>
-                      {questions.map((question, qidx) => (
-                        <label key={`${job.id}-question-${qidx}`} className="prequote-answer-field">
-                          <span>{question}</span>
-                          <textarea
-                            value={answers[qidx] || ""}
-                            onChange={(e) =>
-                              setClientAnswerDrafts((prev) => ({
-                                ...prev,
-                                [job.id]: {
-                                  ...(prev[job.id] || normalized.clientAnswers || {}),
-                                  [qidx]: e.target.value
+                      {normalized.summaryEn && <p className="prequote-summary">{normalized.summaryEn}</p>}
+
+                      {questions.length > 0 && (
+                        <div className="prequote-questions">
+                          <div className="prequote-section-label">Clarification questions</div>
+                          {questions.map((question, qidx) => (
+                            <label key={`${job.id}-question-${qidx}`} className="prequote-answer-field">
+                              <span>{question}</span>
+                              <textarea
+                                value={answers[qidx] || ""}
+                                onChange={(e) =>
+                                  setClientAnswerDrafts((prev) => ({
+                                    ...prev,
+                                    [job.id]: {
+                                      ...(prev[job.id] || normalized.clientAnswers || {}),
+                                      [qidx]: e.target.value
+                                    }
+                                  }))
                                 }
-                              }))
-                            }
-                            placeholder="Type the client answer for Cho..."
-                          />
-                        </label>
-                      ))}
-                      <button className="btn-premium" onClick={() => handleSubmitClientAnswers(job)}>
-                        Submit answers to Cho
-                      </button>
-                    </div>
-                  )}
-
-                  {normalized.rfqDraft && (
-                    <div className="rfq-mini-table">
-                      <div className="prequote-section-label">RFQ draft comparison</div>
-                      {normalized.rfqDraft.suppliers?.map((supplier) => (
-                        <div key={supplier.name} className="rfq-mini-row">
-                          <span>{supplier.name}</span>
-                          <strong>${Number(supplier.estimatedTotal || 0).toLocaleString()}</strong>
-                          <span>{supplier.leadTime}</span>
+                                onInput={() =>
+                                  setClientAnswerSubmitState((prev) => {
+                                    if (prev[job.id]?.status === "submitting") return prev;
+                                    return {
+                                      ...prev,
+                                      [job.id]: {
+                                        status: "editing",
+                                        message: "Unsaved answer changes."
+                                      }
+                                    };
+                                  })
+                                }
+                                placeholder="Type the client answer for Cho..."
+                                disabled={isSubmittingAnswers}
+                              />
+                            </label>
+                          ))}
+                          <button
+                            className="btn-premium"
+                            onClick={() => handleSubmitClientAnswers(job)}
+                            disabled={isSubmittingAnswers}
+                            style={{
+                              opacity: isSubmittingAnswers ? 0.72 : 1,
+                              cursor: isSubmittingAnswers ? "wait" : "pointer"
+                            }}
+                          >
+                            {isSubmittingAnswers
+                              ? "Submitting answers..."
+                              : answerSubmitState.status === "success"
+                                ? "Submitted to Cho"
+                                : "Submit answers to Cho"}
+                          </button>
+                          {answerSubmitState.message && (
+                            <div
+                              role="status"
+                              aria-live="polite"
+                              className={`client-answer-status status-${answerSubmitState.status}`}
+                              style={{
+                                marginTop: "0.65rem",
+                                padding: "0.7rem 0.8rem",
+                                borderRadius: "6px",
+                                border:
+                                  answerSubmitState.status === "success"
+                                    ? "1px solid rgba(125, 143, 123, 0.35)"
+                                    : answerSubmitState.status === "error"
+                                      ? "1px solid rgba(166, 132, 128, 0.45)"
+                                      : "1px solid rgba(124, 114, 103, 0.18)",
+                                background:
+                                  answerSubmitState.status === "success"
+                                    ? "rgba(125, 143, 123, 0.08)"
+                                    : answerSubmitState.status === "error"
+                                      ? "rgba(166, 132, 128, 0.08)"
+                                      : "rgba(124, 114, 103, 0.05)",
+                                color:
+                                  answerSubmitState.status === "success"
+                                    ? "var(--accent-green)"
+                                    : answerSubmitState.status === "error"
+                                      ? "var(--accent-red)"
+                                      : "var(--text-secondary)",
+                                fontSize: "0.78rem",
+                                lineHeight: 1.45
+                              }}
+                            >
+                              {answerSubmitState.message}
+                            </div>
+                          )}
                         </div>
-                      ))}
+                      )}
+
+                      {normalized.rfqDraft && (
+                        <div className="rfq-mini-table">
+                          <div className="prequote-section-label">RFQ draft comparison</div>
+                          {normalized.rfqDraft.suppliers?.map((supplier) => (
+                            <div key={supplier.name} className="rfq-mini-row">
+                              <span>{supplier.name}</span>
+                              <strong>${Number(supplier.estimatedTotal || 0).toLocaleString()}</strong>
+                              <span>{supplier.leadTime}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })
+                  </React.Fragment>
+                );
+              })
+            )
           )}
         </div>
       </div>
     );
   };
 
+  const getAdminStageLabel = (stage) => {
+    const copy = adminStageCopy[stage.id];
+    if (!copy) return lang === "Cn" ? stage.nameCn : stage.nameEn;
+    return lang === "Cn" ? copy.cn : copy.en;
+  };
+
+  const renderAdminStatusPill = (status) => {
+    if (
+      ["passed", "ready", "selected", "sent", "recommended", "recalculated", "archived", "planned"].includes(status)
+    ) {
+      return <span className="admin-card-status status-green">{status.replaceAll("_", " ")}</span>;
+    }
+    if (["blocked", "gate"].includes(status)) {
+      return <span className="admin-card-status status-red">{status.replaceAll("_", " ")}</span>;
+    }
+    if (
+      [
+        "needs_cho_review",
+        "watch",
+        "human_gate",
+        "pending",
+        "ai_checking",
+        "tracking",
+        "in_production",
+        "quoted"
+      ].includes(status)
+    ) {
+      return <span className="admin-card-status status-orange">{status.replaceAll("_", " ")}</span>;
+    }
+    return <span className="admin-card-status">{status.replaceAll("_", " ")}</span>;
+  };
+
+  const formatAdminDate = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toISOString().slice(0, 10);
+  };
+
+  const formatAdminMoney = (value, currency = "USD") => {
+    const number = Number(value || 0);
+    if (!number) return "-";
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(number);
+  };
+
+  const renderAdminEmptyState = (title, detail) => (
+    <div className="admin-empty-state">
+      <strong>{title}</strong>
+      {detail && <span>{detail}</span>}
+    </div>
+  );
+
+  const getAdminTableMissingText = (tableName) =>
+    adminDataStatus.missingTables.includes(tableName)
+      ? `${tableName} 表尚未创建，请先运行 Supabase migration。`
+      : `${tableName} 表暂时没有当前项目记录。`;
+
+  const getWorkflowEventsForStage = (stageId) =>
+    adminWorkflowEvents.filter((event) => String(event.stage_id || event.stage || "").toUpperCase() === stageId);
+
+  const getApprovalsForStage = (stageId) =>
+    adminApprovals.filter((approval) => String(approval.stage_id || approval.stage || "").toUpperCase() === stageId);
+
+  const getShipmentDocumentsByStage = (stageId) =>
+    adminShipmentDocuments.filter(
+      (document) => String(document.stage_id || document.stage || "").toUpperCase() === stageId
+    );
+
+  const renderAdminMetric = (label, value, tone = "") => (
+    <div className={`admin-metric-card ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+
+  const renderAdminChecklist = (items) => (
+    <div className="admin-checklist">
+      {items.map((item) => (
+        <div key={item.label} className={`admin-check-row ${item.state || "done"}`}>
+          <span>{item.state === "blocked" ? "!" : item.state === "pending" ? "..." : "✓"}</span>
+          <div>
+            <strong>{item.label}</strong>
+            {item.detail && <small>{item.detail}</small>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderAdminMiniTable = (headers, rows) => (
+    <div className="admin-table-wrap">
+      <table className="admin-mini-table">
+        <thead>
+          <tr>
+            {headers.map((header) => (
+              <th key={header}>{header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {row.map((cell, cellIndex) => (
+                <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderAdminStagePanel = ({ stageId, title, status, subtitle, children, className = "", actions = null }) => (
+    <section className={`admin-stage-panel ${className}`}>
+      <div className="admin-panel-topline">
+        <div>
+          <div className="admin-panel-kicker">{stageId}</div>
+          <h4>{title}</h4>
+          {subtitle && <p>{subtitle}</p>}
+        </div>
+        {renderAdminStatusPill(status)}
+      </div>
+      <div className="admin-panel-content">{children}</div>
+      {actions && <div className="admin-panel-actions">{actions}</div>}
+    </section>
+  );
+
+  const getAdminDraftContext = () => {
+    const jobs = intakeReviewJobs.length > 0 ? intakeReviewJobs : dbConnected ? [] : getLocalReviewJobs();
+    const selectedJob = jobs.find((job) => job.id === selectedReviewJobId) || jobs[0];
+    const selectedNormalized = selectedJob ? normalizeReviewJob(selectedJob) : null;
+    const draft = reviewDraft || selectedNormalized;
+    const bomItems = draft?.items?.length ? draft.items : order.items;
+    return { jobs, selectedJob, selectedNormalized, draft, bomItems };
+  };
+
+  const renderIntakeFlowWorkspace = () => {
+    const { jobs, draft, bomItems } = getAdminDraftContext();
+    const bomRows = bomItems.map((item) => [
+      item.typeEn || item.typeCn || item.item_type_en || item.item_type_cn || "-",
+      item.qty || item.quantity || item.qtyDisplay || "-",
+      item.materialEn || item.materialCn || item.material_en || item.material_cn || "To confirm",
+      item.unitPrice || item.unit_price ? formatAdminMoney(item.unitPrice || item.unit_price) : "Target pending",
+      item.notesEn || item.notesCn || item.note || item.notes_en || item.notes_cn || "-"
+    ]);
+    const specRows = bomItems.map((item) => [
+      item.typeEn || item.typeCn || item.item_type_en || item.item_type_cn || "-",
+      item.qty || item.quantity || "-",
+      item.materialEn || item.materialCn || item.material_en || item.material_cn || "To confirm",
+      item.note || item.notesEn || item.notesCn || item.notes_en || item.notes_cn || "-"
+    ]);
+    const materialRows = bomItems.map((item) => [
+      item.materialEn || item.materialCn || item.material_en || item.material_cn || "To confirm",
+      isCrib5Blocked ? "Blocked" : "Pending / Passed",
+      item.treatment || item.finish || item.payload?.treatment || "To verify",
+      item.risk || item.payload?.risk || "Needs compliance evidence"
+    ]);
+    const approvalRows = getApprovalsForStage("S04").map((approval) => [
+      approval.approval_type || approval.id,
+      approval.status || "pending",
+      approval.reviewer_name || approval.actor || approval.created_by || "-",
+      formatAdminDate(approval.reviewed_at || approval.created_at)
+    ]);
+
+    return (
+      <div className="admin-flow-grid intake-flow">
+        {renderAdminStagePanel({
+          stageId: "S01",
+          title: "Customer order intake",
+          status: jobs.length ? "needs_cho_review" : "pending",
+          subtitle:
+            "Reads intake_jobs, intake_files, and project records to turn customer source material into a reviewable order draft.",
+          children: (
+            <>
+              <div className="admin-metric-grid">
+                {renderAdminMetric("Review drafts", jobs.length || 0, jobs.length ? "warn" : "")}
+                {renderAdminMetric("Client", draft?.clientName || order.clientName || "-")}
+                {renderAdminMetric("Source", dbConnected ? "Supabase" : "Local preview", dbConnected ? "good" : "warn")}
+              </div>
+              {draft || order.orderId ? (
+                <div className="admin-detail-grid">
+                  <div className="admin-detail-block">
+                    <strong>Parsed intake fields</strong>
+                    <span>Project: {draft?.projectName || order.orderId || "-"}</span>
+                    <span>Destination: {draft?.destination || order.projectLocation || "-"}</span>
+                    <span>
+                      Quantity:{" "}
+                      {draft?.quantityText || (bomItems.length ? `${bomItems.length} specification rows` : "-")}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                renderAdminEmptyState(
+                  "No live intake draft",
+                  "intake_jobs records will appear here after a client submits an order and the worker writes the parsed draft."
+                )
+              )}
+            </>
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S02",
+          title: "Bilingual specification completion",
+          status: specRows.length ? "ai_checking" : "pending",
+          subtitle:
+            "Displays structured item, quantity, material, and missing-field data from the intake draft or specifications table.",
+          className: "wide",
+          children: specRows.length ? (
+            <>
+              {renderAdminMiniTable(["Item", "Qty", "Material", "Notes"], specRows)}
+              {(draft?.questions || []).length > 0 && (
+                <div className="admin-note-box">Missing questions: {(draft.questions || []).join(" / ")}</div>
+              )}
+            </>
+          ) : (
+            renderAdminEmptyState(
+              "No specification rows",
+              "When intake_jobs.result_json or specifications contains item rows, this stage will show them for Cho review."
+            )
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S03",
+          title: "Technical BOM generation",
+          status: bomRows.length ? "ready" : "pending",
+          subtitle:
+            "Shows the real BOM fields Cho needs to review: item, quantity, material, target/unit price, and notes.",
+          className: "wide",
+          children: bomRows.length ? (
+            <>
+              {renderAdminMiniTable(["Item", "Qty", "Material", "Target / Unit", "Notes"], bomRows)}
+              <div className="admin-detail-grid three">
+                <div className="admin-detail-block">
+                  <strong>BOM rows</strong>
+                  <span>{bomRows.length}</span>
+                </div>
+                <div className="admin-detail-block">
+                  <strong>Open questions</strong>
+                  <span>{draft?.questions?.length || 0}</span>
+                </div>
+                <div className="admin-detail-block">
+                  <strong>Project id</strong>
+                  <span>{order.id || draft?.projectId || "Pending"}</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            renderAdminEmptyState(
+              "No BOM data",
+              "BOM rows are read from the selected intake draft or Supabase specifications for the current project."
+            )
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S04",
+          title: "Cho technical review",
+          status: draft?.reviewStatus || (approvalRows.length ? "needs_cho_review" : "pending"),
+          subtitle:
+            "Human gate for drawing, BOM, material, and RFQ readiness. Approval history is read from approvals when available.",
+          className: "wide",
+          children: (
+            <>
+              {approvalRows.length
+                ? renderAdminMiniTable(["Approval", "Status", "Reviewer", "Date"], approvalRows)
+                : renderAdminEmptyState("No S04 approval records", getAdminTableMissingText("approvals"))}
+              <textarea
+                className="admin-review-textarea"
+                value={reviewNote}
+                onChange={(e) => setReviewNote(e.target.value)}
+                placeholder="Cho review note for drawing/BOM approval..."
+              />
+            </>
+          ),
+          actions: (
+            <>
+              <button className="btn-secondary" onClick={handleAskClientForRevision}>
+                Ask client
+              </button>
+              <button className="btn-premium" onClick={handleApproveIntakeReview}>
+                Approve specs
+              </button>
+              <button className="btn-premium" onClick={handleCreateRfqDraft}>
+                Create RFQ package
+              </button>
+            </>
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S05",
+          title: "Crib 5 and compliance gate",
+          status: materialRows.length ? (isCrib5Blocked ? "blocked" : "passed") : "pending",
+          subtitle:
+            "Uses real material rows from the intake draft/specifications, then tracks whether each material can enter RFQ and production.",
+          className: "wide",
+          children: materialRows.length ? (
+            <>
+              {renderAdminMiniTable(["Material", "Crib 5", "Treatment", "Risk"], materialRows)}
+              <div className={`admin-note-box ${isCrib5Blocked ? "danger" : "success"}`}>
+                {isCrib5Blocked
+                  ? "Compliance is blocked. Cho must select a compliant material before RFQ."
+                  : "Current material rows can continue to supplier quotation once evidence is complete."}
+              </div>
+            </>
+          ) : (
+            renderAdminEmptyState(
+              "No material data",
+              "Material and compliance rows are generated from intake/specification records for the selected project."
+            )
+          ),
+          actions: isCrib5Blocked ? (
+            <button className="btn-premium" onClick={() => handleBypassCrib5("Navy Classic Linen")}>
+              Use compliant linen
+            </button>
+          ) : null
+        })}
+        <div className="admin-stage-detail wide">{renderIntakeReviewWorkspace()}</div>
+      </div>
+    );
+  };
+
+  const renderSourcingFlowWorkspace = () => {
+    const quoteRows = adminSupplierQuotes.map((quote) => {
+      const supplierName = quote.supplier_name || quote.suppliers?.name || quote.vendor_name || "Unnamed supplier";
+      const unitPrice = quote.unit_price || quote.price_per_unit || quote.price_per_chair || quote.total_amount;
+      const leadTime = quote.lead_time_days || quote.delivery_days || quote.lead_time || "-";
+      const qualityScore = quote.quality_score || quote.score || quote.ai_score || "-";
+      const verdict = quote.ai_verdict || quote.recommendation || quote.status || "Pending Cho review";
+      return [
+        supplierName,
+        formatAdminMoney(unitPrice, quote.currency || "USD"),
+        `${leadTime}${Number(leadTime) ? " days" : ""}`,
+        qualityScore,
+        verdict
+      ];
+    });
+
+    const rfqRows = adminRfqBatches.map((batch) => [
+      batch.rfq_code || batch.code || batch.id,
+      batch.status || "draft",
+      batch.supplier_count || batch.invited_count || adminSupplierQuotes.length || "-",
+      formatAdminDate(batch.sent_at || batch.created_at),
+      formatAdminDate(batch.due_at || batch.deadline_at)
+    ]);
+
+    const quoteDecisionRows = adminSupplierQuotes.map((quote) => {
+      const supplierName = quote.supplier_name || quote.suppliers?.name || quote.vendor_name || "Unnamed supplier";
+      return {
+        id: quote.id || supplierName,
+        supplier: {
+          name: supplierName,
+          pricePerChair: Number(quote.unit_price || quote.price_per_unit || quote.price_per_chair || 0),
+          deliveryDays: Number(quote.lead_time_days || quote.delivery_days || 0),
+          qualityScore: quote.quality_score || quote.score || "-",
+          note: quote.notes || quote.ai_verdict || quote.recommendation || "Supabase supplier quote"
+        },
+        paymentTerms: quote.payment_terms || quote.terms || "-",
+        status: quote.status || "quoted"
+      };
+    });
+
+    return (
+      <div className="admin-flow-grid sourcing-flow">
+        {renderAdminStagePanel({
+          stageId: "S06",
+          title: "Supplier RFQ dispatch and return tracking",
+          status: adminRfqBatches.length ? "sent" : "pending",
+          subtitle:
+            "Reads Supabase rfq_batches and supplier_quotes to show RFQ batches, invited suppliers, quote status, and due dates.",
+          className: "wide",
+          children: (
+            <>
+              <div className="admin-metric-grid">
+                {renderAdminMetric("RFQ batches", adminRfqBatches.length)}
+                {renderAdminMetric(
+                  "Returned quotes",
+                  adminSupplierQuotes.length,
+                  adminSupplierQuotes.length ? "good" : "warn"
+                )}
+                {renderAdminMetric("Source", dbConnected ? "Supabase" : "Disconnected", dbConnected ? "good" : "warn")}
+              </div>
+              {rfqRows.length
+                ? renderAdminMiniTable(["RFQ", "Status", "Suppliers", "Sent", "Due"], rfqRows)
+                : renderAdminEmptyState("No RFQ batch records", getAdminTableMissingText("rfq_batches"))}
+            </>
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S07",
+          title: "Supplier quote comparison",
+          status: adminSupplierQuotes.length ? "quoted" : "pending",
+          subtitle:
+            "This table no longer uses frontend mockData. It reads unit price, lead time, quality score, terms, and AI notes from supplier_quotes.",
+          className: "wide",
+          children: quoteRows.length ? (
+            <>
+              {renderAdminMiniTable(["Supplier", "Unit / Total", "Lead", "Quality", "AI verdict"], quoteRows)}
+              <div className="admin-note-box success">
+                Comparison data is coming from Supabase supplier_quotes. Cho can make the S08 decision from live quote
+                records.
+              </div>
+            </>
+          ) : (
+            renderAdminEmptyState("No supplier quotes yet", getAdminTableMissingText("supplier_quotes"))
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S08",
+          title: "Cho best quote decision",
+          status: selectedSupplier ? "selected" : adminSupplierQuotes.length ? "needs_cho_review" : "pending",
+          subtitle:
+            "Selecting a live supplier quote updates the project supplier, specification pricing, payment plan, and logs through the existing flow.",
+          className: "wide",
+          children: quoteDecisionRows.length ? (
+            <div className="admin-supplier-decision-grid">
+              {quoteDecisionRows.map((quote) => {
+                const isSelected = selectedSupplier?.name === quote.supplier.name;
+                return (
+                  <button
+                    key={quote.id}
+                    type="button"
+                    className={`admin-supplier-decision ${isSelected ? "selected" : ""}`}
+                    onClick={() => handleSelectSupplier(quote.supplier)}
+                  >
+                    <strong>{quote.supplier.name}</strong>
+                    <span>{formatAdminMoney(quote.supplier.pricePerChair)} / unit</span>
+                    <span>
+                      {quote.supplier.deliveryDays || "-"} days ? quality {quote.supplier.qualityScore}
+                    </span>
+                    <small>
+                      {quote.paymentTerms} ? {quote.status}
+                    </small>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            renderAdminEmptyState(
+              "Waiting for live supplier quotes",
+              "Supplier decision cards appear only after supplier_quotes records exist for this project."
+            )
+          )
+        })}
+      </div>
+    );
+  };
+
+  const renderProductionFlowWorkspace = () => {
+    const kickoffEvents = getWorkflowEventsForStage("S09");
+    const riskEvents = getWorkflowEventsForStage("S10");
+    const inspectionRows = adminInspectionReports.map((report) => [
+      report.report_code || report.id,
+      report.item_name || report.work_package || "-",
+      report.ai_match_score ? `${report.ai_match_score}%` : report.match_score ? `${report.match_score}%` : "-",
+      report.status || "pending",
+      formatAdminDate(report.created_at || report.inspected_at)
+    ]);
+
+    return (
+      <div className="admin-flow-grid production-flow">
+        {renderAdminStagePanel({
+          stageId: "S09",
+          title: "Production scan-linked status",
+          status: kickoffEvents.length ? "in_production" : "pending",
+          subtitle: "Reads S09 workflow_events for factory scans, process starts, photo uploads, and evidence records.",
+          className: "wide",
+          children: kickoffEvents.length ? (
+            <>
+              <div className="admin-metric-grid">
+                {renderAdminMetric("Production events", kickoffEvents.length, "good")}
+                {renderAdminMetric("Project", order.orderId || "-")}
+                {renderAdminMetric("Source", "workflow_events")}
+              </div>
+              {renderAdminMiniTable(
+                ["Time", "Actor", "Event", "Message"],
+                kickoffEvents.map((event) => [
+                  formatAdminDate(event.created_at),
+                  event.actor || "system",
+                  event.event_type || "production_update",
+                  lang === "Cn" ? event.message_cn : event.message_en
+                ])
+              )}
+            </>
+          ) : (
+            renderAdminEmptyState(
+              "No production scan records",
+              "S09 workflow_events will appear here after the factory or worker writes real production milestones."
+            )
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S10",
+          title: "Delay risk follow-up",
+          status: riskEvents.length ? "watch" : "pending",
+          subtitle:
+            "Reads S10 workflow_events for delay risk scoring, reminders, supplier follow-up, and missing evidence.",
+          children: riskEvents.length ? (
+            <>
+              <div className="admin-risk-meter">
+                <span>Delay risk</span>
+                <strong>{riskEvents[0]?.payload?.risk_level || riskEvents[0]?.event_type || "Review"}</strong>
+                <div>
+                  <i style={{ width: `${Number(riskEvents[0]?.payload?.risk_score || 50)}%` }} />
+                </div>
+              </div>
+              {renderAdminMiniTable(
+                ["Time", "Owner", "Risk / Action", "Evidence"],
+                riskEvents.map((event) => [
+                  formatAdminDate(event.created_at),
+                  event.actor || "system",
+                  lang === "Cn" ? event.message_cn : event.message_en,
+                  event.payload?.evidence || event.payload?.next_action || "-"
+                ])
+              )}
+            </>
+          ) : (
+            renderAdminEmptyState(
+              "No delay risk records",
+              "S10 workflow_events will show the real reminder and escalation chain once available."
+            )
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S11",
+          title: "AI visual inspection",
+          status: inspectionRows.length ? "passed" : "pending",
+          subtitle: "Reads inspection_reports for CAD/photo match score, issue tags, status, and Cho review results.",
+          className: "wide",
+          children: inspectionRows.length
+            ? renderAdminMiniTable(["Report", "Item", "AI match", "Status", "Date"], inspectionRows)
+            : renderAdminEmptyState("No inspection reports", getAdminTableMissingText("inspection_reports")),
+          actions: inspectionRows.length ? (
+            <button className="btn-premium" onClick={() => setCurrentStageIndex(11)}>
+              Release to packing
+            </button>
+          ) : null
+        })}
+      </div>
+    );
+  };
+
+  const renderShippingFlowWorkspace = () => {
+    const loadingDocs = getShipmentDocumentsByStage("S12");
+    const complianceDocs = getShipmentDocumentsByStage("S13");
+    const trackingEvents = getWorkflowEventsForStage("S14");
+    const handoverApprovals = getApprovalsForStage("S16");
+    const archiveFiles = adminProjectFiles.filter((file) =>
+      ["S17", "archive", "ARCHIVE"].includes(String(file.stage_id || file.stage || file.file_group || ""))
+    );
+    const splitRows = order.items.map((item) => [
+      item.typeEn || item.typeCn,
+      item.qty,
+      splitDeliveryActive ? Math.max(Number(item.qty || 0) - 1, 0) : item.qty,
+      splitDeliveryActive ? formatAdminMoney(Number(item.unitPrice || 0) * -1) : formatAdminMoney(0)
+    ]);
+
+    return (
+      <div className="admin-flow-grid shipping-flow">
+        {renderAdminStagePanel({
+          stageId: "S12",
+          title: "Container loading plan",
+          status: loadingDocs.length ? "planned" : "pending",
+          subtitle:
+            "Reads S12 shipment_documents for container plan versions, file status, volume, and loading evidence.",
+          children: loadingDocs.length ? (
+            <>
+              <div className="admin-metric-grid">
+                {renderAdminMetric("Loading docs", loadingDocs.length, "good")}
+                {renderAdminMetric(
+                  "Latest version",
+                  loadingDocs[0]?.version || loadingDocs[0]?.document_version || "-"
+                )}
+                {renderAdminMetric("Status", loadingDocs[0]?.status || "-")}
+              </div>
+              {renderAdminMiniTable(
+                ["Document", "Type", "Status", "Updated"],
+                loadingDocs.map((doc) => [
+                  doc.document_name || doc.file_name || doc.id,
+                  doc.document_type || doc.doc_type || "loading_plan",
+                  doc.status || "draft",
+                  formatAdminDate(doc.updated_at || doc.created_at)
+                ])
+              )}
+            </>
+          ) : (
+            renderAdminEmptyState("No loading plan records", getAdminTableMissingText("shipment_documents"))
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S13",
+          title: "Export compliance document check",
+          status: complianceDocs.length ? "gate" : "pending",
+          subtitle:
+            "Reads S13 shipment_documents to verify IPPC, commercial invoice, packing list, customs declaration, and bill of lading status.",
+          className: "wide",
+          children: complianceDocs.length
+            ? renderAdminMiniTable(
+                ["Document", "Type", "Status", "Check"],
+                complianceDocs.map((doc) => [
+                  doc.document_name || doc.file_name || doc.id,
+                  doc.document_type || doc.doc_type || "compliance",
+                  doc.status || "pending",
+                  doc.check_result || doc.notes || "-"
+                ])
+              )
+            : renderAdminEmptyState(
+                "No export compliance documents",
+                "S13 shipment_documents will appear here after real shipment documents are uploaded."
+              )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S14",
+          title: "Freight tracking",
+          status: trackingEvents.length ? "tracking" : "pending",
+          subtitle: "Reads S14 workflow_events for vessel, port, ETA, and logistics change history.",
+          children: trackingEvents.length ? (
+            <div className="admin-timeline-mini">
+              {trackingEvents.map((event) => (
+                <div key={event.id}>
+                  <strong>{event.payload?.location || event.event_type || "Shipping update"}</strong>
+                  <span>
+                    {lang === "Cn" ? event.message_cn : event.message_en} ? {formatAdminDate(event.created_at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            renderAdminEmptyState(
+              "No freight tracking events",
+              "S14 workflow_events will sync shipping status to Backoffice and the client portal."
+            )
+          )
+        })}
+        {renderAdminStagePanel({
+          stageId: "S15",
+          title: "Split delivery audit",
+          status: splitDeliveryActive ? "recalculated" : "pending",
+          subtitle:
+            "Reads live project specifications and payment state to support partial cancellation, split delivery, and quantity adjustments.",
+          children: splitRows.length
+            ? renderAdminMiniTable(["Item", "Original", "Revised", "Financial impact"], splitRows)
+            : renderAdminEmptyState(
+                "No project specifications",
+                "specifications rows are required before quantity audit can be shown."
+              ),
+          actions: splitRows.length ? (
+            <button className="btn-premium" onClick={triggerSplitDelivery}>
+              Apply split delivery
+            </button>
+          ) : null
+        })}
+        {renderAdminStagePanel({
+          stageId: "S16",
+          title: "Client handover acceptance",
+          status: handoverApprovals.length ? "human_gate" : "pending",
+          subtitle: "Reads S16 approvals for client sign-off, final balance, issue reports, and field-photo review.",
+          children: handoverApprovals.length
+            ? renderAdminMiniTable(
+                ["Approval", "Status", "Reviewer", "Date"],
+                handoverApprovals.map((approval) => [
+                  approval.approval_type || approval.id,
+                  approval.status || "pending",
+                  approval.reviewer_name || approval.actor || approval.created_by || "-",
+                  formatAdminDate(approval.reviewed_at || approval.created_at)
+                ])
+              )
+            : renderAdminEmptyState("No handover approvals", getAdminTableMissingText("approvals"))
+        })}
+        {renderAdminStagePanel({
+          stageId: "S17",
+          title: "Project audit archive",
+          status: archiveHashed || archiveFiles.length ? "archived" : "pending",
+          subtitle:
+            "Reads project_files and approvals to archive drawings, BOM, RFQ, QC, shipping documents, payments, and audit hashes.",
+          className: "wide",
+          children: archiveFiles.length
+            ? renderAdminMiniTable(
+                ["File", "Group", "Hash", "Created"],
+                archiveFiles.map((file) => [
+                  file.file_name || file.name || file.id,
+                  file.file_group || file.stage_id || "archive",
+                  file.sha256 || file.audit_hash || "-",
+                  formatAdminDate(file.created_at)
+                ])
+              )
+            : renderAdminEmptyState("No archive files", getAdminTableMissingText("project_files"))
+        })}
+      </div>
+    );
+  };
+
+  const renderAdminProgressBoard = () => {
+    const flowStageIndexes = activeAdminFlowConfig.stageIndexes;
+    const flowTitle = lang === "Cn" ? activeAdminFlowConfig.titleCn : activeAdminFlowConfig.titleEn;
+    const flowDesc = lang === "Cn" ? activeAdminFlowConfig.descCn : activeAdminFlowConfig.descEn;
+    const flowWorkspaces = {
+      intake: renderIntakeFlowWorkspace,
+      sourcing: renderSourcingFlowWorkspace,
+      production: renderProductionFlowWorkspace,
+      shipping: renderShippingFlowWorkspace
+    };
+    const renderFlowWorkspace = flowWorkspaces[activeAdminFlow] || renderIntakeFlowWorkspace;
+
+    return (
+      <div className="admin-status-board">
+        <div className="admin-board-heading">
+          <div>
+            <span className="logo-badge">{lang === "Cn" ? "运营工作区" : "Operations Workspace"}</span>
+            <h3>{flowTitle}</h3>
+            <p>{flowDesc}</p>
+          </div>
+          <div className="admin-stage-chip-row" aria-label="Stage shortcuts">
+            {flowStageIndexes.map((stageIndex) => {
+              const stage = stages[stageIndex];
+              return (
+                <button
+                  key={stage.id}
+                  type="button"
+                  className={`admin-stage-chip ${currentStage.id === stage.id ? "active" : ""}`}
+                  onClick={() => handleStageChange(stageIndex)}
+                >
+                  {stage.id}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {renderFlowWorkspace()}
+      </div>
+    );
+  };
+
   const renderIntakeReviewWorkspace = () => {
-    const jobs = intakeReviewJobs.length > 0 ? intakeReviewJobs : getLocalReviewJobs();
+    const jobs = intakeReviewJobs.length > 0 ? intakeReviewJobs : dbConnected ? [] : getLocalReviewJobs();
     const selectedJob = jobs.find((job) => job.id === selectedReviewJobId) || jobs[0];
     const selectedNormalized = selectedJob ? normalizeReviewJob(selectedJob) : null;
     const draft = reviewDraft || selectedNormalized;
@@ -4537,7 +6150,10 @@ function App() {
               <span className="stage-badge-dot dot-ai"></span>
               <span>{lang === "Cn" ? "Intake 审核队列" : "Intake Review Inbox"}</span>
             </div>
-            <span className="logo-badge">{jobs.length} Drafts</span>
+            <div className="panel-header-badges">
+              <span className="stage-label-badge">Stage S01</span>
+              <span className="logo-badge">{jobs.length} Drafts</span>
+            </div>
           </div>
           <div className="panel-body review-list-body">
             {jobs.length === 0 ? (
@@ -4571,7 +6187,10 @@ function App() {
               <span className="stage-badge-dot dot-human"></span>
               <span>{lang === "Cn" ? "Cho 审核与 RFQ 准备" : "Cho Review & RFQ Prep"}</span>
             </div>
-            {draft && renderStatusPill(draft.reviewStatus)}
+            <div className="panel-header-badges">
+              <span className="stage-label-badge">Stage S04</span>
+              {draft && renderStatusPill(draft.reviewStatus)}
+            </div>
           </div>
 
           <div className="panel-body">
@@ -5573,6 +7192,8 @@ function App() {
               <img
                 src={IMAGES.blueprintIntake}
                 alt="London Design Sketch"
+                loading="lazy"
+                decoding="async"
                 className="hero-image-zoom"
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
@@ -5600,6 +7221,8 @@ function App() {
               <img
                 src={IMAGES.workflowPhases}
                 alt="High Precision Manufacturing"
+                loading="lazy"
+                decoding="async"
                 className="hero-image-zoom"
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
@@ -5866,6 +7489,20 @@ function App() {
                 : "Connect to your live Supabase cloud database. The prototype will dynamically read and write records to your projects, specifications, and agent_logs tables. Falls back to local mockup data if disconnected."}
             </p>
 
+            {isSupabaseConfiguredByEnv && (
+              <p
+                style={{
+                  fontSize: "0.78rem",
+                  color: "var(--text-secondary)",
+                  marginBottom: "1.25rem",
+                  lineHeight: "1.5"
+                }}
+              >
+                Supabase is configured by deployment environment variables. Update VITE_SUPABASE_URL and
+                VITE_SUPABASE_ANON_KEY on the server to change the permanent connection.
+              </p>
+            )}
+
             <form onSubmit={handleSaveDbConfig} style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
                 <label
@@ -5884,6 +7521,7 @@ function App() {
                   placeholder="https://your-project-id.supabase.co"
                   value={dbUrl}
                   onChange={(e) => setDbUrl(e.target.value)}
+                  readOnly={isSupabaseConfiguredByEnv}
                   style={{
                     width: "100%",
                     background: "#FFFFFF",
@@ -5912,6 +7550,7 @@ function App() {
                   placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                   value={dbKey}
                   onChange={(e) => setDbKey(e.target.value)}
+                  readOnly={isSupabaseConfiguredByEnv}
                   style={{
                     width: "100%",
                     background: "#FFFFFF",
@@ -5965,23 +7604,29 @@ function App() {
                           ? "⚡️ 強制重新播種數據"
                           : "⚡️ Force Re-Seed Database"}
                     </button>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)", padding: "0.6rem 1.5rem" }}
-                      onClick={() => {
-                        setDbUrl("");
-                        setDbKey("");
-                        safeRemoveItem("supabase_url");
-                        safeRemoveItem("supabase_key");
-                        setDbConnected(false);
-                        setOrder(JSON.parse(JSON.stringify(mockData.initialOrder)));
-                        setLogs(JSON.parse(JSON.stringify(mockData.changeLogs)));
-                        setCurrentStageIndex(0);
-                      }}
-                    >
-                      Disconnect
-                    </button>
+                    {!isSupabaseConfiguredByEnv && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{
+                          borderColor: "var(--accent-red)",
+                          color: "var(--accent-red)",
+                          padding: "0.6rem 1.5rem"
+                        }}
+                        onClick={() => {
+                          setDbUrl("");
+                          setDbKey("");
+                          safeRemoveItem("supabase_url");
+                          safeRemoveItem("supabase_key");
+                          setDbConnected(false);
+                          setOrder(JSON.parse(JSON.stringify(mockData.initialOrder)));
+                          setLogs(JSON.parse(JSON.stringify(mockData.changeLogs)));
+                          setCurrentStageIndex(0);
+                        }}
+                      >
+                        Disconnect
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -6130,7 +7775,7 @@ function App() {
               >
                 {lang === "Cn" ? "客戶中心" : "Client Portal"}
               </span>
-              {user.email === "cho@crafton.com" && (
+              {isStaffUser && (
                 <span
                   className={`nav-link ${currentView === "Backoffice" ? "active" : ""}`}
                   onClick={() => setCurrentStageView("Backoffice")}
@@ -6397,6 +8042,8 @@ function App() {
                     }}
                   >
                     <img
+                      loading="lazy"
+                      decoding="async"
                       className="hero-image-zoom"
                       src={IMAGES.heroChair}
                       alt="The Crafton Luxury Contract Armchair"
@@ -7518,6 +9165,8 @@ function App() {
                                 : "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?q=80&w=600&auto=format&fit=crop"
                         }
                         alt="Macro Swatch Material"
+                        loading="lazy"
+                        decoding="async"
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />
                       <div
@@ -8540,6 +10189,8 @@ function App() {
                                   : "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=600&auto=format&fit=crop"
                           }
                           alt="Live mill process tracking view"
+                          loading="lazy"
+                          decoding="async"
                           style={{ width: "100%", height: "100%", objectFit: "cover" }}
                         />
                         <div
@@ -8948,6 +10599,8 @@ function App() {
                     >
                       <img
                         src={c.img}
+                        loading="lazy"
+                        decoding="async"
                         style={{
                           width: "100%",
                           height: "100%",
@@ -9676,6 +11329,8 @@ function App() {
                     <img
                       src={IMAGES.setMilano}
                       alt="Milano Elegance Lobby Package"
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   </div>
@@ -9881,6 +11536,8 @@ function App() {
                     <img
                       src={IMAGES.setToscana}
                       alt="Toscana Curated Bed Suite"
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   </div>
@@ -9902,6 +11559,8 @@ function App() {
                     <img
                       src={IMAGES.setVenezia}
                       alt="Venezia Dining Set"
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   </div>
@@ -10154,7 +11813,7 @@ function App() {
                         paddingBottom: "0.4rem",
                         cursor: "pointer",
                         transition: "all 0.2s ease",
-                        display: "inline-flex",
+                        display: "none",
                         alignItems: "center"
                       }}
                     >
@@ -10650,19 +12309,29 @@ function App() {
                             textAlign: "center",
                             background: "rgba(124, 114, 103, 0.02)",
                             cursor: "pointer",
-                            transition: "background 0.2s"
+                            transition: "background 0.2s",
+                            position: "relative"
                           }}
-                          onClick={() => document.getElementById("intake-file-upload").click()}
                         >
                           <input
+                            ref={intakeFileInputRef}
                             id="intake-file-upload"
                             type="file"
-                            style={{ display: "none" }}
-                            onChange={(e) => {
-                              const file = e.target.files && e.target.files[0];
-                              setIntakeSelectedFile(file || null);
-                              setIntakeSelectedFileName(file?.name || "");
+                            aria-label="Upload reference images, PDFs, spreadsheets, CSV, or TXT files"
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              width: "100%",
+                              height: "100%",
+                              opacity: 0,
+                              cursor: "pointer",
+                              zIndex: 2
                             }}
+                            accept=".pdf,.png,.jpg,.jpeg,.jfif,.webp,.heic,.heif,.avif,.xlsx,.xls,.csv,.txt,.doc,.docx"
+                            onClick={(event) => {
+                              event.currentTarget.value = "";
+                            }}
+                            onChange={handleIntakeFileSelect}
                           />
                           <svg
                             style={{
@@ -10684,8 +12353,8 @@ function App() {
                           </svg>
                           <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)", display: "block" }}>
                             {lang === "Cn"
-                              ? "拖曳或點選上傳手繪草圖 / CAD 設計圖 (PDF, DXG, PNG)"
-                              : "Drag & drop hand sketch or CAD blueprint here, or click to browse (PDF, DXG, PNG)"}
+                              ? "Upload reference images, PDFs, spreadsheets, CSV, or TXT files"
+                              : "Upload reference images, PDFs, spreadsheets, CSV, or TXT files"}
                           </span>
                           {intakeSelectedFileName && (
                             <span
@@ -10699,6 +12368,19 @@ function App() {
                             >
                               {lang === "Cn" ? "已選文件：" : "Selected file: "}
                               {intakeSelectedFileName}
+                            </span>
+                          )}
+                          {intakeUploadStatus && (
+                            <span
+                              style={{
+                                display: "block",
+                                marginTop: "0.35rem",
+                                fontSize: "0.75rem",
+                                color: "var(--accent-green)",
+                                wordBreak: "break-word"
+                              }}
+                            >
+                              {intakeUploadStatus}
                             </span>
                           )}
                         </div>
@@ -10750,9 +12432,25 @@ function App() {
                           alignItems: "center",
                           gap: "0.5rem"
                         }}
-                        disabled={isIntakeUploading}
+                        disabled={isIntakeUploading || intakeFileUploading}
                       >
-                        {isIntakeUploading ? (
+                        {intakeFileUploading ? (
+                          <>
+                            <svg
+                              style={{ width: "16px", height: "16px" }}
+                              className="animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+                            </svg>
+                            <span>{lang === "Cn" ? "正在保存文件到 Supabase..." : "Saving file to Supabase..."}</span>
+                          </>
+                        ) : isIntakeUploading ? (
                           <>
                             <svg
                               style={{ width: "16px", height: "16px" }}
@@ -10794,6 +12492,7 @@ function App() {
 
                   {/* Right: Premium Preview or Live Log terminal console */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                    {renderAiConciergePanel()}
                     <div
                       className="glass-card"
                       style={{
@@ -11173,9 +12872,9 @@ function App() {
                           placeholder={lang === "Cn" ? "向 AI 询问或变更面料..." : "Ask AI Swatch or check codes..."}
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                          onKeyDown={(e) => e.key === "Enter" && handleTrackerAiMessage()}
                         />
-                        <button className="btn-premium" onClick={handleSendMessage}>
+                        <button className="btn-premium" onClick={handleTrackerAiMessage}>
                           Send
                         </button>
                       </div>
@@ -11189,438 +12888,66 @@ function App() {
       )}
 
       {/* VIEW 3: Internal Backoffice (Cho / Client View) */}
-      {currentView === "Backoffice" && (
+      {currentView === "Backoffice" && !isStaffUser && (
+        <div
+          className="glass-card"
+          style={{ maxWidth: "760px", margin: "4rem auto", padding: "3rem", textAlign: "center" }}
+        >
+          <span className="logo-badge">{lang === "Cn" ? "STAFF ONLY" : "STAFF ONLY"}</span>
+          <h2 style={{ fontFamily: "var(--font-tech)", margin: "1rem 0", color: "var(--text-primary)" }}>
+            {lang === "Cn" ? "请使用 Crafton 管理员账号登录" : "Sign in with a Crafton staff account"}
+          </h2>
+          <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: "1.8rem" }}>
+            {lang === "Cn"
+              ? "Backoffice 会显示客户文件、订单草稿、BOM 和 Cho 审核动作，需要 @crafton.com 员工账号权限。"
+              : "Backoffice shows client files, order drafts, BOM rows, and Cho review actions. It requires a @crafton.com staff account."}
+          </p>
+          <button
+            className="btn-premium"
+            onClick={() => {
+              setAuthMode("login");
+              setShowAuthGate(true);
+            }}
+          >
+            {lang === "Cn" ? "登录管理员账号" : "Staff Sign In"}
+          </button>
+        </div>
+      )}
+      {currentView === "Backoffice" && isStaffUser && (
         <div className="dashboard-grid animate-fade-in">
-          {/* Sidebar Left: 17 Stages Controller */}
+          {/* Sidebar Left: Order progress controller */}
           <div className="sidebar">
-            <h3 className="sidebar-title">{lang === "Cn" ? "17阶段全景时间轴" : "17-Stage Control Center"}</h3>
-            <div className="stage-timeline-vertical">
-              {stages.map((st, idx) => {
-                let statusClass = "";
-                if (idx < currentStageIndex) statusClass = "completed";
-                if (idx === currentStageIndex) statusClass = "active";
-
+            <h3 className="sidebar-title">{lang === "Cn" ? "订单进度菜单" : "Order Progress Menu"}</h3>
+            <div className="admin-progress-menu">
+              {adminProgressFlows.map((flow, flowIndex) => {
+                const isActive = activeAdminFlow === flow.id;
+                const firstStage = stages[flow.stageIndexes[0]];
+                const lastStage = stages[flow.stageIndexes[flow.stageIndexes.length - 1]];
                 return (
-                  <div key={st.id} className={`stage-item ${statusClass}`} onClick={() => handleStageChange(idx)}>
-                    <span className={`stage-badge-dot dot-${st.type.toLowerCase()}`}></span>
-                    <div className="stage-info">
-                      <div className="stage-id">
-                        STAGE {st.id} ({st.type})
-                      </div>
-                      <div className="stage-name">{lang === "Cn" ? st.nameCn : st.nameEn}</div>
-                    </div>
-                  </div>
+                  <button
+                    key={flow.id}
+                    type="button"
+                    className={`admin-progress-button ${isActive ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveAdminFlow(flow.id);
+                      handleStageChange(flow.stageIndexes[0]);
+                    }}
+                  >
+                    <span className="admin-progress-index">0{flowIndex + 1}</span>
+                    <span className="admin-progress-copy">
+                      <strong>{lang === "Cn" ? flow.titleCn : flow.titleEn}</strong>
+                      <small>
+                        {firstStage.id}-{lastStage.id}
+                      </small>
+                    </span>
+                  </button>
                 );
               })}
             </div>
           </div>
 
           {/* Right Main Admin Area */}
-          <div className="main-content">
-            {/* Top Phase Header */}
-            <div className="glass-card phase-progress-banner">
-              <div>
-                <span
-                  className="logo-badge"
-                  style={{ background: "rgba(124, 114, 103, 0.08)", color: "var(--accent-primary)" }}
-                >
-                  {currentStage.phase}
-                </span>
-                <h2 style={{ fontFamily: "var(--font-tech)", marginTop: "0.5rem" }}>
-                  Stage {currentStage.id}: {lang === "Cn" ? currentStage.nameCn : currentStage.nameEn}
-                </h2>
-                <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginTop: "0.2rem" }}>
-                  {lang === "Cn" ? currentStage.descCn : currentStage.descEn}
-                </p>
-              </div>
-
-              {/* Render Simulation Interactivity depending on current active stage */}
-              <div style={{ marginLeft: "auto" }}>
-                {currentStage.id === "S04" && (
-                  <button
-                    className="btn-premium"
-                    style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                    onClick={handleChoApproval}
-                  >
-                    <svg
-                      style={{ width: "16px", height: "16px" }}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" />
-                    </svg>
-                    <span>{lang === "Cn" ? "批准规格书与BOM (Human H1)" : "Approve Tech BOM (Human H1)"}</span>
-                  </button>
-                )}
-
-                {currentStage.id === "S05" && isCrib5Blocked && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-end" }}>
-                    <span
-                      style={{
-                        color: "var(--accent-red)",
-                        fontSize: "0.8rem",
-                        fontWeight: "bold",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                      }}
-                    >
-                      <svg
-                        style={{ width: "14px", height: "14px", flexShrink: 0 }}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />
-                      </svg>
-                      <span>CRIB 5 BLOCK INTERCEPTED (Crib 5 强制拦截中)</span>
-                    </span>
-                    <button
-                      className="btn-premium"
-                      style={{
-                        background: "var(--accent-orange)",
-                        color: "white",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                      }}
-                      onClick={() => handleBypassCrib5("Navy Classic Linen")}
-                    >
-                      <svg
-                        style={{ width: "14px", height: "14px" }}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
-                      </svg>
-                      <span>{lang === "Cn" ? "强制降级为符合Crib 5面料" : "Bypass block: Change to Navy Linen"}</span>
-                    </button>
-                  </div>
-                )}
-
-                {currentStage.id === "S08" && (
-                  <span
-                    style={{
-                      color: "var(--accent-orange)",
-                      fontSize: "0.85rem",
-                      fontWeight: "bold",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px"
-                    }}
-                  >
-                    <svg
-                      style={{ width: "16px", height: "16px", flexShrink: 0 }}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <line x1="19" y1="12" x2="5" y2="12" />
-                      <polyline points="12,19 5,12 12,5" />
-                    </svg>
-                    <span>{lang === "Cn" ? "请在右侧选择供应商下单" : "Select supplier on the right column"}</span>
-                  </span>
-                )}
-
-                {currentStage.id === "S15" && !splitDeliveryActive && (
-                  <button
-                    className="btn-premium"
-                    style={{
-                      background: "var(--accent-red)",
-                      color: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px"
-                    }}
-                    onClick={triggerSplitDelivery}
-                  >
-                    <svg
-                      style={{ width: "16px", height: "16px" }}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                    </svg>
-                    <span>
-                      {lang === "Cn"
-                        ? "客户提出更改：执行分批交付财务划线核销"
-                        : "Execute Split Delivery Strike-through"}
-                    </span>
-                  </button>
-                )}
-
-                {currentStage.id !== "S04" && currentStage.id !== "S08" && !isCrib5Blocked && (
-                  <button
-                    className="btn-secondary"
-                    onClick={() => handleStageChange(Math.min(currentStageIndex + 1, 16))}
-                  >
-                    {lang === "Cn" ? "下一步 (模拟流转)" : "Next Simulation Stage ➔"}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {renderIntakeReviewWorkspace()}
-
-            {/* Admin Center Split Panels */}
-            <div className="dashboard-panels">
-              {/* Left Column: Shared Master Sheet (Memory Base) */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-                <div className="glass-card">
-                  <div className="panel-header">
-                    <div className="panel-title" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <svg
-                        style={{ width: "16px", height: "16px", flexShrink: 0, color: "var(--accent-primary)" }}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" />
-                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
-                        <path d="M9 14l2 2 4-4" />
-                      </svg>
-                      <span>Supabase 共享主数据库 (Master Sheet)</span>
-                    </div>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>ID: {order.orderId}</span>
-                  </div>
-                  <div className="panel-body" style={{ padding: "1.5rem 0" }}>
-                    <div className="table-container" style={{ padding: "0 1.5rem" }}>
-                      <table className="order-table" style={{ minWidth: "650px" }}>
-                        <thead>
-                          <tr>
-                            <th>{lang === "Cn" ? "项目类型" : "Item"}</th>
-                            <th>{lang === "Cn" ? "数量" : "Qty"}</th>
-                            <th>{lang === "Cn" ? "材质规格 (双语)" : "Bilingual Material"}</th>
-                            <th>{lang === "Cn" ? "合同单价" : "Unit Price"}</th>
-                            <th>{lang === "Cn" ? "小计" : "Subtotal"}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {order.items.map((item) => (
-                            <tr key={item.id}>
-                              <td style={{ fontWeight: "600" }}>{lang === "Cn" ? item.typeCn : item.typeEn}</td>
-                              <td>
-                                {splitDeliveryActive && item.id === "ITEM-01" ? (
-                                  <span>
-                                    <span style={{ textDecoration: "line-through", color: "var(--accent-red)" }}>
-                                      40
-                                    </span>{" "}
-                                    ➔ <strong style={{ color: "var(--accent-green)" }}>38</strong>
-                                  </span>
-                                ) : splitDeliveryActive && item.id === "ITEM-03" ? (
-                                  <span>
-                                    <span style={{ textDecoration: "line-through", color: "var(--accent-red)" }}>
-                                      5
-                                    </span>{" "}
-                                    ➔ <strong style={{ color: "var(--accent-green)" }}>4</strong>
-                                  </span>
-                                ) : (
-                                  item.qty
-                                )}
-                              </td>
-                              <td style={{ fontSize: "0.8rem" }}>
-                                <div style={{ color: "var(--accent-cyan)" }}>{item.materialEn}</div>
-                                <div style={{ color: "var(--text-secondary)" }}>{item.materialCn}</div>
-                                {item.note && (
-                                  <div style={{ color: "var(--accent-orange)", fontSize: "0.75rem", marginTop: "3px" }}>
-                                    {item.note}
-                                  </div>
-                                )}
-                              </td>
-                              <td>
-                                {selectedSupplier ? (
-                                  <span>
-                                    <span
-                                      style={{
-                                        textDecoration: "line-through",
-                                        color: "var(--text-muted)",
-                                        fontSize: "0.75rem"
-                                      }}
-                                    >
-                                      ${item.originalUnitPrice}
-                                    </span>{" "}
-                                    ${item.unitPrice}
-                                  </span>
-                                ) : (
-                                  `$${item.unitPrice}`
-                                )}
-                              </td>
-                              <td style={{ fontWeight: "bold" }}>${(item.unitPrice * item.qty).toLocaleString()}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Recalculated Payments at bottom of Master Sheet */}
-                    <div className="payments-grid" style={{ padding: "0 1.5rem" }}>
-                      {order.payments.map((p, pidx) => (
-                        <div
-                          key={pidx}
-                          style={{
-                            background: "var(--bg-secondary)",
-                            padding: "0.8rem 0.6rem",
-                            borderRadius: "2px",
-                            border: "1px solid var(--glass-border)"
-                          }}
-                        >
-                          <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{p.milestone}</div>
-                          <div
-                            style={{
-                              fontSize: "0.9rem",
-                              fontWeight: "bold",
-                              color: p.status === "Paid" ? "var(--accent-green)" : "var(--accent-orange)",
-                              marginTop: "3px"
-                            }}
-                          >
-                            ${p.amount.toLocaleString()} (
-                            {p.status === "Paid"
-                              ? lang === "Cn"
-                                ? "已付"
-                                : "Paid"
-                              : lang === "Cn"
-                                ? "未核销"
-                                : "Pending"}
-                            )
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Change Tracker Log Panel */}
-                <div className="glass-card">
-                  <div className="panel-header">
-                    <div className="panel-title" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <svg
-                        style={{ width: "16px", height: "16px", flexShrink: 0, color: "var(--accent-primary)" }}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                        <path d="M9 11l2 2 4-4" />
-                      </svg>
-                      <span>{lang === "Cn" ? "变更审计日志 (Change Tracker Log)" : "Change Tracker Log"}</span>
-                    </div>
-                  </div>
-                  <div className="panel-body" style={{ maxHeight: "180px", overflowY: "auto" }}>
-                    {logs.map((log, lidx) => {
-                      const displayAction =
-                        lang === "Cn"
-                          ? log.action
-                          : log.actionEn && !/[\u4e00-\u9fa5]/.test(log.actionEn)
-                            ? log.actionEn
-                            : getLogActionEn(log.action) || log.actionEn || log.action;
-                      return (
-                        <div key={lidx} className="log-item">
-                          <span className="log-time">{log.time}</span>
-                          <span className="log-user">{log.user}:</span>
-                          <span style={{ color: "var(--text-secondary)" }}>{displayAction}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column: AI OpenClaw Core Thought Console */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-                {/* Integration: 17-Stage Stateful Visual Playground */}
-                {renderInteractivePlayground()}
-
-                {/* Default OpenClaw Thinking Logs Terminal */}
-                <div className="glass-card">
-                  <div className="panel-header" style={{ background: "rgba(124, 114, 103, 0.03)" }}>
-                    <div className="panel-title">
-                      <span
-                        className="stage-badge-dot dot-ai"
-                        style={{ animation: "scanEffect 2s infinite alternate", background: "var(--accent-primary)" }}
-                      ></span>
-                      {lang === "Cn"
-                        ? "OpenClaw 智能体思考轨迹控制台 (Thought-Process Terminal)"
-                        : "OpenClaw Thought-Process Terminal"}
-                    </div>
-                  </div>
-                  <div className="panel-body">
-                    <div className="terminal-console">
-                      {mockData.agentThoughtLogs[currentStage.id] ? (
-                        mockData.agentThoughtLogs[currentStage.id].map((tlog, tidx) => {
-                          const roleLabel =
-                            lang === "Cn"
-                              ? tlog.role === "thought"
-                                ? "【AI THOUGHT】"
-                                : tlog.role === "action"
-                                  ? "【ACTION CALL】"
-                                  : tlog.role === "observation"
-                                    ? "【OBSERVATION】"
-                                    : "【SYSTEM】"
-                              : tlog.role === "thought"
-                                ? "[AI THOUGHT] "
-                                : tlog.role === "action"
-                                  ? "[ACTION CALL] "
-                                  : tlog.role === "observation"
-                                    ? "[OBSERVATION] "
-                                    : "[SYSTEM] ";
-                          return (
-                            <div key={tidx} className={`terminal-line line-${tlog.role}`}>
-                              <span>&gt; {roleLabel}</span>
-                              {lang === "Cn" ? tlog.text : tlog.textEn || tlog.text}
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="terminal-line line-system">
-                          &gt;{" "}
-                          {lang === "Cn"
-                            ? "【SYSTEM】OpenClaw Daemon v2.1 挂机待命。当前阶段未绑定主动自动化任务。正在监听 Supabase Webhook 触发。"
-                            : "[SYSTEM] OpenClaw Daemon v2.1 Standby. No active automated task is bound to the current stage. Listening for Supabase Webhook triggers."}
-                        </div>
-                      )}
-                      <div ref={terminalEndRef}></div>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "0.7rem",
-                        color: "var(--text-muted)",
-                        textAlign: "right",
-                        marginTop: "0.5rem"
-                      }}
-                    >
-                      {lang === "Cn"
-                        ? "基于 OpenClaw / Supabase 事件联动架构"
-                        : "Powered by OpenClaw & Supabase Event Architecture"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <div className="main-content">{renderAdminProgressBoard()}</div>
         </div>
       )}
 
