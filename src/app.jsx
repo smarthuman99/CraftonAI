@@ -258,14 +258,30 @@ const getIntakeFileFromJob = (job = {}) => {
   return job.intake_files || null;
 };
 
+const formatDimensionPayload = (dimensions = {}) => {
+  if (!dimensions || typeof dimensions !== "object") return "";
+  const unit = dimensions.unit || "mm";
+  const length = dimensions.length || dimensions.l || dimensions.width || "";
+  const width = dimensions.width || dimensions.w || dimensions.depth || "";
+  const height = dimensions.height || dimensions.h || "";
+  const parts = [length ? `L ${length}` : "", width ? `W ${width}` : "", height ? `H ${height}` : ""].filter(Boolean);
+  return parts.length ? `${parts.join(" x ")} ${unit}` : "";
+};
+
 const normalizeReviewJob = (job = {}) => {
   const result = safeJsonObject(job.result_json, {});
   const project = result.project || {};
   const items = Array.isArray(result.items) ? result.items : [];
+  const firstItem = items[0] || {};
   const payments = Array.isArray(result.payments) ? result.payments : [];
   const questions = Array.isArray(result.questions) ? result.questions : [];
   const rfqDraft = safeJsonObject(job.rfq_draft_json, null);
   const intakeFile = getIntakeFileFromJob(job);
+  const dimensionsText =
+    result.dimensions_text ||
+    result.dimensions ||
+    firstItem.dimensions_text ||
+    formatDimensionPayload(firstItem.dimensions || {});
 
   return {
     id: job.id || "LOCAL-INTAKE-DEMO",
@@ -273,6 +289,11 @@ const normalizeReviewJob = (job = {}) => {
     projectName: job.project_name || project.name || job.projectName || "To confirm",
     clientName: project.client_name || job.projects?.client_name || "Portal Intake Client",
     destination: job.destination || project.destination || job.destination || "",
+    deliveryAddress: project.delivery_address || result.delivery_address || "",
+    desiredDeliveryDate: project.desired_delivery_date || result.desired_delivery_date || "",
+    deliveryWindow: project.delivery_window || result.delivery_window || "",
+    targetBudget: project.target_budget || result.target_budget || "",
+    currency: project.currency || result.currency || "USD",
     quantityText: job.quantity_text || job.quantityText || "",
     status: job.status || "needs_review",
     reviewStatus: job.review_status || (job.status === "completed" ? "approved" : "pending"),
@@ -283,6 +304,11 @@ const normalizeReviewJob = (job = {}) => {
     summaryEn: result.summary_en || "Intake draft parsed from client materials.",
     createdAt: job.created_at || job.submittedAt || "",
     fileName: intakeFile?.original_name || job.fileName || "",
+    dimensions: dimensionsText,
+    tolerance: result.tolerance || firstItem.tolerance || "",
+    fireStandard: result.fire_standard || firstItem.fire_standard || "",
+    packaging: result.packaging || "",
+    siteAccess: result.site_access || "",
     questions,
     rfqDraft,
     items: items.map((item, idx) => ({
@@ -290,8 +316,18 @@ const normalizeReviewJob = (job = {}) => {
       typeCn: item.item_type_cn || item.typeCn || "Customer bespoke item",
       typeEn: item.item_type_en || item.typeEn || "Submitted Bespoke Item",
       qty: Number(item.quantity || item.qty || 0),
+      qtyDisplay: item.quantity_text || item.qtyDisplay || String(item.quantity || item.qty || ""),
+      dimensions: item.dimensions || {},
+      dimensionsText: item.dimensions_text || formatDimensionPayload(item.dimensions || {}),
+      tolerance: item.tolerance || "",
       materialCn: item.material_cn || item.materialCn || "To confirm",
       materialEn: item.material_en || item.materialEn || "To confirm",
+      fabricCode: item.fabric_code || item.fabricCode || "",
+      finish: item.finish || "",
+      color: item.color || "",
+      hardware: item.hardware || "",
+      usageLocation: item.usage_location || item.usageLocation || "",
+      fireStandard: item.fire_standard || item.fireStandard || "",
       originalUnitPrice: Number(
         item.original_unit_price || item.originalUnitPrice || item.unit_price || item.unitPrice || 0
       ),
@@ -399,20 +435,40 @@ const denormalizeReviewDraft = (draft) => ({
   project: {
     name: draft.projectName || "Crafton Intake Project",
     client_name: "Portal Intake Client",
-    destination: draft.destination || ""
+    destination: draft.destination || "",
+    delivery_address: draft.deliveryAddress || "",
+    desired_delivery_date: draft.desiredDeliveryDate || "",
+    delivery_window: draft.deliveryWindow || "",
+    target_budget: draft.targetBudget || "",
+    currency: draft.currency || "USD"
   },
   items: (draft.items || []).map((item) => ({
     item_type_cn: item.typeCn || item.typeEn || "Custom item",
     item_type_en: item.typeEn || "Custom item",
     quantity: Number(item.qty || 0),
+    quantity_text: item.qtyDisplay || String(item.qty || ""),
+    dimensions: item.dimensions || null,
+    dimensions_text: item.dimensionsText || "",
+    tolerance: item.tolerance || "",
     material_cn: item.materialCn || item.materialEn || "",
     material_en: item.materialEn || "",
+    fabric_code: item.fabricCode || "",
+    finish: item.finish || "",
+    color: item.color || "",
+    hardware: item.hardware || "",
+    usage_location: item.usageLocation || "",
+    fire_standard: item.fireStandard || draft.fireStandard || "",
     original_unit_price: Number(item.originalUnitPrice || item.unitPrice || 0),
     unit_price: Number(item.unitPrice || item.originalUnitPrice || 0),
     notes_cn: item.notesCn || item.notesEn || "",
     notes_en: item.notesEn || ""
   })),
   questions: draft.questions || [],
+  dimensions: draft.dimensions || "",
+  tolerance: draft.tolerance || "",
+  fire_standard: draft.fireStandard || "",
+  packaging: draft.packaging || "",
+  site_access: draft.siteAccess || "",
   summary_cn: "Cho reviewed the AI intake draft.",
   summary_en: "Cho reviewed the AI intake draft and prepared it for pre-quote handling.",
   source_notes: draft.sourceNotes || ""
@@ -430,7 +486,13 @@ const buildRfqDraft = (draft) => {
     items: items.map((item) => ({
       item: item.typeEn,
       quantity: Number(item.qty || 0),
+      dimensions: item.dimensionsText || formatDimensionPayload(item.dimensions || {}),
+      tolerance: item.tolerance || draft.tolerance || "",
       material: item.materialEn,
+      finish: item.finish || "",
+      color: item.color || "",
+      hardware: item.hardware || "",
+      fire_standard: item.fireStandard || draft.fireStandard || "",
       target_unit_price: Number(item.unitPrice || 0),
       notes: item.notesEn || ""
     })),
@@ -472,6 +534,27 @@ function App() {
   const [intakeProjectName, setIntakeProjectName] = useState("");
   const [intakeDestination, setIntakeDestination] = useState("");
   const [intakeQuantity, setIntakeQuantity] = useState("");
+  const [intakeItemType, setIntakeItemType] = useState("");
+  const [intakeUsageLocation, setIntakeUsageLocation] = useState("");
+  const [intakeLength, setIntakeLength] = useState("");
+  const [intakeWidth, setIntakeWidth] = useState("");
+  const [intakeHeight, setIntakeHeight] = useState("");
+  const [intakeDimensionUnit, setIntakeDimensionUnit] = useState("mm");
+  const [intakeTolerance, setIntakeTolerance] = useState("±5mm");
+  const [intakeMaterial, setIntakeMaterial] = useState("");
+  const [intakeFabricCode, setIntakeFabricCode] = useState("");
+  const [intakeFinish, setIntakeFinish] = useState("");
+  const [intakeColor, setIntakeColor] = useState("");
+  const [intakeHardware, setIntakeHardware] = useState("");
+  const [intakeDesiredDeliveryDate, setIntakeDesiredDeliveryDate] = useState("");
+  const [intakeDeliveryWindow, setIntakeDeliveryWindow] = useState("");
+  const [intakeDeliveryAddress, setIntakeDeliveryAddress] = useState("");
+  const [intakeTargetBudget, setIntakeTargetBudget] = useState("");
+  const [intakeCurrency, setIntakeCurrency] = useState("USD");
+  const [intakeFireStandard, setIntakeFireStandard] = useState("UK Crib 5 required");
+  const [intakePackaging, setIntakePackaging] = useState("");
+  const [intakeSiteAccess, setIntakeSiteAccess] = useState("");
+  const [intakeAdditionalNotes, setIntakeAdditionalNotes] = useState("");
   const [intakeSelectedFile, setIntakeSelectedFile] = useState(null);
   const [intakeSelectedFileName, setIntakeSelectedFileName] = useState("");
   const [intakeUploadedFileId, setIntakeUploadedFileId] = useState(null);
@@ -924,6 +1007,7 @@ function App() {
     quantity,
     fileType,
     textBrief,
+    structuredBrief,
     file,
     intakeFileId: existingIntakeFileId
   }) => {
@@ -955,6 +1039,7 @@ function App() {
           brief_text: [projectName ? `Display project: ${projectName}` : "", textBrief || ""]
             .filter(Boolean)
             .join("\n"),
+          result_json: structuredBrief || null,
           step: "parse_intake",
           status: "queued"
         })
@@ -1314,6 +1399,132 @@ function App() {
     }
   };
 
+  const getStructuredIntakeMissingQuestions = (payload = {}) => {
+    const project = payload.project || {};
+    const item = payload.items?.[0] || {};
+    const dimensions = item.dimensions || {};
+    return [
+      project.name ? null : "Project name is missing.",
+      project.destination ? null : "Delivery destination is missing.",
+      project.desired_delivery_date ? null : "Desired delivery date is missing.",
+      item.item_type_en && item.item_type_en !== "Custom furniture item" ? null : "Furniture type is missing.",
+      item.quantity ? null : "Quantity is missing.",
+      dimensions.length && dimensions.width && dimensions.height ? null : "Length, width, and height are incomplete.",
+      (item.material_en && item.material_en !== "To confirm") || item.fabric_code || item.finish
+        ? null
+        : "Material, fabric, or finish is missing.",
+      payload.file_name ? null : "Drawing, photo, or reference file is missing."
+    ].filter(Boolean);
+  };
+
+  const buildStructuredIntakePayload = ({
+    projectName = intakeProjectName,
+    destination = intakeDestination,
+    quantity = intakeQuantity,
+    fileName = intakeSelectedFileName || supportSelectedFileName || ""
+  } = {}) => {
+    const quantityNumber = Number(String(quantity || "").match(/\d+/)?.[0] || 0);
+    const dimensions = {
+      length: intakeLength.trim(),
+      width: intakeWidth.trim(),
+      height: intakeHeight.trim(),
+      unit: intakeDimensionUnit || "mm"
+    };
+    const dimensionsText = formatDimensionPayload(dimensions);
+    const itemType = intakeItemType.trim();
+    const material = intakeMaterial.trim();
+    const finish = intakeFinish.trim();
+    const color = intakeColor.trim();
+    const fabricCode = intakeFabricCode.trim();
+    const hardware = intakeHardware.trim();
+    const notes = intakeAdditionalNotes.trim();
+    const materialSummary = [material, fabricCode ? `Fabric ${fabricCode}` : "", finish, color]
+      .filter(Boolean)
+      .join(" / ");
+
+    const payload = {
+      schema_version: "portal_intake_v2",
+      file_name: fileName,
+      project: {
+        name: projectName.trim(),
+        client_name: user?.company || user?.name || "Portal Intake Client",
+        contact_name: user?.name || "",
+        destination: destination.trim(),
+        delivery_address: intakeDeliveryAddress.trim(),
+        desired_delivery_date: intakeDesiredDeliveryDate,
+        delivery_window: intakeDeliveryWindow.trim(),
+        target_budget: intakeTargetBudget.trim(),
+        currency: intakeCurrency || "USD"
+      },
+      items: [
+        {
+          id: "CLIENT-ITEM-01",
+          item_type_en: itemType || "Custom furniture item",
+          item_type_cn: itemType || "Customer bespoke item",
+          quantity: quantityNumber,
+          quantity_text: quantity.trim(),
+          dimensions,
+          dimensions_text: dimensionsText,
+          tolerance: intakeTolerance.trim(),
+          material_en: materialSummary || "To confirm",
+          material_cn: materialSummary || "To confirm",
+          fabric_code: fabricCode,
+          finish,
+          color,
+          hardware,
+          usage_location: intakeUsageLocation.trim(),
+          fire_standard: intakeFireStandard.trim(),
+          notes_en: notes || "Client submitted through portal intake form."
+        }
+      ],
+      dimensions: dimensionsText,
+      tolerance: intakeTolerance.trim(),
+      fire_standard: intakeFireStandard.trim(),
+      packaging: intakePackaging.trim(),
+      site_access: intakeSiteAccess.trim(),
+      target_budget: intakeTargetBudget.trim(),
+      currency: intakeCurrency || "USD",
+      summary_en: [
+        projectName ? `${projectName.trim()} furniture order` : "Customer furniture order",
+        itemType ? `Item: ${itemType}` : "",
+        quantity ? `Quantity: ${quantity.trim()}` : "",
+        dimensionsText ? `Dimensions: ${dimensionsText}` : "",
+        intakeDesiredDeliveryDate ? `Desired delivery: ${intakeDesiredDeliveryDate}` : ""
+      ]
+        .filter(Boolean)
+        .join(" | "),
+      source_notes: notes
+    };
+
+    payload.questions = getStructuredIntakeMissingQuestions(payload);
+    return payload;
+  };
+
+  const buildStructuredIntakeBriefText = (payload = {}) => {
+    const project = payload.project || {};
+    const item = payload.items?.[0] || {};
+    return [
+      `Project: ${project.name || "To confirm"}`,
+      `Client: ${project.client_name || "Portal Intake Client"}`,
+      `Destination: ${project.destination || "To confirm"}`,
+      `Delivery address: ${project.delivery_address || "To confirm"}`,
+      `Desired delivery date: ${project.desired_delivery_date || "To confirm"}`,
+      `Budget: ${project.target_budget || "To confirm"} ${project.currency || ""}`.trim(),
+      `Furniture type: ${item.item_type_en || "To confirm"}`,
+      `Quantity: ${item.quantity_text || item.quantity || "To confirm"}`,
+      `Dimensions: ${item.dimensions_text || "To confirm"}`,
+      `Tolerance: ${item.tolerance || "To confirm"}`,
+      `Material/fabric/finish/color: ${item.material_en || "To confirm"}`,
+      `Hardware/base: ${item.hardware || "To confirm"}`,
+      `Usage location: ${item.usage_location || "To confirm"}`,
+      `Fire/compliance: ${item.fire_standard || "To confirm"}`,
+      `Packaging: ${payload.packaging || "To confirm"}`,
+      `Site access: ${payload.site_access || "To confirm"}`,
+      `Reference file: ${payload.file_name || "Not uploaded"}`,
+      `Client notes: ${payload.source_notes || "None"}`
+    ].join("\n");
+  };
+
   const handleIntakeFileSelect = async (e) => {
     const file = e.target.files && e.target.files[0];
     setIntakeSelectedFile(file || null);
@@ -1333,7 +1544,21 @@ function App() {
       const fileRow = await uploadIntakeFileRecord({
         file,
         fileType: "PORTAL_FORM",
-        notes: [intakeProjectName, intakeDestination, intakeQuantity].filter(Boolean).join(" | ")
+        notes: [
+          intakeProjectName,
+          intakeDestination,
+          intakeQuantity,
+          intakeItemType,
+          formatDimensionPayload({
+            length: intakeLength,
+            width: intakeWidth,
+            height: intakeHeight,
+            unit: intakeDimensionUnit
+          }),
+          intakeDesiredDeliveryDate
+        ]
+          .filter(Boolean)
+          .join(" | ")
       });
 
       if (fileRow?.id) {
@@ -1367,6 +1592,18 @@ function App() {
     const submitTextBrief = override.textBrief || "";
     const submitFile = override.file || intakeSelectedFile;
     const submitIntakeFileId = override.intakeFileId || intakeUploadedFileId;
+    const submittedFileName = submitFile?.name || supportSelectedFileName || intakeSelectedFileName || "";
+    const structuredBrief =
+      override.structuredBrief ||
+      buildStructuredIntakePayload({
+        projectName: submitProjectName,
+        destination: submitDestination,
+        quantity: submitQuantity,
+        fileName: submittedFileName
+      });
+    const structuredTextBrief = [submitTextBrief, buildStructuredIntakeBriefText(structuredBrief)]
+      .filter(Boolean)
+      .join("\n\n");
 
     setIsIntakeUploading(true);
     setParsingLogs([]);
@@ -1379,7 +1616,8 @@ function App() {
         destination: submitDestination,
         quantity: submitQuantity,
         fileType: submitFileType,
-        textBrief: submitTextBrief,
+        textBrief: structuredTextBrief,
+        structuredBrief,
         file: submitFile,
         intakeFileId: submitIntakeFileId
       });
@@ -1441,13 +1679,15 @@ function App() {
 
     setTimeout(() => {
       const submittedFile = submitFile || supportSelectedFile || intakeSelectedFile || null;
-      const submittedFileName = submittedFile?.name || supportSelectedFileName || intakeSelectedFileName || "";
-      const newItems = buildSubmittedOrderItems(submitQuantity);
+      const newItems = buildSubmittedOrderItems(submitQuantity, structuredBrief);
 
       setSubmittedTrackerProject({
         projectName: submitProjectName || "",
         destination: submitDestination || "",
         quantityText: submitQuantity || "",
+        desiredDeliveryDate: structuredBrief.project?.desired_delivery_date || "",
+        dimensions: structuredBrief.dimensions || "",
+        structuredBrief,
         file: submittedFile,
         fileName: submittedFileName,
         jobId: createdJob?.id || null,
@@ -4115,7 +4355,7 @@ function App() {
       const { data: reviewData, error: reviewError } = await client
         .from("intake_jobs")
         .select("*, intake_files(*), projects(*)")
-        .in("status", ["needs_review", "completed"])
+        .in("status", ["queued", "processing", "needs_review", "completed"])
         .order("created_at", { ascending: false })
         .limit(24);
 
@@ -5166,7 +5406,37 @@ function App() {
     return order.items.reduce((acc, item) => acc + Number(item.unitPrice || 0) * Number(item.qty || 0), 0);
   };
 
-  function buildSubmittedOrderItems(quantityText = "") {
+  function buildSubmittedOrderItems(quantityText = "", structuredBrief = null) {
+    const structuredItem = structuredBrief?.items?.[0] || null;
+    if (structuredItem) {
+      const quantity = Number(structuredItem.quantity || String(quantityText || "").match(/\d+/)?.[0] || 1);
+      return [
+        {
+          id: structuredItem.id || "SUBMITTED-ITEM-01",
+          typeCn: structuredItem.item_type_cn || structuredItem.item_type_en || "Customer bespoke item",
+          typeEn: structuredItem.item_type_en || "Submitted Bespoke Item",
+          qty: quantity,
+          qtyDisplay: structuredItem.quantity_text || quantityText || String(quantity),
+          dimensions: structuredItem.dimensions || {},
+          dimensionsText: structuredItem.dimensions_text || formatDimensionPayload(structuredItem.dimensions || {}),
+          tolerance: structuredItem.tolerance || structuredBrief.tolerance || "",
+          materialCn: structuredItem.material_cn || structuredItem.material_en || "To confirm",
+          materialEn: structuredItem.material_en || structuredItem.material_cn || "To confirm",
+          fabricCode: structuredItem.fabric_code || "",
+          finish: structuredItem.finish || "",
+          color: structuredItem.color || "",
+          hardware: structuredItem.hardware || "",
+          usageLocation: structuredItem.usage_location || "",
+          fireStandard: structuredItem.fire_standard || structuredBrief.fire_standard || "",
+          originalUnitPrice: null,
+          unitPrice: null,
+          status: "Pending Quote",
+          quotePending: true,
+          note: structuredItem.notes_en || "Client submitted a structured furniture requirement through the portal."
+        }
+      ];
+    }
+
     const cleanQuantityText = String(quantityText || "").trim();
     const quantity = Number(cleanQuantityText.match(/\d+/)?.[0] || 1);
 
@@ -5645,16 +5915,25 @@ function App() {
 
     const bomRows = bomItems.map((item) => [
       item.typeEn || item.typeCn || item.item_type_en || item.item_type_cn || "-",
-      item.qty || item.quantity || item.qtyDisplay || "-",
+      item.qtyDisplay || item.qty || item.quantity || "-",
+      item.dimensionsText ||
+        item.dimensions_text ||
+        formatDimensionPayload(item.dimensions || {}) ||
+        draft?.dimensions ||
+        "-",
       item.materialEn || item.materialCn || item.material_en || item.material_cn || "To confirm",
+      [item.finish, item.color, item.fabricCode || item.fabric_code, item.hardware].filter(Boolean).join(" / ") ||
+        "Finish pending",
       item.unitPrice || item.unit_price ? formatAdminMoney(item.unitPrice || item.unit_price) : "Target pending",
       item.notesEn || item.notesCn || item.note || item.notes_en || item.notes_cn || "-"
     ]);
 
     const requirementRows = bomItems.map((item) => [
       item.typeEn || item.typeCn || item.item_type_en || item.item_type_cn || "Submitted item",
-      item.qty || item.quantity || item.qtyDisplay || "Pending",
+      item.qtyDisplay || item.qty || item.quantity || "Pending",
+      item.dimensionsText || item.dimensions_text || formatDimensionPayload(item.dimensions || {}) || "Pending",
       item.materialEn || item.materialCn || item.material_en || item.material_cn || "To confirm",
+      [item.usageLocation, item.fireStandard || draft?.fireStandard].filter(Boolean).join(" / ") || "Usage pending",
       item.note || item.notesEn || item.notesCn || item.notes_en || item.notes_cn || "-"
     ]);
 
@@ -5669,6 +5948,8 @@ function App() {
       draft?.clientName || order.clientName ? null : "Customer name is missing.",
       draft?.destination || order.projectLocation ? null : "Delivery destination is missing.",
       bomItems.length ? null : "Furniture item, quantity, or material rows are missing.",
+      draft?.desiredDeliveryDate || draft?.deliveryWindow ? null : "Desired delivery date is missing.",
+      draft?.dimensions || bomItems.some((item) => item.dimensionsText) ? null : "Furniture dimensions are missing.",
       hasUploadedEvidence ? null : "Furniture drawing, photo, or source file is missing."
     ].filter(Boolean);
     const missingQuestions = Array.from(new Set([...(draft?.questions || []), ...derivedMissingQuestions]));
@@ -5686,9 +5967,21 @@ function App() {
         state: draft?.destination || order.projectLocation ? "done" : "pending"
       },
       {
+        label: "Target delivery date",
+        value: draft?.desiredDeliveryDate || draft?.deliveryWindow,
+        state: draft?.desiredDeliveryDate || draft?.deliveryWindow ? "done" : "pending"
+      },
+      {
         label: "Furniture items and quantity",
         value: draft?.quantityText || `${bomItems.length} item rows`,
         state: bomItems.length ? "done" : "pending"
+      },
+      {
+        label: "Dimensions and material",
+        value:
+          [draft?.dimensions, bomItems[0]?.materialEn || bomItems[0]?.materialCn || ""].filter(Boolean).join(" / ") ||
+          "",
+        state: draft?.dimensions && (bomItems[0]?.materialEn || bomItems[0]?.materialCn) ? "done" : "pending"
       },
       {
         label: "Drawings / photos / files",
@@ -5793,6 +6086,10 @@ function App() {
                     <strong>{draft?.destination || order.projectLocation || "Pending"}</strong>
                   </div>
                   <div>
+                    <span>Target delivery</span>
+                    <strong>{draft?.desiredDeliveryDate || draft?.deliveryWindow || "Pending"}</strong>
+                  </div>
+                  <div>
                     <span>Submitted</span>
                     <strong>{formatAdminDate(draft?.createdAt || selectedJob?.created_at || order.createdDate)}</strong>
                   </div>
@@ -5830,7 +6127,10 @@ function App() {
                 </div>
 
                 {requirementRows.length
-                  ? renderAdminMiniTable(["Order item", "Qty", "Material request", "Client notes"], requirementRows)
+                  ? renderAdminMiniTable(
+                      ["Order item", "Qty", "Dimensions", "Material request", "Usage / compliance", "Client notes"],
+                      requirementRows
+                    )
                   : renderAdminEmptyState("No order items", "The AI parser has not produced item rows yet.")}
               </section>
 
@@ -5920,16 +6220,36 @@ function App() {
                     </div>
                     <div className="admin-detail-block">
                       <strong>Dimensions and tolerance</strong>
-                      <span>{draft?.dimensions || "Dimensions pending unless provided by customer file"}</span>
-                      <span>{draft?.tolerance || "Tolerance: to be confirmed by Cho"}</span>
+                      <span>{draft?.dimensions || bomItems[0]?.dimensionsText || "Dimensions pending"}</span>
+                      <span>{draft?.tolerance || bomItems[0]?.tolerance || "Tolerance: to be confirmed by Cho"}</span>
                     </div>
                     <div className="admin-detail-block">
                       <strong>Material basis</strong>
-                      <span>{bomItems[0]?.materialEn || bomItems[0]?.materialCn || "Material to confirm"}</span>
-                      <span>{isCrib5Blocked ? "Crib 5 blocked" : "Compliance check can continue"}</span>
+                      <span>
+                        {[bomItems[0]?.materialEn || bomItems[0]?.materialCn, bomItems[0]?.finish, bomItems[0]?.color]
+                          .filter(Boolean)
+                          .join(" / ") || "Material to confirm"}
+                      </span>
+                      <span>
+                        {draft?.fireStandard ||
+                          bomItems[0]?.fireStandard ||
+                          (isCrib5Blocked ? "Crib 5 blocked" : "Compliance pending")}
+                      </span>
+                    </div>
+                    <div className="admin-detail-block">
+                      <strong>Delivery and budget</strong>
+                      <span>{draft?.desiredDeliveryDate || draft?.deliveryWindow || "Delivery date pending"}</span>
+                      <span>
+                        {draft?.targetBudget
+                          ? `${draft.targetBudget} ${draft.currency || ""}`.trim()
+                          : "Target budget pending"}
+                      </span>
                     </div>
                   </div>
-                  {renderAdminMiniTable(["Item", "Qty", "Material", "Target / Unit", "Notes"], bomRows)}
+                  {renderAdminMiniTable(
+                    ["Item", "Qty", "Dimensions", "Material", "Finish / color / hardware", "Target / Unit", "Notes"],
+                    bomRows
+                  )}
                 </>
               ) : (
                 renderAdminEmptyState(
@@ -12513,7 +12833,294 @@ function App() {
                         />
                       </div>
 
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                      <div className="intake-form-section">
+                        <div className="intake-form-section-title">
+                          <span>00</span>
+                          <strong>Order overview</strong>
+                        </div>
+                        <div className="intake-form-grid">
+                          <label className="intake-field">
+                            <span>Delivery destination</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeDestination}
+                              onChange={(e) => setIntakeDestination(e.target.value)}
+                              placeholder="e.g. London, UK"
+                              required
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Quantity and style mix</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeQuantity}
+                              onChange={(e) => setIntakeQuantity(e.target.value)}
+                              placeholder="e.g. 40 lobby armchairs, 20 club chairs"
+                              required
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="intake-form-section">
+                        <div className="intake-form-section-title">
+                          <span>01</span>
+                          <strong>Furniture specification</strong>
+                        </div>
+                        <div className="intake-form-grid">
+                          <label className="intake-field">
+                            <span>Furniture type</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeItemType}
+                              onChange={(e) => setIntakeItemType(e.target.value)}
+                              placeholder="Lobby chair, sofa, dining table, cabinet..."
+                              required
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Use location</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeUsageLocation}
+                              onChange={(e) => setIntakeUsageLocation(e.target.value)}
+                              placeholder="Hotel lobby, restaurant, suite, outdoor terrace..."
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Length</span>
+                            <input
+                              type="number"
+                              className="chat-input"
+                              min="0"
+                              value={intakeLength}
+                              onChange={(e) => setIntakeLength(e.target.value)}
+                              placeholder="650"
+                              required
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Width / depth</span>
+                            <input
+                              type="number"
+                              className="chat-input"
+                              min="0"
+                              value={intakeWidth}
+                              onChange={(e) => setIntakeWidth(e.target.value)}
+                              placeholder="600"
+                              required
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Height</span>
+                            <input
+                              type="number"
+                              className="chat-input"
+                              min="0"
+                              value={intakeHeight}
+                              onChange={(e) => setIntakeHeight(e.target.value)}
+                              placeholder="850"
+                              required
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Unit</span>
+                            <select
+                              className="chat-input"
+                              value={intakeDimensionUnit}
+                              onChange={(e) => setIntakeDimensionUnit(e.target.value)}
+                            >
+                              <option value="mm">mm</option>
+                              <option value="cm">cm</option>
+                              <option value="inch">inch</option>
+                            </select>
+                          </label>
+                          <label className="intake-field">
+                            <span>Tolerance</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeTolerance}
+                              onChange={(e) => setIntakeTolerance(e.target.value)}
+                              placeholder="+/-5mm"
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="intake-form-section">
+                        <div className="intake-form-section-title">
+                          <span>02</span>
+                          <strong>Material, finish and compliance</strong>
+                        </div>
+                        <div className="intake-form-grid">
+                          <label className="intake-field">
+                            <span>Main material</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeMaterial}
+                              onChange={(e) => setIntakeMaterial(e.target.value)}
+                              placeholder="Oak veneer, stainless steel, linen upholstery..."
+                              required
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Fabric / leather code</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeFabricCode}
+                              onChange={(e) => setIntakeFabricCode(e.target.value)}
+                              placeholder="L-4410, V-9082, customer supplied..."
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Finish</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeFinish}
+                              onChange={(e) => setIntakeFinish(e.target.value)}
+                              placeholder="Matt lacquer, brushed brass, natural oil..."
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Colour</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeColor}
+                              onChange={(e) => setIntakeColor(e.target.value)}
+                              placeholder="Navy, walnut, champagne gold..."
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Hardware / base</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeHardware}
+                              onChange={(e) => setIntakeHardware(e.target.value)}
+                              placeholder="Black metal legs, brass handles, soft-close runners..."
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Fire / safety standard</span>
+                            <select
+                              className="chat-input"
+                              value={intakeFireStandard}
+                              onChange={(e) => setIntakeFireStandard(e.target.value)}
+                            >
+                              <option value="UK Crib 5 required">UK Crib 5 required</option>
+                              <option value="BS 5852">BS 5852</option>
+                              <option value="CAL TB117">CAL TB117</option>
+                              <option value="EN 1021">EN 1021</option>
+                              <option value="Not required">Not required</option>
+                              <option value="To confirm">To confirm</option>
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="intake-form-section">
+                        <div className="intake-form-section-title">
+                          <span>03</span>
+                          <strong>Delivery and commercial details</strong>
+                        </div>
+                        <div className="intake-form-grid">
+                          <label className="intake-field">
+                            <span>Desired delivery date</span>
+                            <input
+                              type="date"
+                              className="chat-input"
+                              value={intakeDesiredDeliveryDate}
+                              onChange={(e) => setIntakeDesiredDeliveryDate(e.target.value)}
+                              required
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Delivery window</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeDeliveryWindow}
+                              onChange={(e) => setIntakeDeliveryWindow(e.target.value)}
+                              placeholder="Before grand opening, phased delivery, urgent..."
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Target budget / unit price</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeTargetBudget}
+                              onChange={(e) => setIntakeTargetBudget(e.target.value)}
+                              placeholder="e.g. 280 per chair, total budget 12000"
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Currency</span>
+                            <select
+                              className="chat-input"
+                              value={intakeCurrency}
+                              onChange={(e) => setIntakeCurrency(e.target.value)}
+                            >
+                              <option value="USD">USD</option>
+                              <option value="GBP">GBP</option>
+                              <option value="EUR">EUR</option>
+                              <option value="HKD">HKD</option>
+                              <option value="CNY">CNY</option>
+                            </select>
+                          </label>
+                          <label className="intake-field full">
+                            <span>Full delivery address / site notes</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeDeliveryAddress}
+                              onChange={(e) => setIntakeDeliveryAddress(e.target.value)}
+                              placeholder="Hotel name, loading bay, floor, lift size, contact person..."
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Packaging requirement</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakePackaging}
+                              onChange={(e) => setIntakePackaging(e.target.value)}
+                              placeholder="Export carton, pallet, individual wrapping..."
+                            />
+                          </label>
+                          <label className="intake-field">
+                            <span>Site access / installation</span>
+                            <input
+                              type="text"
+                              className="chat-input"
+                              value={intakeSiteAccess}
+                              onChange={(e) => setIntakeSiteAccess(e.target.value)}
+                              placeholder="Lift access, stair carry, assembly on site..."
+                            />
+                          </label>
+                          <label className="intake-field full">
+                            <span>Additional order notes</span>
+                            <textarea
+                              className="chat-input"
+                              value={intakeAdditionalNotes}
+                              onChange={(e) => setIntakeAdditionalNotes(e.target.value)}
+                              rows={4}
+                              placeholder="Special requirements, sample approval, matching existing furniture, warranty, sustainability certificates..."
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "none" }}>
                         <label style={{ fontSize: "0.8rem", fontWeight: "bold", color: "var(--text-secondary)" }}>
                           {lang === "Cn" ? "交付目的地" : "DELIVERY DESTINATION"}
                         </label>
@@ -12531,11 +13138,10 @@ function App() {
                             color: "var(--text-primary)",
                             borderRadius: "2px"
                           }}
-                          required
                         />
                       </div>
 
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                      <div style={{ display: "none" }}>
                         <label style={{ fontSize: "0.8rem", fontWeight: "bold", color: "var(--text-secondary)" }}>
                           {lang === "Cn" ? "預估定製數量 (及款式)" : "ESTIMATED BESPOKE QUANTITIES"}
                         </label>
@@ -12557,7 +13163,6 @@ function App() {
                             color: "var(--text-primary)",
                             borderRadius: "2px"
                           }}
-                          required
                         />
                       </div>
 

@@ -1100,7 +1100,7 @@ button.admin-order-card:hover {
 .intake-client-strip,
 .intake-spec-summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.7rem;
   margin-bottom: 0.9rem;
 }
@@ -1134,6 +1134,73 @@ button.admin-order-card:hover {
   grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
   gap: 0.9rem;
   margin-bottom: 1rem;
+}
+
+.intake-form-section {
+  border: 1px solid rgba(124, 114, 103, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 1rem;
+}
+
+.intake-form-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+  color: var(--text-primary);
+  font-family: var(--font-tech);
+  font-size: 0.95rem;
+}
+
+.intake-form-section-title span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(75, 51, 39, 0.18);
+  border-radius: 999px;
+  color: var(--accent-primary);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.intake-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.intake-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.intake-field.full {
+  grid-column: 1 / -1;
+}
+
+.intake-field > span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.intake-field input,
+.intake-field select,
+.intake-field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 3px;
+  background: #ffffff;
+  color: var(--text-primary);
+  padding: 0.62rem;
 }
 
 .intake-preview-frame {
@@ -2745,6 +2812,7 @@ button.admin-order-card:hover {
   .admin-detail-grid.three,
   .admin-supplier-decision-grid,
   .intake-review-grid,
+  .intake-form-grid,
   .intake-client-strip,
   .intake-upload-zone,
   .intake-spec-summary-grid {
