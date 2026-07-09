@@ -78,7 +78,7 @@ const clearSupabaseAuthStorage = () => {
 // Inject into window for backward compatibility with legacy prototype code
 window.supabase = { createClient };
 
-const AI_SUPPORT_API_URL = import.meta.env.VITE_AI_SUPPORT_API_URL || "/api/ai-support-chat";
+const AI_SUPPORT_API_URL = "/api/ai-support-chat";
 const INTAKE_UPLOAD_TIMEOUT_MS = 45000;
 const INTAKE_DB_TIMEOUT_MS = 30000;
 const ENV_SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || "").trim();
