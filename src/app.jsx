@@ -382,6 +382,34 @@ const buildProjectGroupsFromJobs = (jobs = []) => {
   }));
 };
 
+const buildClientGroupsFromJobs = (jobs = []) => {
+  const groups = new Map();
+
+  jobs.forEach((job) => {
+    const normalized = normalizeReviewJob(job);
+    const clientName = normalized.clientName || "Unassigned client";
+    const key = normalizeGroupingText(clientName) || "unassigned-client";
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.jobs.push(job);
+      return;
+    }
+
+    groups.set(key, { key, clientName, jobs: [job] });
+  });
+
+  return Array.from(groups.values())
+    .map((group) => {
+      const projects = buildProjectGroupsFromJobs(group.jobs);
+      const reviewCount = projects
+        .flatMap((project) => project.jobs)
+        .filter((job) => job.reviewStatus === "pending").length;
+      return { ...group, projects, reviewCount };
+    })
+    .sort((a, b) => a.clientName.localeCompare(b.clientName));
+};
+
 const buildAiProjectOverviewFromJobs = (jobs = [], currentDraft = {}) => {
   const groups = buildProjectGroupsFromJobs(jobs);
   const allJobs = groups.flatMap((group) => group.jobs);
@@ -566,6 +594,7 @@ function App() {
   const [trackerPreviewUrl, setTrackerPreviewUrl] = useState("");
   const [intakeReviewJobs, setIntakeReviewJobs] = useState([]);
   const [selectedReviewJobId, setSelectedReviewJobId] = useState("");
+  const [expandedIntakeClientKey, setExpandedIntakeClientKey] = useState("");
   const [reviewDraft, setReviewDraft] = useState(null);
   const [reviewNote, setReviewNote] = useState("");
   const [prequoteNotice, setPrequoteNotice] = useState("");
@@ -3622,6 +3651,7 @@ function App() {
   useEffect(() => {
     if (intakeReviewJobs.length === 0) {
       setSelectedReviewJobId("");
+      setExpandedIntakeClientKey("");
       setReviewDraft(null);
       setAdminIntakePreview({ jobId: "", url: "", status: "idle", message: "" });
       return;
@@ -3632,6 +3662,13 @@ function App() {
       setSelectedReviewJobId(selectedJob.id);
     }
     syncReviewDraftFromJob(selectedJob);
+  }, [intakeReviewJobs, selectedReviewJobId]);
+
+  useEffect(() => {
+    const selectedJob = intakeReviewJobs.find((job) => job.id === selectedReviewJobId) || intakeReviewJobs[0];
+    if (!selectedJob) return;
+    const clientKey = normalizeGroupingText(normalizeReviewJob(selectedJob).clientName) || "unassigned-client";
+    setExpandedIntakeClientKey((currentKey) => (currentKey === clientKey ? currentKey : clientKey));
   }, [intakeReviewJobs, selectedReviewJobId]);
 
   useEffect(() => {
@@ -5895,6 +5932,7 @@ function App() {
 
   const renderIntakeFlowWorkspace = () => {
     const { jobs, selectedJob, draft, bomItems } = getAdminDraftContext();
+    const clientGroups = buildClientGroupsFromJobs(jobs);
     const hasActiveIntake = Boolean(draft) || (!dbConnected && Boolean(order.orderId));
     const sourceFile = selectedJob ? getIntakeFileFromJob(selectedJob) : null;
     const orderPreviewUrl = adminIntakePreview.url || trackerPreviewUrl;
@@ -6034,26 +6072,90 @@ function App() {
           </div>
         </section>
 
-        {jobs.length > 1 && (
-          <div className="intake-order-switcher" aria-label="Intake order switcher">
-            {jobs.map((job) => {
-              const normalized = normalizeReviewJob(job);
-              const isActive = job.id === selectedReviewJobId || selectedJob?.id === job.id;
-              return (
-                <button
-                  key={job.id}
-                  type="button"
-                  className={`intake-order-tab ${isActive ? "active" : ""}`}
-                  onClick={() => setSelectedReviewJobId(job.id)}
-                >
-                  <strong>{normalized.projectName}</strong>
-                  <span>
-                    {normalized.clientName} / {normalized.destination || "Destination pending"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        {clientGroups.length > 0 && (
+          <section className="intake-client-project-directory" aria-label="Customer project directory">
+            <div className="intake-directory-heading">
+              <div>
+                <span className="logo-badge">Customer directory</span>
+                <h5>Customers and their order projects</h5>
+                <p>Choose a customer first, then open the relevant project for review.</p>
+              </div>
+              <span>
+                {clientGroups.length} customers / {jobs.length} intake records
+              </span>
+            </div>
+
+            <div className="intake-client-tree">
+              {clientGroups.map((clientGroup) => {
+                const isExpanded = clientGroup.key === expandedIntakeClientKey;
+                const selectedProject = clientGroup.projects.find((project) =>
+                  project.jobs.some((job) => job.id === selectedJob?.id)
+                );
+
+                return (
+                  <div className={`intake-client-group ${isExpanded ? "expanded" : ""}`} key={clientGroup.key}>
+                    <button
+                      type="button"
+                      className={`intake-client-toggle ${selectedProject ? "contains-active" : ""}`}
+                      aria-expanded={isExpanded}
+                      onClick={() => {
+                        setExpandedIntakeClientKey((currentKey) =>
+                          currentKey === clientGroup.key ? "" : clientGroup.key
+                        );
+                      }}
+                    >
+                      <span className="intake-client-monogram" aria-hidden="true">
+                        {clientGroup.clientName.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="intake-client-toggle-copy">
+                        <strong>{clientGroup.clientName}</strong>
+                        <small>
+                          {clientGroup.projects.length} project{clientGroup.projects.length === 1 ? "" : "s"}
+                          {clientGroup.reviewCount ? ` / ${clientGroup.reviewCount} awaiting review` : ""}
+                        </small>
+                      </span>
+                      <span className="intake-client-disclosure" aria-hidden="true">
+                        {isExpanded ? "-" : "+"}
+                      </span>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="intake-project-submenu">
+                        {clientGroup.projects.map((project) => {
+                          const latestProjectJob = project.jobs[0];
+                          const isActive = project.jobs.some((job) => job.id === selectedJob?.id);
+                          const submissionCount = project.jobs.length;
+                          return (
+                            <button
+                              key={project.key}
+                              type="button"
+                              className={`intake-project-menu-item ${isActive ? "active" : ""}`}
+                              onClick={() => {
+                                setExpandedIntakeClientKey(clientGroup.key);
+                                setSelectedReviewJobId(latestProjectJob.id);
+                              }}
+                            >
+                              <span className="intake-project-menu-copy">
+                                <strong>{project.projectName}</strong>
+                                <small>
+                                  {project.destination || "Destination pending"} /{" "}
+                                  {formatAdminDate(latestProjectJob.createdAt)}
+                                </small>
+                              </span>
+                              <span className="intake-project-menu-meta">
+                                {submissionCount > 1 && <small>{submissionCount} submissions</small>}
+                                {renderStatusPill(latestProjectJob.reviewStatus)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {!hasActiveIntake ? (
