@@ -57,7 +57,12 @@ function buildSystemPrompt() {
     "You are Crafton AI Concierge, a premium B2B customer-service assistant for The Crafton Ltd.",
     "You speak naturally, warmly, and professionally in the customer's language.",
     "Your job is to receive bespoke contract-furniture enquiries, collect missing details, and help the customer prepare a clear project brief.",
-    "Before replying, infer the customer's latest intent: greeting, project enquiry, file upload/reference sharing, quotation/process question, follow-up detail, or unrelated/internal request.",
+    "Before replying, read the visible projectOverview carefully and infer the customer's latest intent.",
+    "Classify the latest intent as one of: greeting, new_order, modify_existing_order, progress_inquiry, answer_clarification, file_upload, quotation_or_process, or unrelated.",
+    "If the customer says the project name, location, destination, material, or other details are 'same as last project', 'same as previous', '跟上一个一样', '同上', or similar, reuse the matching values from projectOverview.latestOrder or the most relevant known project. Do not ask again for values already visible in projectOverview.",
+    "If the message is a progress inquiry, answer from visible statuses in projectOverview, including reviewStatus, rfqStatus, questions, clientAnswers, or summary. Do not turn a progress question into a new intake unless the customer adds new furniture requirements.",
+    "If the message is a modification, identify the most likely existing project/order and summarize what changed. If unclear, ask one focused question to confirm which project or order.",
+    "If the message is a new order, collect missing details and keep it separate from existing projects unless the customer clearly says it belongs to the same project.",
     "If the latest message is only a greeting such as hello, hi, hey, ??, ??, or ?, do not treat it as project requirements. Reply with a warm welcome and ask whether they want to discuss bespoke furniture, upload references, or understand the quotation process.",
     "If the latest message contains a concrete furniture need, continue as a project concierge and collect the most important missing details.",
     "",
@@ -89,6 +94,10 @@ function buildSystemPrompt() {
     "Return strict JSON only with this shape:",
     JSON.stringify({
       reply: "string, customer-facing response",
+      intent: "greeting | new_order | modify_existing_order | progress_inquiry | answer_clarification | file_upload | quotation_or_process | unrelated",
+      matchedProjectId: "string or empty",
+      matchedProjectName: "string or empty",
+      orderOverview: "one-sentence summary of the current visible order/project state",
       extracted: {
         projectName: "string or empty",
         destination: "string or empty",
@@ -134,22 +143,102 @@ function normalizeContext(context, messages = []) {
     selectedFileName: String(context.selectedFileName || "").slice(0, 240),
     clientName: String(context.clientName || "").slice(0, 160),
     company: String(context.company || "").slice(0, 200),
+    projectOverview: normalizeProjectOverview(context.projectOverview),
     latestCustomerMessage: latestClientMessage.slice(0, 500),
     latestCustomerLanguage: prefersChinese || /[\u3400-\u9fff]/.test(latestClientMessage) ? "Chinese" : "English or mixed"
   };
 }
 
-function normalizeAiResult(result) {
+function normalizeProjectOverview(overview = {}) {
+  if (!overview || typeof overview !== "object") return {};
+
+  const normalizeOrder = (order = {}) => ({
+    jobId: stringify(order.jobId).slice(0, 80),
+    projectName: stringify(order.projectName).slice(0, 180),
+    destination: stringify(order.destination).slice(0, 180),
+    quantityText: stringify(order.quantityText).slice(0, 300),
+    status: stringify(order.status).slice(0, 80),
+    reviewStatus: stringify(order.reviewStatus).slice(0, 80),
+    rfqStatus: stringify(order.rfqStatus).slice(0, 80),
+    summary: stringify(order.summary).slice(0, 500),
+    fileName: stringify(order.fileName).slice(0, 180),
+    questions: Array.isArray(order.questions) ? order.questions.slice(0, 6).map((item) => stringify(item).slice(0, 220)) : [],
+    clientAnswers:
+      order.clientAnswers && typeof order.clientAnswers === "object"
+        ? Object.fromEntries(
+            Object.entries(order.clientAnswers)
+              .slice(0, 8)
+              .map(([key, value]) => [String(key).slice(0, 40), stringify(value).slice(0, 300)])
+          )
+        : {},
+    items: Array.isArray(order.items)
+      ? order.items.slice(0, 8).map((item = {}) => ({
+          item: stringify(item.item).slice(0, 160),
+          quantity: Number(item.quantity || 0),
+          material: stringify(item.material).slice(0, 180),
+          notes: stringify(item.notes).slice(0, 260)
+        }))
+      : []
+  });
+
+  return {
+    totalProjects: Number(overview.totalProjects || 0),
+    totalOrders: Number(overview.totalOrders || 0),
+    latestOrder: overview.latestOrder ? normalizeOrder(overview.latestOrder) : null,
+    currentDraft:
+      overview.currentDraft && typeof overview.currentDraft === "object"
+        ? {
+            projectName: stringify(overview.currentDraft.projectName).slice(0, 180),
+            destination: stringify(overview.currentDraft.destination).slice(0, 180),
+            quantityText: stringify(overview.currentDraft.quantityText).slice(0, 300),
+            selectedFileName: stringify(overview.currentDraft.selectedFileName).slice(0, 180),
+            draftSource: stringify(overview.currentDraft.draftSource).slice(0, 80)
+          }
+        : {},
+    projects: Array.isArray(overview.projects)
+      ? overview.projects.slice(0, 8).map((project = {}) => ({
+          projectId: stringify(project.projectId).slice(0, 80),
+          projectName: stringify(project.projectName).slice(0, 180),
+          destination: stringify(project.destination).slice(0, 180),
+          orderCount: Number(project.orderCount || 0),
+          orders: Array.isArray(project.orders) ? project.orders.slice(0, 6).map(normalizeOrder) : []
+        }))
+      : []
+  };
+}
+
+function normalizeAiResult(result, context = {}) {
   const extracted = result?.extracted || {};
+  const latestMessage = String(context.latestCustomerMessage || "");
+  const latestOrder = context.projectOverview?.latestOrder || null;
+  const saysSameAsPrevious =
+    /same as (the )?(last|previous)|same project|same location|same destination|同上|跟上一个一样|跟上一個一樣|和上一个一样|和上一個一樣|同一个项目|同一個項目/i.test(
+      latestMessage
+    );
+  const asksProgress = /progress|status|stage|when|ready|done|進度|进度|狀態|状态|完成|幾時|什么时候|何時/i.test(latestMessage);
+  let intent = stringify(result?.intent);
+  let matchedProjectId = stringify(result?.matchedProjectId);
+  let matchedProjectName = stringify(result?.matchedProjectName);
+
+  if (asksProgress && latestOrder) intent = "progress_inquiry";
+  if (saysSameAsPrevious && latestOrder) {
+    intent = "modify_existing_order";
+    matchedProjectId = matchedProjectId || stringify(latestOrder.jobId);
+    matchedProjectName = matchedProjectName || stringify(latestOrder.projectName);
+  }
 
   return {
     reply:
       typeof result?.reply === "string" && result.reply.trim()
         ? result.reply.trim()
         : "收到，我会继续帮您整理项目需求。请补充产品数量、交付地、材质或防火要求。",
+    intent,
+    matchedProjectId,
+    matchedProjectName,
+    orderOverview: stringify(result?.orderOverview),
     extracted: {
-      projectName: stringify(extracted.projectName),
-      destination: stringify(extracted.destination),
+      projectName: stringify(extracted.projectName) || (saysSameAsPrevious && latestOrder ? stringify(latestOrder.projectName) : ""),
+      destination: stringify(extracted.destination) || (saysSameAsPrevious && latestOrder ? stringify(latestOrder.destination) : ""),
       quantityText: stringify(extracted.quantityText),
       briefText: stringify(extracted.briefText),
       readinessScore: clampNumber(extracted.readinessScore, 0, 100)
@@ -183,7 +272,7 @@ async function requestDeepSeekJson(url, requestBody, context) {
     if (!text) throw new Error("DeepSeek support response did not include message content.");
 
     try {
-      return normalizeAiResult(parseJsonObject(text));
+      return normalizeAiResult(parseJsonObject(text), context);
     } catch (err) {
       if (err instanceof SyntaxError) {
         throw new AiSupportParseError("DeepSeek support response returned malformed JSON.", { cause: err });

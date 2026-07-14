@@ -649,6 +649,8 @@ const MaterialLibrary = ({ lang, onProceedToContact }) => {
                     <img
                       src={mat.image}
                       alt={mat.nameEn}
+                      loading="lazy"
+                      decoding="async"
                       style={{
                         width: "100%",
                         height: "100%",

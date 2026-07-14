@@ -17,6 +17,8 @@ import MaterialLibrary from "./components/MaterialLibrary";
 import ContactBlock from "./components/ContactBlock";
 import ProjectDetailModal from "./components/ProjectDetailModal";
 import Footer from "./components/Footer";
+import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
+import AdminWorkflowWorkspace from "./components/AdminWorkflowWorkspace";
 
 const IMAGES = {
   heroChair: "/hero_chair.jpg", // 侘寂奢華皮質單椅 (取代 image1)
@@ -497,8 +499,8 @@ const denormalizeReviewDraft = (draft) => ({
   fire_standard: draft.fireStandard || "",
   packaging: draft.packaging || "",
   site_access: draft.siteAccess || "",
-  summary_cn: "Cho reviewed the AI intake draft.",
-  summary_en: "Cho reviewed the AI intake draft and prepared it for pre-quote handling.",
+  summary_cn: "Cho reviewed the intake draft.",
+  summary_en: "Cho reviewed the intake draft and prepared it for pre-quote handling.",
   source_notes: draft.sourceNotes || ""
 });
 
@@ -534,6 +536,8 @@ const buildRfqDraft = (draft) => {
 function App() {
   console.log("=== APP COMPONENT EXECUTING ===");
   const [currentView, setCurrentStageView] = useState("Marketing"); // Views: "Marketing", "Backoffice", "ClientPortal"
+  const [setFurnitureCategory, setSetFurnitureCategory] = useState("sofa");
+  const [setFurnitureProduct, setSetFurnitureProduct] = useState("");
   const [lang, setLang] = useState("Cn"); // Language: "Cn" or "En"
   const [marketingTab, setMarketingTab] = useState("Overview"); // "Overview", "CaseStudies", "OurStory", "Contact"
   const [contactMessage, setContactMessage] = useState("");
@@ -579,7 +583,7 @@ function App() {
   const [intakeDeliveryAddress, setIntakeDeliveryAddress] = useState("");
   const [intakeTargetBudget, setIntakeTargetBudget] = useState("");
   const [intakeCurrency, setIntakeCurrency] = useState("USD");
-  const [intakeFireStandard, setIntakeFireStandard] = useState("UK Crib 5 required");
+  const [intakeFireStandard, setIntakeFireStandard] = useState("UK BS 5852 - Source 5 (Crib 5)");
   const [intakePackaging, setIntakePackaging] = useState("");
   const [intakeSiteAccess, setIntakeSiteAccess] = useState("");
   const [intakeAdditionalNotes, setIntakeAdditionalNotes] = useState("");
@@ -620,7 +624,7 @@ function App() {
   const [supportMessages, setSupportMessages] = useState([
     {
       sender: "ai",
-      text: "您好，我是 Crafton AI 客服。您可以直接描述项目、数量、交付地、材质、防火要求，或上传 PDF / 图片 / Excel。我会先帮您整理需求，并提交给 Crafton 顾问团队跟进项目草稿。"
+      text: "您好，我是 Crafton 项目客服。您可以直接描述项目、数量、交付地、材质、防火要求，或上传 PDF / 图片 / Excel。我会先帮您整理需求，并提交给 Crafton 顾问团队跟进项目草稿。"
     }
   ]);
   const [supportInput, setSupportInput] = useState("");
@@ -665,6 +669,10 @@ function App() {
   const [docAudited, setDocAudited] = useState(false);
   const [archiveHashed, setArchiveHashed] = useState(false);
   const [showVolumetricSimulation, setShowVolumetricSimulation] = useState(false);
+  const [loadingAiContext, setLoadingAiContext] = useState(null);
+  const [loadingAiResult, setLoadingAiResult] = useState(null);
+  const [loadingAiSaveStatus, setLoadingAiSaveStatus] = useState("");
+  const loadingAiFrameRef = useRef(null);
 
   // WOW effect state variables for homepage V1.2 enhancements
   const [activeSwatch, setActiveSwatch] = useState("nubuck"); // nubuck, linen, gold, walnut
@@ -683,6 +691,86 @@ function App() {
   const [selectedProject, setSelectedProject] = useState(null); // null or project object for detail overlay modal
 
   // V1.3 Marketing Bespoke Simulation States (Now modularly encapsulated in CVQASimulator and ClientPortalTeaser)
+
+  useEffect(() => {
+    const handleLoadingAiMessage = (event) => {
+      if (!loadingAiFrameRef.current || event.source !== loadingAiFrameRef.current.contentWindow) return;
+      if (event.data?.type === "CRAFTON_LOADING_READY" && loadingAiContext) {
+        loadingAiFrameRef.current.contentWindow.postMessage(
+          { type: "CRAFTON_LOADING_INIT", payload: loadingAiContext },
+          window.location.origin
+        );
+      }
+      if (event.data?.type === "CRAFTON_LOADING_RESULT") {
+        setLoadingAiResult(event.data.payload || null);
+        setLoadingAiSaveStatus("");
+      }
+    };
+
+    window.addEventListener("message", handleLoadingAiMessage);
+    return () => window.removeEventListener("message", handleLoadingAiMessage);
+  }, [loadingAiContext]);
+
+  const sendLoadingAiContext = () => {
+    if (!loadingAiContext || !loadingAiFrameRef.current?.contentWindow) return;
+    loadingAiFrameRef.current.contentWindow.postMessage(
+      { type: "CRAFTON_LOADING_INIT", payload: loadingAiContext },
+      window.location.origin
+    );
+  };
+
+  const saveLoadingAiPlan = async () => {
+    if (!loadingAiContext?.projectId || !loadingAiResult) return;
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setLoadingAiSaveStatus("Supabase is not connected.");
+      return;
+    }
+
+    setLoadingAiSaveStatus("Saving packing plan...");
+    try {
+      const { error } = await client.from("packing_plans").insert({
+        project_id: loadingAiContext.projectId,
+        stage_id: "S12",
+        status: "generated",
+        engine_mode: loadingAiResult.engineMode || "fast",
+        container_type: loadingAiResult.containerType || "40HQ",
+        total_containers: Number(loadingAiResult.totalContainers || 0),
+        utilization_percent: Number(loadingAiResult.utilizationPercent || 0),
+        unpacked_count: Number(loadingAiResult.unpackedCount || 0),
+        plan_json: loadingAiResult,
+        generated_at: loadingAiResult.generatedAt || new Date().toISOString()
+      });
+      if (error) throw error;
+
+      const { error: projectError } = await client
+        .from("projects")
+        .update({ current_stage: 12 })
+        .eq("id", loadingAiContext.projectId);
+      if (projectError) throw projectError;
+
+      const { error: eventError } = await client.from("workflow_events").insert({
+        project_id: loadingAiContext.projectId,
+        stage_id: "S12",
+        event_type: "packing_plan_generated",
+        actor: "Cho",
+        message_cn: `Loading AI 已生成 ${loadingAiResult.totalContainers || 0} 个货柜方案。`,
+        message_en: `Loading AI generated a ${loadingAiResult.totalContainers || 0}-container packing plan.`,
+        payload: {
+          container_type: loadingAiResult.containerType,
+          utilization_percent: loadingAiResult.utilizationPercent,
+          unpacked_count: loadingAiResult.unpackedCount
+        }
+      });
+      if (eventError) throw eventError;
+
+      setLoadingAiSaveStatus("Packing plan saved to Supabase.");
+      window.dispatchEvent(new window.CustomEvent("crafton:workflow-refresh"));
+      await loadAdminOperationalData();
+    } catch (error) {
+      setLoadingAiSaveStatus(`Save failed: ${error.message || error}`);
+    }
+  };
 
   // =====================================================================
   // THE CRAFTON - SESSION & AUTHENTICATION HANDLERS
@@ -1086,7 +1174,7 @@ function App() {
 
   const summarizeSupportConversation = (messages = supportMessages) => {
     return messages
-      .map((message) => `${message.sender === "client" ? "Client" : "Crafton AI"}: ${message.text}`)
+      .map((message) => `${message.sender === "client" ? "Client" : "Crafton Concierge"}: ${message.text}`)
       .join("\n");
   };
 
@@ -1288,7 +1376,7 @@ function App() {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const error = new Error(payload.error || "Crafton AI customer service is temporarily unavailable.");
+      const error = new Error(payload.error || "Crafton customer service is temporarily unavailable.");
       error.requestId = payload.requestId;
       throw error;
     }
@@ -1356,7 +1444,7 @@ function App() {
       setSupportUploadedFileId(fileRow?.id || null);
       await saveSupportMessage({ sender: "client", text: clientFileMessage, attachmentFileId: fileRow?.id || null });
 
-      setSupportStatus("File saved. Crafton AI is updating the project overview...");
+      setSupportStatus("File saved. Crafton is updating the project overview...");
       setSupportIsTyping(true);
       const result = await requestAiSupportReply(nextMessages);
       applySupportExtraction(result.extracted);
@@ -1387,7 +1475,7 @@ function App() {
     const transcript = summarizeSupportConversation();
     const transcriptFile =
       supportSelectedFile ||
-      new File([transcript], `crafton-ai-support-transcript-${Date.now()}.txt`, { type: "text/plain" });
+      new File([transcript], `crafton-support-transcript-${Date.now()}.txt`, { type: "text/plain" });
 
     setSupportStatus("正在整理对话并提交项目需求...");
     setLiveIntakeWarning("");
@@ -1399,7 +1487,7 @@ function App() {
         quantity: intakeQuantity,
         fileType: supportSelectedFile ? "AI_SUPPORT_FILE" : "AI_SUPPORT_CHAT",
         textBrief: [
-          "Source: Crafton AI customer service chat",
+          "Source: Crafton customer service chat",
           `Client: ${user?.name || "Portal Client"} (${user?.company || "Unknown company"})`,
           transcript
         ].join("\n\n"),
@@ -1670,8 +1758,8 @@ function App() {
     const simulatedLogs = [
       {
         delay: 400,
-        cn: "🔄 [OpenClaw Daemon] 成功連線至智能體管道解析端口...",
-        en: "🔄 [OpenClaw Daemon] Connected to agent parsing pipe..."
+        cn: "[Crafton Intake] 已连接规格解析服务...",
+        en: "[Crafton Intake] Connected to the specification service..."
       },
       {
         delay: 1000,
@@ -1695,8 +1783,8 @@ function App() {
       },
       {
         delay: 3400,
-        cn: "✅ [OpenClaw Engine] 項目主數據成功導入數據庫！自動解鎖 Tracker 進度面板。",
-        en: "✅ [OpenClaw Engine] Project successfully synchronized! Unlocking active Tracker dashboard."
+        cn: "[Crafton Intake] 项目主数据已导入，进度面板现已开放。",
+        en: "[Crafton Intake] Project data synchronized. The tracker is now available."
       }
     ];
 
@@ -1884,15 +1972,15 @@ function App() {
 
     const descCn =
       activeIntakeModal === "pdf"
-        ? "請拖曳上傳您的 PDF 招標文件或技術規格書。系統將調用 OpenClaw 智能體，實時提取幾何參數與合規性分析。"
+        ? "请拖曳上传您的 PDF 招标文件或技术规格书。系统将整理几何参数并进行合规性预审。"
         : activeIntakeModal === "excel"
           ? "請上傳包含家具品名、尺寸、面料與數量的 Excel 電子表格。系統將自動解析為 B2B 門戶中的物料清單。"
           : activeIntakeModal === "item"
             ? "確認配套定制信息，一鍵為您的項目生成專屬報價單，並在控制台中實時跟蹤。"
-            : "直接粘貼郵件對話記錄或手打需求，我們的 AI 智能體將實時精確理解並拆解為可生產的技術條目。";
+            : "直接粘贴邮件对话记录或输入需求，系统将整理为可生产的技术条目。";
     const descEn =
       activeIntakeModal === "pdf"
-        ? "Drag and drop your PDF spec sheet or tender documents. OpenClaw agents will extract dimensions, geometry parameters, and perform compliance audit in real time."
+        ? "Drag and drop your PDF spec sheet or tender documents. The intake service will extract dimensions, geometry parameters, and perform a compliance review."
         : activeIntakeModal === "excel"
           ? "Upload your spreadsheet containing item schedules, sizes, and swatches. The system will automatically convert it to a structured BOM list."
           : activeIntakeModal === "item"
@@ -2285,7 +2373,7 @@ function App() {
                 );
               }}
             >
-              {lang === "Cn" ? "啟動 AI 解析" : "ANALYZE WITH AI →"}
+              {lang === "Cn" ? "开始整理规格" : "PROCESS SPECIFICATIONS →"}
             </button>
           </div>
         </div>
@@ -2756,7 +2844,7 @@ function App() {
                   onClick={() => {
                     setRfqDispatched(true);
                     addLog(
-                      "OpenClaw QuotationAgent",
+                      "Crafton Quotation Service",
                       "生成PDF規格書，全自動調用 SMTP 郵件群發至 3 家意向工廠。",
                       "Generated PDF specification sheet, automatically calling SMTP to dispatch RFQs to 3 target factories."
                     );
@@ -2861,7 +2949,7 @@ function App() {
                 <path d="M12 22a4 4 0 008-4H4a4 4 0 008 0z" />
                 <path d="M19 5l-3 9H8l-3-9" />
               </svg>
-              <span>{lang === "Cn" ? "三家合作代工廠智能比價分析" : "Supplier Bid Matrix & AI Analysis"}</span>
+              <span>{lang === "Cn" ? "三家合作代工厂报价分析" : "Supplier Bid Matrix & Comparison"}</span>
             </div>
           </div>
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
@@ -2916,7 +3004,7 @@ function App() {
                     paddingTop: "0.4rem"
                   }}
                 >
-                  AI 建議: {bid.note}
+                  评估建议: {bid.note}
                 </div>
               </div>
             ))}
@@ -3020,8 +3108,8 @@ function App() {
               </div>
               <div style={{ color: "var(--text-secondary)", marginTop: "2px" }}>
                 {lang === "Cn"
-                  ? "AI 每日計算發現金陽工廠未按時上傳本週進度，系統將自動啟動 WhatsApp 催詢鏈路。"
-                  : "AI model detected delays on Nansha dock scheduling. Automated WhatsApp inquiry is triggered."}
+                  ? "进度监控发现工厂未按时上传本周进度，系统已启动 WhatsApp 催询。"
+                  : "Progress monitoring detected a delayed update. A WhatsApp follow-up has been triggered."}
               </div>
             </div>
           </div>
@@ -3050,7 +3138,7 @@ function App() {
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                 <circle cx="12" cy="12" r="3" />
               </svg>
-              <span>{lang === "Cn" ? "AI CV 智能圖紙與實物重合比對" : "AI CV Photo-to-CAD Overlap Inspection"}</span>
+              <span>{lang === "Cn" ? "图纸与实物重合质检" : "Photo-to-CAD Overlap Inspection"}</span>
             </div>
             <span className="logo-badge" style={{ color: "var(--accent-green)" }}>
               PASS 98.2%
@@ -3503,8 +3591,8 @@ function App() {
                 <br />
                 <span style={{ color: "var(--text-secondary)" }}>
                   {lang === "Cn"
-                    ? "包含中英雙語規格書、Change Logs 審計日誌、AI 視覺質精合格證、燃燒及熏蒸單證、現場驗收簽認。"
-                    : "Includes CAD Specs, Change logs, AI QC reports, IPPC certificates, and signed client receipts."}
+                    ? "包含中英双语规格书、变更审计日志、视觉质检合格证、燃烧及熏蒸单证、现场验收签认。"
+                    : "Includes CAD specs, change logs, visual QC reports, IPPC certificates, and signed client receipts."}
                 </span>
               </div>
 
@@ -3595,8 +3683,8 @@ function App() {
       stageIndexes: [8, 9, 10],
       titleCn: "生产进度",
       titleEn: "Production Progress",
-      descCn: "工厂接单、二维码图纸联动、延期风险跟进与 AI 视觉质检。",
-      descEn: "Factory kickoff, QR drawing linkage, delay follow-up, and AI visual inspection."
+      descCn: "工厂接单、二维码图纸联动、延期风险跟进与视觉质检。",
+      descEn: "Factory kickoff, QR drawing linkage, delay follow-up, and visual inspection."
     },
     {
       id: "shipping",
@@ -3619,7 +3707,7 @@ function App() {
     S08: { cn: "Cho 比价决策", en: "Cho Supplier Decision" },
     S09: { cn: "生产状态联动", en: "Production Kickoff" },
     S10: { cn: "延期风险跟进", en: "Delay Risk Follow-up" },
-    S11: { cn: "AI 视觉实物对比", en: "AI Visual Inspection" },
+    S11: { cn: "视觉实物对比", en: "Visual Inspection" },
     S12: { cn: "集装箱装柜规划", en: "Container Loading Plan" },
     S13: { cn: "出货合规检查", en: "Export Compliance" },
     S14: { cn: "物流货运追踪", en: "Shipping Tracker" },
@@ -3971,19 +4059,19 @@ function App() {
           const { error: seedLogsErr } = await client.from("agent_logs").insert([
             {
               project_id: insertedProj.id,
-              operator: "OpenClaw",
+              operator: "Crafton System",
               action_desc_cn: "解析會員中心內置對話框需求及手稿，自動生成主訂單草稿",
               action_desc_en: "Parsed member portal message and sketch, auto-generated project master draft."
             },
             {
               project_id: insertedProj.id,
-              operator: "OpenClaw",
+              operator: "Crafton System",
               action_desc_cn: "自動通過內置消息通道向客户追問補充椅子的金屬腿部塗裝工藝和公差",
               action_desc_en: "Automatically followed up via member portal to query metal legs coating and tolerance."
             },
             {
               project_id: insertedProj.id,
-              operator: "OpenClaw",
+              operator: "Crafton System",
               action_desc_cn: "一鍵生成中英文對照規格書，尺寸標準定義：W: 650mm, D: 600mm, H: 850mm",
               action_desc_en: "Bilingual specifications generated. Dimensions defined: W: 650mm, D: 600mm, H: 850mm."
             }
@@ -4159,7 +4247,7 @@ function App() {
               }
               return {
                 time: log.created_at ? new Date(log.created_at).toLocaleString() : "2026-05-25 10:15:20",
-                user: log.operator || "OpenClaw",
+                user: log.operator || "Crafton System",
                 action: actionCn,
                 actionEn: actionEn
               };
@@ -4524,10 +4612,23 @@ function App() {
       const updated = await persistIntakeJobUpdate(job, updates);
       if (dbConnected && updated.project_id) {
         const client = getSupabaseBrowserClient();
-        await client
-          ?.from("projects")
+        const { error: projectError } = await client
+          .from("projects")
           .update({ current_stage: 4, name: reviewDraft.projectName, client_contact: reviewDraft.destination })
           .eq("id", updated.project_id);
+        if (projectError) throw projectError;
+
+        const { error: approvalError } = await client.from("approvals").insert({
+          project_id: updated.project_id,
+          stage_id: "S04",
+          approval_type: "intake_technical_review",
+          status: "approved",
+          reviewer_name: "Cho",
+          notes: updates.review_notes,
+          reviewed_at: updates.reviewed_at,
+          payload: { intake_job_id: updated.id, bom_items: resultJson.items?.length || 0 }
+        });
+        if (approvalError) throw approvalError;
       }
       setPrequoteNotice("Intake draft approved. Specs are ready for RFQ package preparation.");
       setCurrentStageIndex(3);
@@ -4603,7 +4704,48 @@ function App() {
 
       if (dbConnected && updated.project_id) {
         const client = getSupabaseBrowserClient();
-        await client?.from("projects").update({ current_stage: 6 }).eq("id", updated.project_id);
+        const { error: projectError } = await client
+          .from("projects")
+          .update({ current_stage: 6 })
+          .eq("id", updated.project_id);
+        if (projectError) throw projectError;
+
+        const rfqCode = `RFQ-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(updated.id).slice(0, 6).toUpperCase()}`;
+        const rfqPayload = {
+          project_id: updated.project_id,
+          intake_job_id: updated.id,
+          rfq_code: rfqCode,
+          title: `${reviewDraft.projectName || "Project"} sourcing package`,
+          status: "draft",
+          supplier_count: 0,
+          invited_count: 0,
+          supplier_ids: [],
+          currency: "USD",
+          payload: rfqDraft
+        };
+        const { data: existingRfq, error: lookupError } = await client
+          .from("rfq_batches")
+          .select("id")
+          .eq("intake_job_id", updated.id)
+          .maybeSingle();
+        if (lookupError) throw lookupError;
+        const rfqWrite = existingRfq
+          ? client.from("rfq_batches").update(rfqPayload).eq("id", existingRfq.id)
+          : client.from("rfq_batches").insert(rfqPayload);
+        const { error: rfqError } = await rfqWrite;
+        if (rfqError) throw rfqError;
+
+        const { error: eventError } = await client.from("workflow_events").insert({
+          project_id: updated.project_id,
+          job_id: updated.id,
+          stage_id: "S06",
+          event_type: "rfq_drafted",
+          actor: "Cho",
+          message_cn: `${rfqCode} 询价包草稿已建立。`,
+          message_en: `${rfqCode} RFQ package draft created.`,
+          payload: { rfq_code: rfqCode }
+        });
+        if (eventError) throw eventError;
       }
 
       setReviewDraft((prev) => (prev ? { ...prev, rfqDraft, reviewStatus: "rfq_ready", rfqStatus: "draft" } : prev));
@@ -5104,9 +5246,9 @@ function App() {
     setTimeout(async () => {
       let replyText = "";
       if (lang === "Cn") {
-        replyText = "【OpenClaw 智能助理】: 收到！我正在调取 Supabase 数据库匹配您的需求。";
+        replyText = "【Crafton 项目客服】：收到，我们正在根据您的需求核对项目资料。";
       } else {
-        replyText = "[OpenClaw AI Assistant]: Received! I am pulling data from Supabase to match your design request.";
+        replyText = "[Crafton Concierge]: Received. We are checking your request against the project information.";
       }
 
       if (inputText.toLowerCase().includes("silk") || inputText.toLowerCase().includes("丝绸")) {
@@ -5512,7 +5654,7 @@ function App() {
         <div className="panel-header ai-concierge-header">
           <div className="panel-title">
             <span className="stage-badge-dot dot-ai"></span>
-            <span>{lang === "Cn" ? "Crafton AI 客服录入" : "Crafton AI Concierge Intake"}</span>
+            <span>{lang === "Cn" ? "Crafton 项目客服录入" : "Crafton Concierge Intake"}</span>
           </div>
           <span className="logo-badge">Live</span>
         </div>
@@ -5537,7 +5679,7 @@ function App() {
               {message.text}
             </div>
           ))}
-          {supportIsTyping && <div className="chat-bubble bubble-agent">Crafton AI is updating the brief...</div>}
+          {supportIsTyping && <div className="chat-bubble bubble-agent">Crafton is updating the brief...</div>}
         </div>
 
         <form className="ai-concierge-input" onSubmit={handleSupportSend}>
@@ -5560,7 +5702,7 @@ function App() {
             className="chat-input"
             value={supportInput}
             onChange={(e) => setSupportInput(e.target.value)}
-            placeholder="Tell AI the requirement, change, or progress question..."
+            placeholder="Tell us the requirement, change, or progress question..."
           />
           <button type="submit" className="btn-premium" disabled={!supportInput.trim() || supportIsTyping}>
             Send
@@ -5576,7 +5718,7 @@ function App() {
           disabled={isIntakeUploading}
           style={{ width: "100%", justifyContent: "center" }}
         >
-          Submit AI brief to Crafton
+          Submit brief to Crafton
         </button>
 
         {supportStatus && <div className="ai-support-status">{supportStatus}</div>}
@@ -5815,7 +5957,7 @@ function App() {
         "watch",
         "human_gate",
         "pending",
-        "ai_checking",
+        "reviewing",
         "tracking",
         "in_production",
         "quoted"
@@ -6062,12 +6204,12 @@ function App() {
             <span className="logo-badge">S01-S05 / Integrated intake review</span>
             <h4>{draft?.projectName || (!dbConnected ? order.orderId : "") || "No active customer order"}</h4>
             <p>
-              Read the customer order first, then review AI missing fields, generate the BOM/spec draft, and approve the
+              Read the customer order first, then review missing fields, generate the BOM/spec draft, and approve the
               package.
             </p>
           </div>
           <div className="intake-command-status">
-            {renderAdminStatusPill(hasMissingInfo ? "ai_checking" : bomRows.length ? "ready" : "pending")}
+            {renderAdminStatusPill(hasMissingInfo ? "reviewing" : bomRows.length ? "ready" : "pending")}
             <span>{dbConnected ? "Supabase data" : "Local preview"}</span>
           </div>
         </section>
@@ -6233,15 +6375,18 @@ function App() {
                       ["Order item", "Qty", "Dimensions", "Material request", "Usage / compliance", "Client notes"],
                       requirementRows
                     )
-                  : renderAdminEmptyState("No order items", "The AI parser has not produced item rows yet.")}
+                  : renderAdminEmptyState(
+                      "No order items",
+                      "The specification service has not produced item rows yet."
+                    )}
               </section>
 
               <section className="intake-ai-review-panel">
                 <div className="intake-section-heading">
                   <span>S02</span>
                   <div>
-                    <h5>AI specification gap review</h5>
-                    <p>AI checks whether the customer brief has enough data for BOM and bilingual spec generation.</p>
+                    <h5>Specification gap review</h5>
+                    <p>Checks whether the customer brief has enough data for BOM and bilingual spec generation.</p>
                   </div>
                 </div>
 
@@ -6259,7 +6404,7 @@ function App() {
 
                 <div className={`intake-ai-gap-box ${hasMissingInfo ? "needs-info" : "complete"}`}>
                   <strong>
-                    {hasMissingInfo ? "Client must complete these fields" : "AI review result: ready for BOM"}
+                    {hasMissingInfo ? "Client must complete these fields" : "Review result: ready for BOM"}
                   </strong>
                   {hasMissingInfo ? (
                     <ul>
@@ -6268,10 +6413,7 @@ function App() {
                       ))}
                     </ul>
                   ) : (
-                    <p>
-                      AI found no blocking missing questions. Cho can generate the BOM and bilingual specification
-                      draft.
-                    </p>
+                    <p>No blocking questions remain. Cho can generate the BOM and bilingual specification draft.</p>
                   )}
                 </div>
 
@@ -6480,11 +6622,11 @@ function App() {
           title: "Supplier quote comparison",
           status: adminSupplierQuotes.length ? "quoted" : "pending",
           subtitle:
-            "This table no longer uses frontend mockData. It reads unit price, lead time, quality score, terms, and AI notes from supplier_quotes.",
+            "This table reads unit price, lead time, quality score, terms, and evaluation notes from supplier_quotes.",
           className: "wide",
           children: quoteRows.length ? (
             <>
-              {renderAdminMiniTable(["Supplier", "Unit / Total", "Lead", "Quality", "AI verdict"], quoteRows)}
+              {renderAdminMiniTable(["Supplier", "Unit / Total", "Lead", "Quality", "Evaluation"], quoteRows)}
               <div className="admin-note-box success">
                 Comparison data is coming from Supabase supplier_quotes. Cho can make the S08 decision from live quote
                 records.
@@ -6612,12 +6754,12 @@ function App() {
         })}
         {renderAdminStagePanel({
           stageId: "S11",
-          title: "AI visual inspection",
+          title: "Visual inspection",
           status: inspectionRows.length ? "passed" : "pending",
           subtitle: "Reads inspection_reports for CAD/photo match score, issue tags, status, and Cho review results.",
           className: "wide",
           children: inspectionRows.length
-            ? renderAdminMiniTable(["Report", "Item", "AI match", "Status", "Date"], inspectionRows)
+            ? renderAdminMiniTable(["Report", "Item", "Match", "Status", "Date"], inspectionRows)
             : renderAdminEmptyState("No inspection reports", getAdminTableMissingText("inspection_reports")),
           actions: inspectionRows.length ? (
             <button className="btn-premium" onClick={() => setCurrentStageIndex(11)}>
@@ -6785,9 +6927,58 @@ function App() {
     const flowDesc = lang === "Cn" ? activeAdminFlowConfig.descCn : activeAdminFlowConfig.descEn;
     const flowWorkspaces = {
       intake: renderIntakeFlowWorkspace,
-      sourcing: renderSourcingFlowWorkspace,
-      production: renderProductionFlowWorkspace,
-      shipping: renderShippingFlowWorkspace
+      sourcing: () => (
+        <AdminWorkflowWorkspace
+          flow="sourcing"
+          project={order}
+          supabaseClient={getSupabaseBrowserClient()}
+          dbConnected={dbConnected}
+          onProjectChanged={() => {
+            loadAdminOperationalData();
+            loadPrequoteWorkspace();
+          }}
+        />
+      ),
+      production: () => (
+        <AdminWorkflowWorkspace
+          flow="production"
+          project={order}
+          supabaseClient={getSupabaseBrowserClient()}
+          dbConnected={dbConnected}
+          onProjectChanged={loadAdminOperationalData}
+        />
+      ),
+      shipping: () => (
+        <AdminWorkflowWorkspace
+          flow="shipping"
+          project={order}
+          supabaseClient={getSupabaseBrowserClient()}
+          dbConnected={dbConnected}
+          onOpenLoadingAi={({ project }) => {
+            const sourceItems = reviewDraft?.projectId === project?.id ? reviewDraft.items : project?.items;
+            const palette = ["#a97c73", "#7a8775", "#607d8b", "#8b6f47", "#6f5b7b", "#4d7c78"];
+            const normalizedItems = (sourceItems || []).map((item, index) => ({
+              id: item.id || `project-item-${index + 1}`,
+              sku: item.typeCn || item.typeEn || item.itemType || `Item ${index + 1}`,
+              skuEn: item.typeEn || item.typeCn || item.itemType || `Item ${index + 1}`,
+              l: Number(item.length || item.l || 1000),
+              w: Number(item.width || item.depth || item.w || 800),
+              h: Number(item.height || item.h || 800),
+              qty: Math.max(1, Number(item.qty || item.quantity || 1)),
+              weight: Math.max(1, Number(item.weight || 25)),
+              stackingGrade: Number(item.stackingGrade || 2),
+              allowSide: item.allowSide !== false,
+              allowUpsideDown: item.allowUpsideDown === true,
+              color: item.color || palette[index % palette.length]
+            }));
+            setLoadingAiContext({ projectId: project.id, projectName: project.orderId, items: normalizedItems });
+            setLoadingAiResult(null);
+            setLoadingAiSaveStatus("");
+            setShowVolumetricSimulation(true);
+          }}
+          onProjectChanged={loadAdminOperationalData}
+        />
+      )
     };
     const renderFlowWorkspace = flowWorkspaces[activeAdminFlow] || renderIntakeFlowWorkspace;
 
@@ -6955,7 +7146,7 @@ function App() {
 
                 <div className="review-questions-grid">
                   <div>
-                    <div className="prequote-section-label">AI missing questions</div>
+                    <div className="prequote-section-label">Missing specification questions</div>
                     {(draft.questions || []).map((question, idx) => (
                       <div key={`${draft.id}-missing-${idx}`} className="review-question-row">
                         {question}
@@ -6995,7 +7186,7 @@ function App() {
                           <strong>{supplier.name}</strong>
                           <span>Lead time: {supplier.leadTime}</span>
                           <span>Terms: {supplier.terms}</span>
-                          <span>AI score: {supplier.score}/100</span>
+                          <span>Evaluation score: {supplier.score}/100</span>
                           <b>${Number(supplier.estimatedTotal || 0).toLocaleString()}</b>
                         </div>
                       ))}
@@ -7581,18 +7772,18 @@ function App() {
       {
         num: "01",
         titleCn: "Brief · 項目對接與手稿導入",
-        titleEn: "Project Intake & AI Parser",
-        descCn: "客戶於會員中心上傳設計手稿、幾何尺寸或文字需求。後台 OpenClaw 自動解析、識別比例、導入主數據。",
+        titleEn: "Project Intake & Specification Review",
+        descCn: "客户于会员中心上传设计手稿、几何尺寸或文字需求。系统整理规格、识别比例并导入项目数据。",
         descEn:
-          "Clients upload sketch drafts, dimensions, or text briefs. The background OpenClaw engine extracts files and initializes order entries."
+          "Clients upload sketch drafts, dimensions, or text briefs. The intake service extracts the files and initializes order entries."
       },
       {
         num: "02",
         titleCn: "Quote · 多廠實時比價與透明招標",
         titleEn: "B2B Bid Comparison & Sourcing",
-        descCn: "AI 全自動翻譯並生成 RFQ 技術文件，分發至 3 家頂級合約代工廠，聚合單價與工期進行最優推薦。",
+        descCn: "系统生成双语 RFQ 技术文件，分发至三家合约代工厂，并汇总单价、工期与质量记录。",
         descEn:
-          "AI auto-generates RFQ packages and emails 3 premier contract mills. Price, lead-time, and mill rating are aggregated."
+          "The workflow generates RFQ packages for three contract mills and aggregates price, lead time, and quality records."
       },
       {
         num: "03",
@@ -7614,9 +7805,8 @@ function App() {
         num: "05",
         titleCn: "Compliance · 英國 Crib 5 消防與CV驗證",
         titleEn: "Crib 5 Gate & CV Verification",
-        descCn: "硬性防火及環保攔截門檻。配備 AI 視覺比對算法，自動驗證大貨相片與設計 CAD，確保零色差與零公差失誤。",
-        descEn:
-          "Inherently gated for UK Crib 5 fire resistance. AI CV algorithm compares physical photos against CAD contours."
+        descCn: "硬性防火及环保拦截门槛。通过图像与 CAD 对照验证大货照片，降低色差与尺寸偏差风险。",
+        descEn: "Gated for UK Crib 5 fire resistance, with physical photos checked against CAD contours."
       },
       {
         num: "06",
@@ -7772,7 +7962,7 @@ function App() {
             }}
           >
             {lang === "Cn"
-              ? "「我們在倫敦定義美學、融匯法規；我們在中國精工落地、精確量產。這不是簡單的代工，而是將高端設計與多智能體圖紙解析技術結合的未來之路。」"
+              ? "「我们在伦敦定义美学、融汇法规；我们在中国精工落地、精确量产。这不是简单的代工，而是一套连接高端设计、工程审核与制造交付的完整服务。」"
               : "“We define premium aesthetics and ensure UK/EU compliance in London; we execute custom engineering and scale production seamlessly in China. A flawless union of classic craft and multi-agent automations.”"}
           </p>
         </div>
@@ -7967,8 +8157,8 @@ function App() {
               </h3>
               <p style={{ fontSize: "14px", color: "#7C7267", lineHeight: "1.6", marginBottom: "20px" }}>
                 {lang === "Cn"
-                  ? "分佈於廣東佛山與東莞的頂級合約家具製造基地，配備先進的多智能體圖紙解析技術（OpenClaw）。老師傅們的卓越手工與高精密 CNC 二維碼定位技術結合，讓每件成品與 CAD 圖紙精確吻合。"
-                  : "Base in Foshan and Dongguan, equipped with advanced OpenClaw agents. Elite craftsmen synergize with CNC automation and QR precision labeling, ensuring every piece matches its CAD blueprint down to ±1mm tolerance."}
+                  ? "分布于广东佛山与东莞的合约家具制造基地，将老师傅的手工经验与高精密 CNC、二维码图纸定位结合，让每件成品与 CAD 图纸准确吻合。"
+                  : "Our Foshan and Dongguan manufacturing base combines experienced craftsmanship with CNC production and QR-linked drawings, keeping every piece aligned with its approved CAD specification."}
               </p>
               <div
                 style={{
@@ -8389,7 +8579,7 @@ function App() {
               setMarketingTab("SetFurniture");
             }}
           >
-            {lang === "Cn" ? "標準套配" : "SET FURNITURE"}
+            {lang === "Cn" ? "标准家具" : "SET FURNITURE"}
           </span>
           <span
             className={`nav-link ${currentView === "Marketing" && marketingTab === "Contact" ? "active" : ""}`}
@@ -8682,7 +8872,7 @@ function App() {
                         }
                       }}
                     >
-                      {lang === "Cn" ? "啟動項目 ＋ AI規格解析" : "Start Project & Parse"}
+                      {lang === "Cn" ? "启动项目并整理规格" : "Start Project & Prepare Specifications"}
                     </button>
                   </div>
                 </div>
@@ -8837,8 +9027,8 @@ function App() {
                   }}
                 >
                   {lang === "Cn"
-                    ? "無論是以何種檔案格式存在於您的系統中 ── 我們都能為您完美接手。Crafton AI 能自動讀取並智慧生成結構化的項目規格書。"
-                    : "However it lives in your filing system — we'll take it from there. Crafton AI reads your input and structures the brief automatically."}
+                    ? "无论资料以何种文件格式存在，我们都能接手并整理成结构化项目规格书。"
+                    : "However it lives in your filing system, we'll take it from there and structure it into a clear project brief."}
                 </p>
 
                 {/* 4 Cards Grid */}
@@ -9637,6 +9827,16 @@ function App() {
                           transition: "all 0.3s ease"
                         }}
                       >
+                        <SetFurnitureShowcase
+                          lang={lang}
+                          onSelectCategory={(categorySlug) => {
+                            setSetFurnitureCategory(categorySlug);
+                            setSetFurnitureProduct("");
+                            setMarketingTab("SetFurniture");
+                            window.scrollTo({ top: 0, behavior: "smooth" });
+                          }}
+                        />
+
                         {lang === "Cn" ? "開始填寫 →" : "START FORM →"}
                       </span>
                     </div>
@@ -10050,7 +10250,7 @@ function App() {
                   }}
                 >
                   {lang === "Cn"
-                    ? "拉動或滑動金合對比條。左側為客戶粗略尺寸手稿；拖拽向右，即可實時看清由 OpenClaw 技術算法自動生成的三視標註 CAD 工程圖，精確捕捉每一處公差。"
+                    ? "拉动对比条查看客户尺寸手稿与三视标注 CAD 工程图，核对每一处尺寸与公差。"
                     : "Drag or slide the center bronze control. On the left is the client's pencil sketch or email brief. Slide right to witness its translation into a multi-elevation manufacturing blueprint."}
                 </p>
 
@@ -11953,6 +12153,36 @@ function App() {
           )}
 
           {marketingTab === "SetFurniture" && (
+            <SetFurnitureCatalog
+              lang={lang}
+              categorySlug={setFurnitureCategory}
+              productId={setFurnitureProduct}
+              onSelectCategory={(categorySlug) => {
+                setSetFurnitureCategory(categorySlug);
+                setSetFurnitureProduct("");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onSelectProduct={(productId) => {
+                setSetFurnitureProduct(productId);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onBackToCatalog={() => {
+                setSetFurnitureProduct("");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onRequestQuote={(product, category) => {
+                setModalProjectName(`${product.name} / ${product.code}`);
+                setModalDestination("");
+                setModalQuantity(product.minimum);
+                setModalTextBrief(
+                  `Set furniture enquiry: ${product.name} (${product.code}). Category: ${category.nameEn}. Material: ${product.material}. Reference dimensions: ${product.dimensions}. Compliance: ${product.compliance}.`
+                );
+                setActiveIntakeModal("item");
+              }}
+            />
+          )}
+
+          {marketingTab === "LegacySetFurniture" && (
             <div
               className="animate-editorial-slide-up"
               style={{ maxWidth: "1200px", margin: "0 auto", padding: "4rem 2rem" }}
@@ -12515,7 +12745,7 @@ function App() {
                         <path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
                         <path d="M8 9h8M8 13h5" />
                       </svg>
-                      <span>{lang === "Cn" ? "AI 客服接待" : "AI Concierge Chat"}</span>
+                      <span>{lang === "Cn" ? "项目客服接待" : "Project Concierge"}</span>
                     </span>
                     <span
                       onClick={() => setClientPortalTab("Tracker")}
@@ -12613,7 +12843,7 @@ function App() {
                           <path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
                           <path d="M8 9h8M8 13h5" />
                         </svg>
-                        <span>{lang === "Cn" ? "Crafton AI 客服接待" : "Crafton AI Concierge"}</span>
+                        <span>{lang === "Cn" ? "Crafton 项目客服" : "Crafton Concierge"}</span>
                       </div>
                       <p
                         style={{
@@ -12677,7 +12907,7 @@ function App() {
                             fontSize: "0.82rem"
                           }}
                         >
-                          {lang === "Cn" ? "AI 客服正在整理回复..." : "AI concierge is drafting..."}
+                          {lang === "Cn" ? "项目客服正在整理回复..." : "Crafton concierge is drafting..."}
                         </div>
                       )}
                     </div>
@@ -13118,10 +13348,50 @@ function App() {
                               value={intakeFireStandard}
                               onChange={(e) => setIntakeFireStandard(e.target.value)}
                             >
-                              <option value="UK Crib 5 required">UK Crib 5 required</option>
-                              <option value="BS 5852">BS 5852</option>
-                              <option value="CAL TB117">CAL TB117</option>
-                              <option value="EN 1021">EN 1021</option>
+                              <optgroup label="United Kingdom">
+                                <option value="UK Furniture and Furnishings (Fire) (Safety) Regulations 1988">
+                                  UK Furniture and Furnishings (Fire) (Safety) Regulations 1988
+                                </option>
+                                <option value="UK BS 5852 - Source 0/1 (cigarette and match)">
+                                  UK BS 5852 - Source 0/1 (cigarette and match)
+                                </option>
+                                <option value="UK BS 5852 - Source 5 (Crib 5)">UK BS 5852 - Source 5 (Crib 5)</option>
+                                <option value="UK BS EN 1021-1 (smouldering cigarette)">
+                                  UK BS EN 1021-1 (smouldering cigarette)
+                                </option>
+                                <option value="UK BS EN 1021-2 (match flame)">UK BS EN 1021-2 (match flame)</option>
+                              </optgroup>
+                              <optgroup label="United States">
+                                <option value="US 16 CFR Part 1640 / TB 117-2013">
+                                  US 16 CFR Part 1640 / TB 117-2013
+                                </option>
+                                <option value="US CAL TB 117-2013 (smoulder resistance)">
+                                  US CAL TB 117-2013 (smoulder resistance)
+                                </option>
+                                <option value="US CAL TB 133 (public-occupancy seating)">
+                                  US CAL TB 133 (public-occupancy seating)
+                                </option>
+                                <option value="US NFPA 260 (cigarette ignition resistance)">
+                                  US NFPA 260 (cigarette ignition resistance)
+                                </option>
+                              </optgroup>
+                              <optgroup label="European Union">
+                                <option value="EU EN 1021-1 (smouldering cigarette)">
+                                  EU EN 1021-1 (smouldering cigarette)
+                                </option>
+                                <option value="EU EN 1021-2 (match flame)">EU EN 1021-2 (match flame)</option>
+                                <option value="EU EN 597-1 (mattress / upholstered bed base - cigarette)">
+                                  EU EN 597-1 (mattress / upholstered bed base - cigarette)
+                                </option>
+                                <option value="EU EN 597-2 (mattress / upholstered bed base - match flame)">
+                                  EU EN 597-2 (mattress / upholstered bed base - match flame)
+                                </option>
+                              </optgroup>
+                              <optgroup label="Australia / New Zealand">
+                                <option value="AU/NZ AS/NZS 4088.1 (domestic upholstery - smouldering)">
+                                  AU/NZ AS/NZS 4088.1 (domestic upholstery - smouldering)
+                                </option>
+                              </optgroup>
                               <option value="Not required">Not required</option>
                               <option value="To confirm">To confirm</option>
                             </select>
@@ -13436,7 +13706,7 @@ function App() {
                               <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
                             </svg>
                             <span>
-                              {lang === "Cn" ? "OpenClaw 智能體解析中..." : "Analyzing Spec with OpenClaw..."}
+                              {lang === "Cn" ? "正在整理项目规格..." : "Processing project specifications..."}
                             </span>
                           </>
                         ) : (
@@ -13453,7 +13723,7 @@ function App() {
                               <path d="M4.5 16.5c-1.5 1.25-2.5 3.5-2.5 3.5s2.25-1 3.5-2.5M20 4a2 2 0 00-2.83 0L10 11.17l-1.41-1.41a1 1 0 00-1.42 0L3.5 13.5a1 1 0 000 1.42l4.24 4.24a1 1 0 001.42 0L12.92 15l1.41 1.41a1 1 0 001.42-1.42l7.17-7.17A2 2 0 0020 4z" />
                             </svg>
                             <span>
-                              {lang === "Cn" ? "提交項目詳情並使用 AI 解析圖紙" : "Submit Brief & Let AI Analyze Specs"}
+                              {lang === "Cn" ? "提交项目详情并整理图纸规格" : "Submit Brief & Process Specifications"}
                             </span>
                           </>
                         )}
@@ -13501,8 +13771,8 @@ function App() {
                             }}
                           >
                             {lang === "Cn"
-                              ? "當您提交草圖後，我們的多智能體 OpenClaw 管道將自動比對英國 Crib 5 阻燃法規，核對幾何公差，並生成三視圖。解析完成後即可在進度看板中查看項目圖紙。"
-                              : "Once submitted, our multi-agent OpenClaw pipeline will automatically audit the sketch against Crib 5 regulations, test tolerances, and auto-generate orthogonal CAD blueprints."}
+                              ? "提交草图后，系统将比对英国 Crib 5 阻燃要求、核对几何公差并整理三视图。完成后可在进度看板查看项目图纸。"
+                              : "Once submitted, the workflow checks Crib 5 requirements and geometric tolerances, then prepares orthogonal CAD drawings for the project tracker."}
                           </p>
                         </>
                       ) : (
@@ -13538,7 +13808,7 @@ function App() {
                                 style={{ background: "var(--accent-cyan)" }}
                               ></span>
                               <strong style={{ fontSize: "0.85rem", letterSpacing: "1px" }}>
-                                OPENCLAW SPEC PARSER TERMINAL v2.4
+                                CRAFTON SPECIFICATION SERVICE
                               </strong>
                             </div>
                             <span style={{ fontSize: "0.75rem", color: "#BAC2B9" }}>RUNNING</span>
@@ -13554,7 +13824,7 @@ function App() {
                           >
                             {parsingLogs.map((log, lidx) => (
                               <div key={lidx} style={{ fontSize: "0.8rem", lineHeight: "1.5", color: "#FAF9F6" }}>
-                                <span style={{ color: "var(--accent-green)" }}>[OpenClaw]</span>{" "}
+                                <span style={{ color: "var(--accent-green)" }}>[Crafton]</span>{" "}
                                 {lang === "Cn" ? log.cn : log.en}
                               </div>
                             ))}
@@ -13569,7 +13839,11 @@ function App() {
                               }}
                             >
                               <span className="animate-pulse">⏳</span>
-                              <span>{lang === "Cn" ? "AI 智能體正在協同運算中..." : "AI agents collaborating..."}</span>
+                              <span>
+                                {lang === "Cn"
+                                  ? "项目规格正在处理中..."
+                                  : "Project specifications are being processed..."}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -13771,7 +14045,7 @@ function App() {
                       >
                         <span>{lang === "Cn" ? "項目登錄" : "Intake Specs"}</span>
                         <span>{lang === "Cn" ? "Crib 5 消防驗證" : "Crib 5 Gate"}</span>
-                        <span>{lang === "Cn" ? "AI 視覺質檢" : "AI CV Inspection"}</span>
+                        <span>{lang === "Cn" ? "视觉质检" : "Visual Inspection"}</span>
                         <span>{lang === "Cn" ? "交付完成" : "Delivery Complete"}</span>
                       </div>
                     </div>
@@ -13782,7 +14056,7 @@ function App() {
                     <div className="panel-header" style={{ background: "rgba(124, 114, 103, 0.04)" }}>
                       <div className="panel-title">
                         <span className="stage-badge-dot dot-ai" style={{ background: "var(--accent-primary)" }}></span>
-                        {lang === "Cn" ? "与 Crafton AI 选品助手对话" : "Design & Swatch Agent (OpenClaw)"}
+                        {lang === "Cn" ? "与 Crafton 选品顾问对话" : "Crafton Design & Swatch Concierge"}
                       </div>
                       <span className="logo-badge">Live Chat</span>
                     </div>
@@ -13840,7 +14114,9 @@ function App() {
                         <input
                           type="text"
                           className="chat-input"
-                          placeholder={lang === "Cn" ? "向 AI 询问或变更面料..." : "Ask AI Swatch or check codes..."}
+                          placeholder={
+                            lang === "Cn" ? "询问或变更面料..." : "Ask about swatches or change material codes..."
+                          }
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={(e) => e.key === "Enter" && handleTrackerAiMessage()}
@@ -13975,7 +14251,12 @@ function App() {
               >
                 {/* Open in New Tab Button */}
                 <button
-                  onClick={() => window.open(`/loading-ai/index.html?lang=${lang === "Cn" ? "cn" : "en"}`, "_blank")}
+                  onClick={() =>
+                    window.open(
+                      `/loading-ai/index.html?lang=${lang === "Cn" ? "cn" : "en"}&projectId=${encodeURIComponent(loadingAiContext?.projectId || "")}`,
+                      "_blank"
+                    )
+                  }
                   style={{
                     background: "none",
                     border: "1px solid var(--text-primary)",
@@ -14032,7 +14313,9 @@ function App() {
             {/* Modal Body / Iframe Container (Perfect 100% Height Fill) */}
             <div className="volumetric-modal-body">
               <iframe
-                src={`/loading-ai/index.html?lang=${lang === "Cn" ? "cn" : "en"}`}
+                ref={loadingAiFrameRef}
+                src={`/loading-ai/index.html?lang=${lang === "Cn" ? "cn" : "en"}&projectId=${encodeURIComponent(loadingAiContext?.projectId || "")}`}
+                onLoad={sendLoadingAiContext}
                 style={{
                   width: "100%",
                   height: "100%",
@@ -14043,17 +14326,28 @@ function App() {
                   boxShadow: "inset 0 2px 10px rgba(0,0,0,0.02)",
                   display: "block"
                 }}
-                title="3D Loading AI Simulation"
+                title="3D Container Loading Simulation"
               />
             </div>
 
             {/* Modal Footer */}
             <div className="volumetric-modal-footer">
               <span style={{ fontSize: "0.72rem", color: "var(--text-secondary)" }}>
-                {lang === "Cn"
-                  ? "💡 提示：滑鼠滾輪可縮放視角，按住左鍵可旋轉貨櫃，按右鍵拖曳可平移視角。"
-                  : "💡 Controls: Scroll wheel to zoom, left click & drag to rotate, right click to pan."}
+                {loadingAiResult
+                  ? `${loadingAiResult.totalContainers || 0} containers · ${loadingAiResult.utilizationPercent || 0}% utilization · ${loadingAiResult.unpackedCount || 0} unpacked`
+                  : lang === "Cn"
+                    ? "装柜结果计算完成后，可保存到当前项目的 Supabase 记录。"
+                    : "Save the computed loading result to the current project when it is ready."}
+                {loadingAiSaveStatus ? ` · ${loadingAiSaveStatus}` : ""}
               </span>
+              <button
+                className="btn-premium"
+                style={{ padding: "0.5rem 1.5rem" }}
+                disabled={!loadingAiResult || loadingAiSaveStatus === "Saving packing plan..."}
+                onClick={saveLoadingAiPlan}
+              >
+                {lang === "Cn" ? "保存装柜方案" : "Save packing plan"}
+              </button>
               <button
                 className="btn-premium"
                 style={{ padding: "0.5rem 1.5rem" }}
@@ -14062,6 +14356,8 @@ function App() {
                 {lang === "Cn" ? "關閉主控台" : "Close Simulation"}
               </button>
             </div>
+            {/* Shared project intake / quote modal */}
+            {renderIntakeModal()}
           </div>
         </div>
       )}

@@ -102,6 +102,8 @@ export default function ProjectDetailModal({
             <img
               src={selectedProject.img}
               alt={selectedProject.titleEn}
+              loading="lazy"
+              decoding="async"
               style={{
                 width: "100%",
                 height: "100%",

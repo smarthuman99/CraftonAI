@@ -38,6 +38,88 @@
   --transition-smooth: all 450ms cubic-bezier(0.16, 1, 0.3, 1); /* High-damping luxury feel */
 }
 
+/* Set furniture catalogue */
+.set-furniture-home,
+.set-furniture-catalogue,
+.set-product-detail { max-width: 1200px; margin: 0 auto; padding: 5.5rem 2rem; }
+.set-furniture-home { border-top: 1px solid rgba(124,114,103,.14); border-bottom: 1px solid rgba(124,114,103,.14); }
+.set-furniture-home-heading,
+.set-furniture-catalogue-header { max-width: 760px; margin-bottom: 2.75rem; }
+.set-furniture-home-heading > span,
+.set-furniture-catalogue-header > span,
+.set-product-kicker { display: block; margin-bottom: .75rem; color: var(--accent-primary); font-family: var(--font-sans); font-size: .7rem; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
+.set-furniture-home-heading h2,
+.set-furniture-catalogue-header h1,
+.set-product-detail-copy h1 { margin: 0 0 1rem; color: var(--text-primary); font-family: var(--font-tech); font-size: 2.55rem; font-weight: 300; line-height: 1.15; letter-spacing: 0; }
+.set-furniture-home-heading p,
+.set-furniture-catalogue-header p,
+.set-product-lede { margin: 0; color: var(--text-secondary); font-size: .95rem; line-height: 1.75; }
+.set-furniture-category-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1px; background: rgba(124,114,103,.18); border: 1px solid rgba(124,114,103,.18); }
+.set-furniture-category-card,
+.set-furniture-product-card { min-width: 0; padding: 0; border: 0; border-radius: 0; background: #faf9f6; color: inherit; text-align: left; cursor: pointer; }
+.set-furniture-category-image,
+.set-furniture-product-image { position: relative; overflow: hidden; background: #ece9e4; aspect-ratio: 4/3; }
+.set-furniture-category-image img,
+.set-furniture-product-image img,
+.set-product-detail-image img { width: 100%; height: 100%; object-fit: cover; transition: transform 420ms ease; }
+.set-furniture-category-card:hover img,
+.set-furniture-product-card:hover img { transform: scale(1.035); }
+.set-furniture-category-image > span,
+.set-furniture-product-image > span,
+.set-product-detail-image > span { position: absolute; top: .8rem; left: .8rem; padding: .3rem .45rem; background: rgba(250,249,246,.9); color: var(--text-primary); font-family: var(--font-sans); font-size: .65rem; font-weight: 700; }
+.set-furniture-category-copy { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 1rem; min-height: 142px; padding: 1.25rem; align-items: start; }
+.set-furniture-category-copy h3,
+.set-furniture-product-copy h2 { margin: 0 0 .45rem; color: var(--text-primary); font-family: var(--font-tech); font-size: 1.12rem; font-weight: 500; letter-spacing: 0; }
+.set-furniture-category-copy p,
+.set-furniture-product-copy p { margin: 0; color: var(--text-secondary); font-size: .78rem; line-height: 1.55; }
+.set-furniture-arrow { display: grid; width: 30px; height: 30px; border: 1px solid rgba(124,114,103,.24); place-items: center; font-size: 1rem; }
+.set-furniture-catalogue { min-height: 70vh; }
+.set-furniture-filters { display: flex; gap: 0; margin-bottom: 2.5rem; overflow-x: auto; border-bottom: 1px solid rgba(124,114,103,.2); }
+.set-furniture-filters button { flex: 0 0 auto; padding: .8rem 1rem; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: .76rem; cursor: pointer; }
+.set-furniture-filters button.active { border-bottom-color: var(--text-primary); color: var(--text-primary); font-weight: 700; }
+.set-furniture-product-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1.5rem; }
+.set-furniture-product-card { border: 1px solid rgba(124,114,103,.16); }
+.set-furniture-product-image { aspect-ratio: 1/1; }
+.set-furniture-product-image.product-tone-2 img { filter: saturate(.72) contrast(1.04); transform: scale(1.08); }
+.set-furniture-product-image.product-tone-3 img { filter: sepia(.1) saturate(1.15); transform: scale(1.14); }
+.set-furniture-product-card:hover .product-tone-2 img { transform: scale(1.115); }
+.set-furniture-product-card:hover .product-tone-3 img { transform: scale(1.175); }
+.set-furniture-product-copy { padding: 1.15rem; }
+.set-furniture-product-copy > span { display: inline-block; margin-top: 1rem; color: var(--text-primary); font-size: .72rem; font-weight: 700; text-transform: uppercase; }
+.set-furniture-back { margin-bottom: 1.5rem; padding: .55rem 0; border: 0; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: .78rem; cursor: pointer; }
+.set-product-detail-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(360px,.85fr); gap: 4rem; align-items: start; }
+.set-product-detail-image { position: relative; overflow: hidden; min-height: 620px; background: #ece9e4; }
+.set-product-detail-copy { padding-top: 1.5rem; }
+.set-product-specs { margin: 2rem 0; border-top: 1px solid rgba(124,114,103,.2); }
+.set-product-specs > div { display: grid; grid-template-columns: 130px minmax(0,1fr); gap: 1rem; padding: .85rem 0; border-bottom: 1px solid rgba(124,114,103,.14); }
+.set-product-specs dt,
+.set-product-specs dd { margin: 0; font-size: .78rem; line-height: 1.5; }
+.set-product-specs dt { color: var(--text-muted); }
+.set-product-specs dd { color: var(--text-primary); font-weight: 500; }
+.set-product-quote { width: 100%; justify-content: center; padding: .8rem 1rem; }
+.set-product-note { margin: .9rem 0 0; color: var(--text-muted); font-size: .7rem; line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .set-furniture-category-grid,
+  .set-furniture-product-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .set-product-detail-grid { grid-template-columns: 1fr; gap: 2rem; }
+  .set-product-detail-image { min-height: 520px; }
+}
+
+@media (max-width: 600px) {
+  .set-furniture-home,
+  .set-furniture-catalogue,
+  .set-product-detail { padding: 3.5rem 1rem; }
+  .set-furniture-home-heading h2,
+  .set-furniture-catalogue-header h1,
+  .set-product-detail-copy h1 { font-size: 2rem; }
+  .set-furniture-category-grid,
+  .set-furniture-product-grid { grid-template-columns: 1fr; }
+  .set-furniture-category-copy { min-height: 0; }
+  .set-product-detail-image { min-height: 420px; }
+  .set-product-specs > div { grid-template-columns: 105px minmax(0,1fr); }
+}
+
 /* Base resets */
 * {
   box-sizing: border-box;
@@ -903,6 +985,304 @@ button.admin-order-card:hover {
   color: var(--text-secondary);
   font-size: 0.74rem;
   line-height: 1.35;
+}
+
+.admin-ops-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-ops-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.admin-ops-toolbar strong,
+.admin-ops-toolbar span {
+  display: block;
+}
+
+.admin-ops-toolbar strong {
+  color: var(--text-primary);
+  font-size: 0.92rem;
+}
+
+.admin-ops-toolbar span {
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.admin-ops-toolbar button,
+.admin-ops-stage-actions button,
+.admin-mini-table button,
+.admin-ops-form-actions button {
+  min-height: 34px;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0.45rem 0.75rem;
+  font: 600 0.72rem var(--font-sans);
+}
+
+.admin-ops-toolbar button:hover,
+.admin-ops-stage-actions button:hover,
+.admin-mini-table button:hover,
+.admin-ops-form-actions button:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
+.admin-ops-toolbar button:disabled,
+.admin-ops-stage-actions button:disabled,
+.admin-mini-table button:disabled,
+.admin-ops-form-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.admin-ops-notice {
+  border: 1px solid var(--glass-border);
+  border-radius: 5px;
+  background: rgba(124, 114, 103, 0.06);
+  color: var(--text-secondary);
+  padding: 0.75rem 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.admin-ops-notice.success {
+  border-color: rgba(122, 135, 117, 0.35);
+  background: rgba(122, 135, 117, 0.09);
+  color: #53634f;
+}
+
+.admin-ops-notice.error {
+  border-color: rgba(139, 90, 81, 0.35);
+  background: rgba(139, 90, 81, 0.08);
+  color: #744b45;
+}
+
+.admin-ops-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.admin-ops-section {
+  min-width: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.78);
+  overflow: hidden;
+}
+
+.admin-ops-section.wide {
+  grid-column: 1 / -1;
+}
+
+.admin-ops-section > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: #fcfcfa;
+}
+
+.admin-ops-section > header span {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--accent-primary);
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.admin-ops-section > header h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font: 600 1.04rem var(--font-tech);
+}
+
+.admin-ops-section > header p {
+  max-width: 760px;
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.admin-ops-stage-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-ops-stage-actions b {
+  border: 1px solid rgba(124, 114, 103, 0.2);
+  border-radius: 3px;
+  background: rgba(124, 114, 103, 0.06);
+  color: var(--text-secondary);
+  padding: 0.35rem 0.55rem;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.admin-ops-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem 1.1rem;
+}
+
+.admin-ops-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(124, 114, 103, 0.18);
+  border-radius: 5px;
+  background: rgba(124, 114, 103, 0.035);
+}
+
+.admin-ops-form.one-column {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.admin-ops-form label {
+  min-width: 0;
+}
+
+.admin-ops-form label.wide,
+.admin-ops-form-actions {
+  grid-column: 1 / -1;
+}
+
+.admin-ops-form label > span {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.admin-ops-form input,
+.admin-ops-form select,
+.admin-ops-form textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text-primary);
+  padding: 0.55rem 0.65rem;
+  font: 0.78rem var(--font-sans);
+  box-sizing: border-box;
+}
+
+.admin-ops-form textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.admin-ops-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.admin-ops-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.45rem;
+}
+
+.admin-ops-checks label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 36px;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  background: #fff;
+  padding: 0.45rem 0.6rem;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.admin-ops-checks input {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+}
+
+.admin-ops-quote-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+}
+
+.admin-ops-quote-cards article {
+  border: 1px solid var(--glass-border);
+  border-radius: 5px;
+  background: #fff;
+  padding: 0.85rem;
+}
+
+.admin-ops-quote-cards article.selected {
+  border-color: var(--accent-green);
+  background: rgba(122, 135, 117, 0.07);
+}
+
+.admin-ops-quote-cards span,
+.admin-ops-quote-cards p {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.admin-ops-quote-cards h4 {
+  margin: 0.3rem 0;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.admin-ops-quote-cards strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 0.84rem;
+}
+
+.admin-ops-quote-cards button {
+  width: 100%;
+  margin-top: 0.55rem;
+}
+
+.admin-mini-table progress {
+  width: 90px;
+  accent-color: var(--accent-green);
+  vertical-align: middle;
+}
+
+.admin-mini-table code {
+  display: block;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
 }
 
 .admin-risk-meter {
@@ -2981,6 +3361,8 @@ button.admin-order-card:hover {
   }
 
   .admin-flow-grid,
+  .admin-ops-grid,
+  .admin-ops-form,
   .admin-detail-grid,
   .admin-detail-grid.three,
   .admin-supplier-decision-grid,
@@ -2990,6 +3372,16 @@ button.admin-order-card:hover {
   .intake-upload-zone,
   .intake-spec-summary-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-ops-section > header,
+  .admin-ops-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-ops-stage-actions {
+    justify-content: flex-start;
   }
 
   .intake-directory-heading {

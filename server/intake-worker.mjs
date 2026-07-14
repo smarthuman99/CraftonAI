@@ -5,6 +5,7 @@ const supabase = createSupabaseAdmin();
 const intervalMs = Number(process.env.INTAKE_WORKER_INTERVAL_MS || 8000);
 const batchSize = Number(process.env.INTAKE_WORKER_BATCH_SIZE || 1);
 const maxAttempts = Number(process.env.INTAKE_WORKER_MAX_ATTEMPTS || 3);
+const maxReadableFileChars = Number(process.env.INTAKE_WORKER_MAX_FILE_TEXT_CHARS || 12000);
 const runOnce = process.argv.includes("--once");
 
 async function claimQueuedJobs() {
@@ -53,7 +54,8 @@ async function processJob(job) {
     messageEn: "Intake Worker claimed the client material parsing job."
   });
 
-  const result = await parseIntakeBrief({ job, file });
+  const sourceText = await readUploadedFileText(file);
+  const result = await parseIntakeBrief({ job, file, sourceText });
   const project = await upsertProject(job, result);
   const ownerUserId = project.user_id || userId;
 
@@ -186,6 +188,38 @@ async function addWorkflowEvent({ projectId, jobId, userId, eventType, messageCn
     message_cn: messageCn,
     message_en: messageEn
   });
+}
+
+async function readUploadedFileText(file) {
+  if (!file?.storage_bucket || !file?.storage_path) return "";
+  if (!isReadableTextFile(file)) return "";
+
+  const { data, error } = await supabase.storage.from(file.storage_bucket).download(file.storage_path);
+  if (error) {
+    console.warn(`Could not download intake file ${file.id || file.storage_path}:`, error.message || error);
+    return "";
+  }
+
+  try {
+    const buffer = Buffer.from(await data.arrayBuffer());
+    return buffer.toString("utf8").replace(/\0/g, "").slice(0, maxReadableFileChars);
+  } catch (err) {
+    console.warn(`Could not read intake file ${file.id || file.storage_path} as text:`, err.message || err);
+    return "";
+  }
+}
+
+function isReadableTextFile(file) {
+  const mime = String(file.mime_type || "").toLowerCase();
+  const name = String(file.original_name || file.storage_path || "").toLowerCase();
+  return (
+    mime.startsWith("text/") ||
+    mime.includes("json") ||
+    mime.includes("csv") ||
+    name.endsWith(".txt") ||
+    name.endsWith(".csv") ||
+    name.endsWith(".json")
+  );
 }
 
 function getJobUserId(job) {

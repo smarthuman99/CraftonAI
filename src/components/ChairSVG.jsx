@@ -23,26 +23,27 @@ const ChairSVG = ({ fabricId, legId, animateStyle = {} }) => {
         ...animateStyle
       }}
     >
-      {stoolImages.map((stool) => {
-        const isActive = fabricId === stool.id;
+      {(() => {
+        const activeStool = stoolImages.find((stool) => stool.id === fabricId) || stoolImages[0];
         return (
           <img
-            key={stool.id}
-            src={stool.src}
-            alt={stool.alt}
-            className={`showroom-stool-img ${isActive ? "active" : ""}`}
+            key={activeStool.id}
+            src={activeStool.src}
+            alt={activeStool.alt}
+            className="showroom-stool-img active"
+            loading="lazy"
+            decoding="async"
             style={{
               position: "absolute",
               top: 0,
               left: 0,
               width: "100%",
               height: "100%",
-              objectFit: "contain",
-              pointerEvents: isActive ? "auto" : "none"
+              objectFit: "contain"
             }}
           />
         );
-      })}
+      })()}
     </div>
   );
 };

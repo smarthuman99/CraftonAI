@@ -25,8 +25,8 @@ export default function ContactBlock({ lang, contactMessage, setContactMessage }
     {
       qCn: "我沒有自己的 CAD 圖紙，只有手繪草圖或照片，系統可以工作嗎？",
       qEn: "Can the system work with hand-drawn sketches or simple photos?",
-      aCn: "完全可以。您只需在 Start the Project 的 Intake 表單中上傳手繪草圖或實景照片，後台 OpenClaw 多模態 AI 智能體將自動識別線條、拉伸尺寸公差，為您精確生成可用於工廠生產的平面、立面和剖面圖紙。",
-      aEn: "Absolutely. Simply upload hand-drawn sketches or reference photos to our Intake Form. The background OpenClaw multimodal engine automatically traces contours and generates factory-ready 3D/2D blueprints."
+      aCn: "完全可以。您只需在项目需求表中上传手绘草图或实景照片，Crafton 团队会整理轮廓、尺寸与公差，并准备可供工厂生产审核的平面、立面和剖面图纸。",
+      aEn: "Absolutely. Upload hand-drawn sketches or reference photos to the project intake form. The Crafton team will organize contours, dimensions, and tolerances into factory-ready drawings."
     }
   ];
 

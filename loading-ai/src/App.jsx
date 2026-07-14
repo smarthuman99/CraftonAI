@@ -9,34 +9,17 @@ import { MOCK_PRESETS } from './utils/mockData.js';
 import { TRANSLATIONS } from './utils/translations.js';
 
 export default function App() {
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [projectContext, setProjectContext] = useState({
+    projectId: queryParams.get('projectId') || '',
+    projectName: ''
+  });
   const [lang, setLang] = useState(() => {
     return new URLSearchParams(window.location.search).get('lang') || 'en';
   });
 
   const t = useCallback((key) => {
     return TRANSLATIONS[lang]?.[key] || TRANSLATIONS['en']?.[key] || key;
-  }, [lang]);
-
-  useEffect(() => {
-    const handleUrlChange = () => {
-      const urlLang = new URLSearchParams(window.location.search).get('lang');
-      if (urlLang && urlLang !== lang) {
-        setLang(urlLang);
-      }
-    };
-    
-    const handleMessage = (e) => {
-      if (e.data && e.data.type === 'CRAFTON_SET_LANG') {
-        setLang(e.data.lang?.toLowerCase() === 'cn' ? 'cn' : 'en');
-      }
-    };
-
-    window.addEventListener('popstate', handleUrlChange);
-    window.addEventListener('message', handleMessage);
-    return () => {
-      window.removeEventListener('popstate', handleUrlChange);
-      window.removeEventListener('message', handleMessage);
-    };
   }, [lang]);
 
   const handleToggleLang = () => {
@@ -77,6 +60,47 @@ export default function App() {
   });
   const [maxModeResult, setMaxModeResult] = useState(null);
   const workerRef = useRef(null);
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const urlLang = new URLSearchParams(window.location.search).get('lang');
+      if (urlLang && urlLang !== lang) setLang(urlLang);
+    };
+
+    const handleMessage = (event) => {
+      if (event.data?.type === 'CRAFTON_SET_LANG') {
+        setLang(event.data.lang?.toLowerCase() === 'cn' ? 'cn' : 'en');
+      }
+      if (event.data?.type === 'CRAFTON_LOADING_INIT') {
+        const payload = event.data.payload || {};
+        const incomingItems = Array.isArray(payload.items)
+          ? payload.items.filter(
+              (item) => Number(item.l) > 0 && Number(item.w) > 0 && Number(item.h) > 0 && Number(item.qty) > 0
+            )
+          : [];
+        setProjectContext({ projectId: payload.projectId || '', projectName: payload.projectName || '' });
+        if (incomingItems.length) {
+          setItems(incomingItems);
+          setMaxModeResult(null);
+          setCurrentStep(null);
+          setActiveContainerIndex(0);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [lang]);
+
+  useEffect(() => {
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'CRAFTON_LOADING_READY' }, window.location.origin);
+    }
+  }, []);
 
   const triggerMaxModeOptimization = useCallback((targetItems = items, targetContainer = containerType) => {
     // Terminate existing worker
@@ -209,6 +233,29 @@ export default function App() {
   const maxSteps = activeContainer?.items?.length || 0;
   const effectiveStep = (currentStep === null || currentStep > maxSteps) ? maxSteps : currentStep;
 
+  useEffect(() => {
+    if (window.parent === window || !projectContext.projectId) return;
+    const totalVolume = packedContainers.reduce((sum, container) => sum + Number(container.stats?.totalVolume || 0), 0);
+    const usedVolume = packedContainers.reduce((sum, container) => sum + Number(container.stats?.usedVolume || 0), 0);
+    const utilizationPercent = totalVolume > 0 ? Math.round((usedVolume / totalVolume) * 1000) / 10 : 0;
+    window.parent.postMessage({
+      type: 'CRAFTON_LOADING_RESULT',
+      payload: {
+        projectId: projectContext.projectId,
+        projectName: projectContext.projectName,
+        engineMode,
+        containerType: containerType.id,
+        totalContainers: packedContainers.length,
+        utilizationPercent,
+        unpackedCount: unpackedItems.length,
+        sourceItems: items,
+        containers: packedContainers,
+        unpacked: unpackedItems,
+        generatedAt: new Date().toISOString()
+      }
+    }, window.location.origin);
+  }, [containerType.id, engineMode, items, packedContainers, projectContext, unpackedItems]);
+
   return (
     <div className="app-container">
       {/* Top Header Section */}
@@ -218,6 +265,11 @@ export default function App() {
           <div>
             <h1 className="logo-title">{t('title')}</h1>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('subtitle')}</span>
+            {projectContext.projectName && (
+              <span style={{ display: 'block', marginTop: '2px', fontSize: '0.68rem', color: 'var(--color-primary)' }}>
+                {projectContext.projectName}
+              </span>
+            )}
           </div>
           <span className="logo-badge">V1.2 Premium</span>
         </div>
