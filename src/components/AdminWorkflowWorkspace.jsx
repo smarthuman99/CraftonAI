@@ -616,7 +616,15 @@ export default function AdminWorkflowWorkspace({
         </Notice>
       )}
       {message && (
-        <Notice tone={/saved|approved|recorded|generated|sent/i.test(message) ? "success" : "error"}>{message}</Notice>
+        <Notice
+          tone={
+            /saved|approved|recorded|generated|sent|已保存|已批准|已记录|已生成|已发送|已刷新|已放行/i.test(message)
+              ? "success"
+              : "error"
+          }
+        >
+          {message}
+        </Notice>
       )}
       {missingTables.length > 0 && (
         <Notice tone="error">
