@@ -3,6 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createAiSupportReply } from "./lib/aiSupportAgent.mjs";
+import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
+import { createRfqDraft } from "./lib/rfqGenerator.mjs";
+import { dispatchRfqEmails } from "./lib/rfqDispatch.mjs";
 
 const port = Number(process.env.AI_SUPPORT_PORT || 8787);
 const logDir = path.resolve("server", "logs");
@@ -27,7 +30,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method !== "POST" || req.url !== "/api/ai-support-chat") {
+  if (req.method !== "POST") {
     sendJson(res, 404, { error: "Not found" });
     return;
   }
@@ -36,17 +39,31 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const body = await readJsonBody(req);
-    const result = await createAiSupportReply({
-      messages: body.messages,
-      context: body.context
-    });
+    let result;
+
+    if (req.url === "/api/ai-support-chat") {
+      result = await createAiSupportReply({ messages: body.messages, context: body.context });
+    } else if (req.url === "/api/ai-rfq-generate") {
+      await requireAuthenticatedUser(req);
+      result = await createRfqDraft({ context: body.context });
+    } else if (req.url === "/api/rfq-dispatch") {
+      await requireAuthenticatedUser(req);
+      result = await dispatchRfqEmails({
+        rfqCode: String(body.rfqCode || "RFQ"),
+        document: body.document || {},
+        suppliers: body.suppliers || []
+      });
+    } else {
+      sendJson(res, 404, { error: "Not found" });
+      return;
+    }
 
     sendJson(res, 200, result);
   } catch (err) {
     logSupportError(requestId, err);
     console.error(`AI support chat failed [${requestId}]:`, err);
-    sendJson(res, 500, {
-      error: "Crafton AI customer service is temporarily unavailable. Please try again shortly.",
+    sendJson(res, Number(err?.statusCode || 500), {
+      error: err?.statusCode ? err.message : "Crafton AI service is temporarily unavailable. Please try again shortly.",
       requestId
     });
   }
@@ -60,7 +77,7 @@ function setCorsHeaders(res, origin) {
   const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0] || "http://127.0.0.1:8000";
   res.setHeader("Access-Control-Allow-Origin", allowOrigin);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Vary", "Origin");
 }
 
@@ -74,7 +91,7 @@ function readJsonBody(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 120_000) {
+      if (body.length > 500_000) {
         req.destroy();
         reject(new Error("Request body too large."));
       }
@@ -88,6 +105,24 @@ function readJsonBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+async function requireAuthenticatedUser(req) {
+  const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) {
+    const error = new Error("A Supabase staff login is required.");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const supabase = createSupabaseAdmin();
+  const { data, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !data?.user) {
+    const error = new Error("The Supabase login session is invalid or expired.");
+    error.statusCode = 401;
+    throw error;
+  }
+  return data.user;
 }
 
 function logSupportError(requestId, err) {

@@ -41,6 +41,9 @@ jobs:
       - name: Tar release assets
         run: tar -czf release.tar.gz -C dist .
 
+      - name: Tar AI server runtime
+        run: tar -czf server-release.tar.gz server package.json package-lock.json
+
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -57,6 +60,7 @@ jobs:
           
           # Upload the tarball
           scp release.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
+          scp server-release.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
           
           # Clean up previous web assets on VPS to prevent bloat, then extract and clean tarball.
           #
@@ -108,4 +112,51 @@ jobs:
                   echo "Deployed Crafton static bundle to: $dir"
               ) || echo "Static root deploy failed but continuing: $dir"
             done
+          '
+
+      - name: Deploy and restart Crafton AI API
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} '
+            set -eu
+            archive="${{ secrets.VPS_TARGET_DIR }}/server-release.tar.gz"
+            runtime="${{ secrets.VPS_TARGET_DIR }}/server-runtime"
+            old_pid="$(pgrep -f "[s]erver/ai-support-server.mjs" | head -n 1 || true)"
+            old_env=""
+
+            if [ -n "$old_pid" ]; then
+              old_cwd="$(readlink -f "/proc/$old_pid/cwd" 2>/dev/null || true)"
+              if [ -r "$old_cwd/server/.env" ]; then
+                old_env="$old_cwd/server/.env"
+              fi
+              if [ -n "$old_cwd" ] && [ -w "$old_cwd" ]; then
+                runtime="$old_cwd"
+              fi
+            fi
+
+            mkdir -p "$runtime"
+            tar -xzf "$archive" -C "$runtime"
+            rm -f "$archive"
+            cd "$runtime"
+            if [ ! -f server/.env ] && [ -n "$old_env" ]; then
+              cp "$old_env" server/.env
+            fi
+            npm ci --omit=dev --ignore-scripts || npm install --omit=dev --ignore-scripts
+
+            if [ ! -f server/.env ]; then
+              echo "No server/.env found in $runtime; keeping the existing AI process unchanged."
+              exit 1
+            fi
+
+            if [ -n "$old_pid" ]; then
+              kill "$old_pid" 2>/dev/null || true
+              sleep 3
+            fi
+
+            if ! pgrep -f "[s]erver/ai-support-server.mjs" >/dev/null; then
+              mkdir -p server/logs
+              nohup node --env-file-if-exists=server/.env server/ai-support-server.mjs > server/logs/ai-support-runtime.log 2>&1 < /dev/null &
+              sleep 3
+            fi
+
+            curl --fail --silent --show-error http://127.0.0.1:8787/health
           '

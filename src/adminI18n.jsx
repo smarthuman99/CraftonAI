@@ -1,6 +1,9 @@
 import React from "react";
 
 const ADMIN_ZH = {
+  "AI RFQ preparation and dispatch": "AI 询价单准备与发送",
+  "Generate a bilingual supplier RFQ from verified Supabase order data, review it, retain every version and dispatch it after Cho approval.":
+    "根据 Supabase 已核实订单资料生成双语供应商询价单，审核后保留每个版本，并在 Cho 批准后发送。",
   "30% deposit, 70% before shipment": "30% 订金，70% 出货前付清",
   "Accepted quantity": "验收数量",
   "Add document": "新增文件",

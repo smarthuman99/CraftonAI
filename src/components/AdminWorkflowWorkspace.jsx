@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminLocalized, adminText } from "../adminI18n";
+import AiRfqWorkspace from "./AiRfqWorkspace";
 
 const PROJECT_TABLES = [
   "rfq_batches",
@@ -13,7 +14,9 @@ const PROJECT_TABLES = [
   "quantity_adjustments",
   "handover_reports",
   "project_files",
-  "workflow_events"
+  "workflow_events",
+  "intake_files",
+  "intake_jobs"
 ];
 
 const EMPTY_DATA = Object.fromEntries(PROJECT_TABLES.map((table) => [table, []]));
@@ -118,7 +121,6 @@ export default function AdminWorkflowWorkspace({
     reliability_score: "80",
     notes: ""
   });
-  const [rfqForm, setRfqForm] = useState({ title: "", due_at: "", currency: "USD", notes: "", supplier_ids: [] });
   const [quoteForm, setQuoteForm] = useState({
     rfq_batch_id: "",
     supplier_id: "",
@@ -306,31 +308,6 @@ export default function AdminWorkflowWorkspace({
         phone: "",
         notes: ""
       });
-    });
-  };
-
-  const submitRfq = (event, status = "draft") => {
-    event.preventDefault();
-    runAction(status === "sent" ? "RFQ sent and recorded." : "RFQ draft saved.", async () => {
-      const code = `RFQ-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(data.rfq_batches.length + 1).padStart(2, "0")}`;
-      await insert("rfq_batches", {
-        project_id: projectId,
-        rfq_code: code,
-        title: rfqForm.title || `${project?.orderId || "Project"} sourcing package`,
-        status,
-        supplier_ids: rfqForm.supplier_ids,
-        supplier_count: rfqForm.supplier_ids.length,
-        invited_count: rfqForm.supplier_ids.length,
-        sent_at: status === "sent" ? new Date().toISOString() : null,
-        due_at: rfqForm.due_at || null,
-        currency: rfqForm.currency,
-        notes: rfqForm.notes,
-        payload: { items: project?.items || [] }
-      });
-      await writeEvent("S06", status === "sent" ? "rfq_dispatched" : "rfq_drafted", `${code} ${status}.`, {
-        supplier_ids: rfqForm.supplier_ids
-      });
-      await updateProjectStage(6);
     });
   };
 
@@ -777,105 +754,23 @@ export default function AdminWorkflowWorkspace({
 
           <StageSection
             stage="S06"
-            title="RFQ preparation and dispatch"
+            title="AI RFQ preparation and dispatch"
             status={data.rfq_batches[0]?.status || "pending"}
-            description="Build a project RFQ, choose invited suppliers, set a due date and record dispatch."
+            description="Generate a bilingual supplier RFQ from verified Supabase order data, review it, retain every version and dispatch it after Cho approval."
             wide
-            actions={<button onClick={() => setActiveForm(activeForm === "rfq" ? "" : "rfq")}>New RFQ</button>}
           >
-            {activeForm === "rfq" && (
-              <form className="admin-ops-form" onSubmit={(event) => submitRfq(event, "draft")}>
-                <Field label="RFQ title">
-                  <input
-                    required
-                    value={rfqForm.title}
-                    onChange={(e) => setRfqForm({ ...rfqForm, title: e.target.value })}
-                  />
-                </Field>
-                <Field label="Quote due">
-                  <input
-                    type="datetime-local"
-                    required
-                    value={rfqForm.due_at}
-                    onChange={(e) => setRfqForm({ ...rfqForm, due_at: e.target.value })}
-                  />
-                </Field>
-                <Field label="Currency">
-                  <select
-                    value={rfqForm.currency}
-                    onChange={(e) => setRfqForm({ ...rfqForm, currency: e.target.value })}
-                  >
-                    <option>USD</option>
-                    <option>CNY</option>
-                    <option>GBP</option>
-                    <option>EUR</option>
-                  </select>
-                </Field>
-                <Field label="Notes">
-                  <input value={rfqForm.notes} onChange={(e) => setRfqForm({ ...rfqForm, notes: e.target.value })} />
-                </Field>
-                <Field label="Invite suppliers" wide>
-                  <div className="admin-ops-checks">
-                    {suppliers.map((supplier) => (
-                      <label key={supplier.id}>
-                        <input
-                          type="checkbox"
-                          checked={rfqForm.supplier_ids.includes(supplier.id)}
-                          onChange={(e) =>
-                            setRfqForm({
-                              ...rfqForm,
-                              supplier_ids: e.target.checked
-                                ? [...rfqForm.supplier_ids, supplier.id]
-                                : rfqForm.supplier_ids.filter((id) => id !== supplier.id)
-                            })
-                          }
-                        />
-                        {supplier.name}
-                      </label>
-                    ))}
-                  </div>
-                </Field>
-                <div className="admin-ops-form-actions">
-                  <button disabled={loading}>Save draft</button>
-                  <button
-                    type="button"
-                    className="btn-premium"
-                    disabled={loading || !rfqForm.supplier_ids.length}
-                    onClick={(event) => submitRfq(event, "sent")}
-                  >
-                    Record dispatch
-                  </button>
-                </div>
-              </form>
-            )}
-            {data.rfq_batches.length ? (
-              <div className="admin-table-wrap">
-                <table className="admin-mini-table">
-                  <thead>
-                    <tr>
-                      <th>RFQ</th>
-                      <th>Title</th>
-                      <th>Suppliers</th>
-                      <th>Status</th>
-                      <th>Due</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.rfq_batches.map((rfq) => (
-                      <tr key={rfq.id}>
-                        <td>{rfq.rfq_code || rfq.id}</td>
-                        <td>{rfq.title || "-"}</td>
-                        <td>{rfq.supplier_count || rfq.supplier_ids?.length || 0}</td>
-                        <td>{rfq.status}</td>
-                        <td>{shortDate(rfq.due_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty>No RFQ batches recorded for this project.</Empty>
-            )}
+            <AiRfqWorkspace
+              lang={lang}
+              project={project}
+              supabaseClient={supabaseClient}
+              batches={data.rfq_batches}
+              projectFiles={data.project_files}
+              intakeFiles={data.intake_files}
+              intakeJobs={data.intake_jobs}
+              specifications={project?.specifications || []}
+              suppliers={suppliers}
+              onChanged={loadData}
+            />
           </StageSection>
 
           <StageSection
