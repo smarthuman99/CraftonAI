@@ -8764,7 +8764,15 @@ function App() {
                 display: "inline-block"
               }}
             />
-            <span>{dbConnected ? "Supabase Connected" : "Connect Supabase"}</span>
+            <span>
+              {dbConnected
+                ? lang === "Cn"
+                  ? "Supabase 已连接"
+                  : "Supabase Connected"
+                : lang === "Cn"
+                  ? "连接 Supabase"
+                  : "Connect Supabase"}
+            </span>
           </button>
 
           <button
@@ -8791,7 +8799,9 @@ function App() {
           {user ? (
             <div style={{ display: "flex", gap: "0.8rem", alignItems: "center" }}>
               <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                {lang === "Cn" ? `歡迎，${user.name}` : `Welcome, ${user.name}`}
+                {lang === "Cn"
+                  ? `歡迎，${String(user.name || "").replace(/\(Manager\)$/i, "(管理员)")}`
+                  : `Welcome, ${user.name}`}
               </span>
               <span
                 className={`nav-link ${currentView === "ClientPortal" ? "active" : ""}`}
