@@ -8,6 +8,8 @@ const ADMIN_ZH = {
   "Add tracking": "新增运输记录",
   "Add update": "新增进度",
   "Apply adjustment": "应用调整",
+  "Approve after BOM, bilingual spec, material, compliance, dimensions, tolerance, and thumbnail are checked.":
+    "确认 BOM、双语规格书、材质、合规要求、尺寸、公差和缩略图均已检查后再批准。",
   "Approve & release": "批准并放行",
   "Approve supplier": "批准供应商",
   "Approve checked BOM and specs": "批准已核对的 BOM 与规格",
@@ -16,6 +18,7 @@ const ADMIN_ZH = {
   Assembly: "组装",
   "At least one quote is required before Cho can approve a supplier.":
     "至少需要录入一份供应商报价，Cho 才能批准供应商。",
+  "Ask client to complete missing info": "要求客户补齐缺失资料",
   "Attached to intake": "已附加到订单接入资料",
   "Audit archive": "审计归档",
   "Available from intake/specifications": "来自订单接入与规格资料",
@@ -48,6 +51,8 @@ const ADMIN_ZH = {
   "Client identity, uploaded source material, order content, drawings, photos, and files in one place.":
     "集中查看客户身份、上传资料、订单内容、图纸、照片及附件。",
   "Client must complete these fields": "客户需要补齐以下资料",
+  "Client answers needed": "需要客户补充资料",
+  "Client submitted through portal intake form.": "客户通过专属控制台提交订单表单。",
   "Client notes": "客户备注",
   "Colour score": "颜色评分",
   "Complete project link": "完成项目关联",
@@ -193,11 +198,13 @@ const ADMIN_ZH = {
   "Quality / reliability": "质量 / 可靠性",
   "Quality score": "质量评分",
   "Quantity and financial adjustment recorded.": "数量及金额调整已记录。",
+  Qty: "数量",
   "Quote code": "报价编号",
   "Quote due": "报价截止日期",
   "Quote intake and normalized comparison": "供应商报价录入与标准化比较",
   "RFQ batch": "RFQ 批次",
   "RFQ draft saved.": "RFQ 草稿已保存。",
+  "RFQ draft ready": "RFQ 草稿已就绪",
   "RFQ preparation and dispatch": "RFQ 准备与发送",
   "RFQ sent and recorded.": "RFQ 已发送并记录。",
   "RFQ title": "RFQ 标题",
@@ -262,7 +269,9 @@ const ADMIN_ZH = {
   "Signed at": "签收时间",
   "Signed by": "签收人",
   "Specification gap review": "规格缺失检查",
+  "Specs approved": "规格已批准",
   "Split delivery and quantity audit": "分批交付与数量审计",
+  "Stage shortcuts": "阶段快捷入口",
   Status: "状态",
   "Status / location": "状态 / 位置",
   Submitted: "提交时间",
@@ -323,6 +332,11 @@ const ADMIN_ZH = {
   "Rank #": "排名 #",
   supplier_selection: "供应商选择",
   SUPPLIERS: "供应商",
+  intake_technical_review: "订单技术审核",
+  "Approved for RFQ preparation.": "已批准进入 RFQ 准备阶段。",
+  OK: "完整",
+  Need: "缺失",
+  "UK Crib 5 required": "要求符合英国 Crib 5",
   unsigned: "未签署",
   "· impact": "· 金额影响"
 };
@@ -411,11 +425,12 @@ export function adminText(value, lang) {
   if (match) return `${match[1]} 天`;
   match = text.match(/^(.+) approved as selected supplier\.$/);
   if (match) return `已批准 ${match[1]} 为中选供应商。`;
+  if (/ sourcing package$/i.test(text)) return text.replace(/ sourcing package$/i, " 询价包");
 
   return value;
 }
 
-const LOCALIZED_PROPS = ["title", "description", "status", "label", "placeholder", "aria-label", "alt"];
+const LOCALIZED_PROPS = ["title", "description", "status", "stage", "label", "placeholder", "aria-label", "alt"];
 
 function localizeNode(node, lang) {
   if (typeof node === "string") return adminText(node, lang);
@@ -434,6 +449,7 @@ function localizeNode(node, lang) {
   if (node.props.children !== undefined) {
     nextProps.children = React.Children.map(node.props.children, (child) => localizeNode(child, lang));
   }
+  if (node.props.actions !== undefined) nextProps.actions = localizeNode(node.props.actions, lang);
 
   return React.cloneElement(node, nextProps);
 }

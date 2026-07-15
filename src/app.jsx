@@ -5729,7 +5729,7 @@ function App() {
   // =====================================================================
   const renderStatusPill = (status) => {
     const meta = REVIEW_STATUS_META[status] || REVIEW_STATUS_META.pending;
-    return <span className={`review-status-pill status-${meta.tone}`}>{meta.label}</span>;
+    return <span className={`review-status-pill status-${meta.tone}`}>{adminText(meta.label, lang)}</span>;
   };
 
   const renderAiConciergePanel = ({ embedded = false } = {}) => {
@@ -6322,7 +6322,9 @@ function App() {
                 <p>Choose a customer first, then open the relevant project for review.</p>
               </div>
               <span>
-                {clientGroups.length} customers / {jobs.length} intake records
+                {lang === "Cn"
+                  ? `${clientGroups.length} 个客户 / ${jobs.length} 条订单接入记录`
+                  : `${clientGroups.length} customers / ${jobs.length} intake records`}
               </span>
             </div>
 
@@ -6351,8 +6353,9 @@ function App() {
                       <span className="intake-client-toggle-copy">
                         <strong>{clientGroup.clientName}</strong>
                         <small>
-                          {clientGroup.projects.length} project{clientGroup.projects.length === 1 ? "" : "s"}
-                          {clientGroup.reviewCount ? ` / ${clientGroup.reviewCount} awaiting review` : ""}
+                          {lang === "Cn"
+                            ? `${clientGroup.projects.length} 个项目${clientGroup.reviewCount ? ` / ${clientGroup.reviewCount} 个待审核` : ""}`
+                            : `${clientGroup.projects.length} project${clientGroup.projects.length === 1 ? "" : "s"}${clientGroup.reviewCount ? ` / ${clientGroup.reviewCount} awaiting review` : ""}`}
                         </small>
                       </span>
                       <span className="intake-client-disclosure" aria-hidden="true">
@@ -6384,7 +6387,11 @@ function App() {
                                 </small>
                               </span>
                               <span className="intake-project-menu-meta">
-                                {submissionCount > 1 && <small>{submissionCount} submissions</small>}
+                                {submissionCount > 1 && (
+                                  <small>
+                                    {lang === "Cn" ? `${submissionCount} 次提交` : `${submissionCount} submissions`}
+                                  </small>
+                                )}
                                 {renderStatusPill(latestProjectJob.reviewStatus)}
                               </span>
                             </button>
@@ -6630,7 +6637,7 @@ function App() {
               {prequoteNotice && <div className="prequote-notice">{prequoteNotice}</div>}
               <textarea
                 className="admin-review-textarea"
-                value={reviewNote}
+                value={adminText(reviewNote, lang)}
                 onChange={(e) => setReviewNote(e.target.value)}
                 disabled={intakeApprovalSaving}
                 placeholder="Cho review note for drawing, BOM, material, dimensions, tolerance, and RFQ readiness..."
