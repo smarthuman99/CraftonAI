@@ -42,7 +42,19 @@ const server = http.createServer(async (req, res) => {
     let result;
 
     if (req.url === "/api/ai-support-chat") {
-      result = await createAiSupportReply({ messages: body.messages, context: body.context });
+      if (body.action === "generate_rfq") {
+        await requireAuthenticatedUser(req);
+        result = await createRfqDraft({ context: body.context });
+      } else if (body.action === "dispatch_rfq") {
+        await requireAuthenticatedUser(req);
+        result = await dispatchRfqEmails({
+          rfqCode: String(body.rfqCode || "RFQ"),
+          document: body.document || {},
+          suppliers: body.suppliers || []
+        });
+      } else {
+        result = await createAiSupportReply({ messages: body.messages, context: body.context });
+      }
     } else if (req.url === "/api/ai-rfq-generate") {
       await requireAuthenticatedUser(req);
       result = await createRfqDraft({ context: body.context });

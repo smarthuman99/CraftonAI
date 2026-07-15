@@ -120,16 +120,18 @@ jobs:
             set -eu
             archive="${{ secrets.VPS_TARGET_DIR }}/server-release.tar.gz"
             runtime="${{ secrets.VPS_TARGET_DIR }}/server-runtime"
-            old_pid="$(pgrep -f "[s]erver/ai-support-server.mjs" | head -n 1 || true)"
+            old_pid="$(pgrep -f "[a]i-support-server.mjs" | head -n 1 || true)"
             old_env=""
 
             if [ -n "$old_pid" ]; then
               old_cwd="$(readlink -f "/proc/$old_pid/cwd" 2>/dev/null || true)"
               if [ -r "$old_cwd/server/.env" ]; then
                 old_env="$old_cwd/server/.env"
-              fi
-              if [ -n "$old_cwd" ] && [ -w "$old_cwd" ]; then
-                runtime="$old_cwd"
+                if [ -w "$old_cwd" ]; then runtime="$old_cwd"; fi
+              elif [ -r "$old_cwd/.env" ] && [ "$(basename "$old_cwd")" = "server" ]; then
+                old_env="$old_cwd/.env"
+                old_root="$(dirname "$old_cwd")"
+                if [ -w "$old_root" ]; then runtime="$old_root"; fi
               fi
             fi
 
@@ -152,7 +154,7 @@ jobs:
               sleep 3
             fi
 
-            if ! pgrep -f "[s]erver/ai-support-server.mjs" >/dev/null; then
+            if ! pgrep -f "[a]i-support-server.mjs" >/dev/null; then
               mkdir -p server/logs
               nohup node --env-file-if-exists=server/.env server/ai-support-server.mjs > server/logs/ai-support-runtime.log 2>&1 < /dev/null &
               sleep 3

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const GENERATE_URL = import.meta.env.VITE_AI_RFQ_API_URL || "/api/ai-rfq-generate";
-const DISPATCH_URL = import.meta.env.VITE_RFQ_DISPATCH_API_URL || "/api/rfq-dispatch";
+const AI_API_URL = import.meta.env.VITE_AI_SUPPORT_API_URL || "/api/ai-support-chat";
 
 function futureInput(days = 7) {
   const date = new Date(Date.now() + days * 86400000);
@@ -155,7 +154,7 @@ export default function AiRfqWorkspace({
     setBusy("generate");
     setMessage("");
     try {
-      const result = await post(GENERATE_URL, { context: context() });
+      const result = await post(AI_API_URL, { action: "generate_rfq", context: context() });
       setDocument(result.document);
       setGeneration(result.generation);
       setActiveBatchId(null);
@@ -347,7 +346,8 @@ export default function AiRfqWorkspace({
     setMessage("");
     try {
       const batch = projectBatches.find((row) => row.id === activeBatchId) || { id: activeBatchId, rfq_code: "RFQ" };
-      const receipt = await post(DISPATCH_URL, {
+      const receipt = await post(AI_API_URL, {
+        action: "dispatch_rfq",
         rfqCode: batch.rfq_code,
         document,
         suppliers: selectedSuppliers.map((supplier) => ({
