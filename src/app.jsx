@@ -602,6 +602,7 @@ function App() {
   const [reviewDraft, setReviewDraft] = useState(null);
   const [reviewNote, setReviewNote] = useState("");
   const [prequoteNotice, setPrequoteNotice] = useState("");
+  const [intakeApprovalSaving, setIntakeApprovalSaving] = useState(false);
   const [intakeBomDraftGenerated, setIntakeBomDraftGenerated] = useState(false);
   const [intakeBomDraftMessage, setIntakeBomDraftMessage] = useState("");
   const [adminIntakePreview, setAdminIntakePreview] = useState({
@@ -4580,6 +4581,12 @@ function App() {
     const normalized = normalizeReviewJob(job);
     setReviewDraft(normalized);
     setReviewNote(normalized.reviewNotes || "");
+    setPrequoteNotice(
+      normalized.reviewStatus === "approved"
+        ? "Intake draft approved. Specs are ready for RFQ package preparation."
+        : ""
+    );
+    setIntakeApprovalSaving(false);
     setIntakeBomDraftGenerated(false);
     setIntakeBomDraftMessage("");
     setOrder(buildOrderFromReviewDraft(normalized));
@@ -4592,6 +4599,62 @@ function App() {
       const items = prev.items.map((item, itemIdx) => (itemIdx === idx ? { ...item, [field]: value } : item));
       return { ...prev, items };
     });
+  };
+
+  const ensureIntakeProject = async (job, draft, stage = 4) => {
+    if (!dbConnected) return job?.project_id || draft?.projectId || null;
+
+    const context = await getPortalSupabaseContext({ requireAuth: true });
+    if (!context?.client) throw new Error("A Supabase staff session is required to link this order to a project.");
+
+    const { client } = context;
+    const projectName = draft?.projectName || job?.project_name || `INTAKE-${String(job?.id || "").slice(0, 8)}`;
+    const ownerId = job?.user_id || job?.requested_by || null;
+    let projectId = job?.project_id || draft?.projectId || null;
+
+    if (!projectId) {
+      let lookup = client.from("projects").select("id,current_stage").eq("name", projectName);
+      lookup = ownerId ? lookup.eq("user_id", ownerId) : lookup.is("user_id", null);
+      const { data: existingProject, error: lookupError } = await lookup.maybeSingle();
+      if (lookupError) throw lookupError;
+
+      if (existingProject?.id) {
+        projectId = existingProject.id;
+      } else {
+        const { data: createdProject, error: createError } = await client
+          .from("projects")
+          .insert({
+            user_id: ownerId,
+            name: projectName,
+            client_name: draft?.clientName || "Portal Intake Client",
+            client_contact: draft?.destination || job?.destination || "",
+            current_stage: stage
+          })
+          .select("id")
+          .single();
+        if (createError) throw createError;
+        projectId = createdProject.id;
+      }
+
+      const { error: linkError } = await client.from("intake_jobs").update({ project_id: projectId }).eq("id", job.id);
+      if (linkError) throw linkError;
+    }
+
+    const { error: projectError } = await client
+      .from("projects")
+      .update({
+        current_stage: stage,
+        name: projectName,
+        client_name: draft?.clientName || "Portal Intake Client",
+        client_contact: draft?.destination || job?.destination || ""
+      })
+      .eq("id", projectId);
+    if (projectError) throw projectError;
+
+    updateLocalReviewJob(job.id, { project_id: projectId });
+    setReviewDraft((previous) => (previous ? { ...previous, projectId } : previous));
+    setOrder((previous) => ({ ...previous, id: projectId }));
+    return projectId;
   };
 
   const handleApproveIntakeReview = async () => {
@@ -4608,28 +4671,42 @@ function App() {
       reviewed_at: new Date().toISOString()
     };
 
+    setIntakeApprovalSaving(true);
+    setPrequoteNotice("Saving approval to Supabase...");
     try {
       const updated = await persistIntakeJobUpdate(job, updates);
-      if (dbConnected && updated.project_id) {
+      const projectId = await ensureIntakeProject(updated, reviewDraft, 4);
+      if (dbConnected && projectId) {
         const client = getSupabaseBrowserClient();
-        const { error: projectError } = await client
-          .from("projects")
-          .update({ current_stage: 4, name: reviewDraft.projectName, client_contact: reviewDraft.destination })
-          .eq("id", updated.project_id);
-        if (projectError) throw projectError;
+        const { data: authData } = await client.auth.getUser();
+        const { data: existingApproval, error: approvalLookupError } = await client
+          .from("approvals")
+          .select("id")
+          .eq("project_id", projectId)
+          .eq("stage_id", "S04")
+          .eq("approval_type", "intake_technical_review")
+          .contains("payload", { intake_job_id: updated.id })
+          .limit(1);
+        if (approvalLookupError) throw approvalLookupError;
 
-        const { error: approvalError } = await client.from("approvals").insert({
-          project_id: updated.project_id,
-          stage_id: "S04",
-          approval_type: "intake_technical_review",
-          status: "approved",
-          reviewer_name: "Cho",
-          notes: updates.review_notes,
-          reviewed_at: updates.reviewed_at,
-          payload: { intake_job_id: updated.id, bom_items: resultJson.items?.length || 0 }
-        });
-        if (approvalError) throw approvalError;
+        if (!existingApproval?.length) {
+          const { error: approvalError } = await client.from("approvals").insert({
+            project_id: projectId,
+            stage_id: "S04",
+            approval_type: "intake_technical_review",
+            status: "approved",
+            reviewer_id: authData?.user?.id || null,
+            reviewer_name: user?.name || "Cho",
+            notes: updates.review_notes,
+            reviewed_at: updates.reviewed_at,
+            payload: { intake_job_id: updated.id, bom_items: resultJson.items?.length || 0 }
+          });
+          if (approvalError) throw approvalError;
+        }
       }
+      setReviewDraft((previous) =>
+        previous ? { ...previous, projectId, reviewStatus: "approved", reviewNotes: updates.review_notes } : previous
+      );
       setPrequoteNotice("Intake draft approved. Specs are ready for RFQ package preparation.");
       setCurrentStageIndex(3);
       addLog("Cho", "Intake draft approved for RFQ preparation.", "Intake draft approved for RFQ preparation.");
@@ -4638,6 +4715,8 @@ function App() {
     } catch (err) {
       console.error("Approve intake review failed:", err);
       setPrequoteNotice(`Approval could not be saved to Supabase: ${err.message || err}`);
+    } finally {
+      setIntakeApprovalSaving(false);
     }
   };
 
@@ -4701,18 +4780,13 @@ function App() {
         rfq_draft_json: rfqDraft,
         rfq_created_at: rfqDraft.generated_at
       });
+      const projectId = await ensureIntakeProject(updated, reviewDraft, 6);
 
-      if (dbConnected && updated.project_id) {
+      if (dbConnected && projectId) {
         const client = getSupabaseBrowserClient();
-        const { error: projectError } = await client
-          .from("projects")
-          .update({ current_stage: 6 })
-          .eq("id", updated.project_id);
-        if (projectError) throw projectError;
-
         const rfqCode = `RFQ-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(updated.id).slice(0, 6).toUpperCase()}`;
         const rfqPayload = {
-          project_id: updated.project_id,
+          project_id: projectId,
           intake_job_id: updated.id,
           rfq_code: rfqCode,
           title: `${reviewDraft.projectName || "Project"} sourcing package`,
@@ -4736,7 +4810,7 @@ function App() {
         if (rfqError) throw rfqError;
 
         const { error: eventError } = await client.from("workflow_events").insert({
-          project_id: updated.project_id,
+          project_id: projectId,
           job_id: updated.id,
           stage_id: "S06",
           event_type: "rfq_drafted",
@@ -4754,6 +4828,7 @@ function App() {
       addLog("Cho", "RFQ draft package created.", "RFQ draft package created.");
       await loadPrequoteWorkspace();
       await loadAdminOperationalData();
+      setActiveAdminFlow("sourcing");
     } catch (err) {
       console.error("Create RFQ draft failed:", err);
       setPrequoteNotice(`RFQ draft could not be saved: ${err.message || err}`);
@@ -6134,6 +6209,8 @@ function App() {
     ].filter(Boolean);
     const missingQuestions = Array.from(new Set([...(draft?.questions || []), ...derivedMissingQuestions]));
     const hasMissingInfo = missingQuestions.length > 0;
+    const isIntakeApproved = ["approved", "rfq_ready"].includes(draft?.reviewStatus);
+    const liveRfqPackage = adminRfqBatches.find((batch) => batch.intake_job_id === selectedJob?.id);
 
     const completenessItems = [
       {
@@ -6209,7 +6286,17 @@ function App() {
             </p>
           </div>
           <div className="intake-command-status">
-            {renderAdminStatusPill(hasMissingInfo ? "reviewing" : bomRows.length ? "ready" : "pending")}
+            {renderAdminStatusPill(
+              liveRfqPackage
+                ? "rfq_ready"
+                : isIntakeApproved
+                  ? "approved"
+                  : hasMissingInfo
+                    ? "reviewing"
+                    : bomRows.length
+                      ? "ready"
+                      : "pending"
+            )}
             <span>{dbConnected ? "Supabase data" : "Local preview"}</span>
           </div>
         </section>
@@ -6518,11 +6605,22 @@ function App() {
               {approvalRows.length
                 ? renderAdminMiniTable(["Approval", "Status", "Reviewer", "Date"], approvalRows)
                 : null}
+              {isIntakeApproved && (
+                <div className="intake-approval-confirmation" role="status">
+                  <strong>BOM and specifications approved</strong>
+                  <span>
+                    {draft?.projectId
+                      ? "The order is linked to a live Supabase project and can proceed to RFQ preparation."
+                      : "The intake is approved. Complete the project link before creating the RFQ package."}
+                  </span>
+                </div>
+              )}
               {prequoteNotice && <div className="prequote-notice">{prequoteNotice}</div>}
               <textarea
                 className="admin-review-textarea"
                 value={reviewNote}
                 onChange={(e) => setReviewNote(e.target.value)}
+                disabled={intakeApprovalSaving}
                 placeholder="Cho review note for drawing, BOM, material, dimensions, tolerance, and RFQ readiness..."
               />
               <div className="intake-approval-actions">
@@ -6530,18 +6628,29 @@ function App() {
                   Request clarification
                 </button>
                 <button
-                  className="btn-premium"
+                  className={`btn-premium ${isIntakeApproved && draft?.projectId ? "approval-complete" : ""}`}
                   onClick={handleApproveIntakeReview}
-                  disabled={hasMissingInfo || !bomRows.length}
+                  disabled={
+                    hasMissingInfo ||
+                    !bomRows.length ||
+                    intakeApprovalSaving ||
+                    (isIntakeApproved && Boolean(draft?.projectId))
+                  }
                 >
-                  Approve checked BOM and specs
+                  {intakeApprovalSaving
+                    ? "Saving approval..."
+                    : isIntakeApproved && draft?.projectId
+                      ? "Approved"
+                      : isIntakeApproved
+                        ? "Complete project link"
+                        : "Approve checked BOM and specs"}
                 </button>
                 <button
                   className="btn-premium"
-                  onClick={handleCreateRfqDraft}
-                  disabled={hasMissingInfo || !bomRows.length}
+                  onClick={liveRfqPackage ? () => setActiveAdminFlow("sourcing") : handleCreateRfqDraft}
+                  disabled={hasMissingInfo || !bomRows.length || !isIntakeApproved || intakeApprovalSaving}
                 >
-                  Create RFQ package
+                  {liveRfqPackage ? "Open RFQ workspace" : "Create RFQ package"}
                 </button>
               </div>
             </section>
