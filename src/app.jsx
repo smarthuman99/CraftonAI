@@ -19,6 +19,7 @@ import ProjectDetailModal from "./components/ProjectDetailModal";
 import Footer from "./components/Footer";
 import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
 import AdminWorkflowWorkspace from "./components/AdminWorkflowWorkspace";
+import { AdminLocalized, adminText } from "./adminI18n";
 
 const IMAGES = {
   heroChair: "/hero_chair.jpg", // 侘寂奢華皮質單椅 (取代 image1)
@@ -6032,10 +6033,10 @@ function App() {
     if (
       ["passed", "ready", "selected", "sent", "recommended", "recalculated", "archived", "planned"].includes(status)
     ) {
-      return <span className="admin-card-status status-green">{status.replaceAll("_", " ")}</span>;
+      return <span className="admin-card-status status-green">{adminText(status.replaceAll("_", " "), lang)}</span>;
     }
     if (["blocked", "gate"].includes(status)) {
-      return <span className="admin-card-status status-red">{status.replaceAll("_", " ")}</span>;
+      return <span className="admin-card-status status-red">{adminText(status.replaceAll("_", " "), lang)}</span>;
     }
     if (
       [
@@ -6049,9 +6050,9 @@ function App() {
         "quoted"
       ].includes(status)
     ) {
-      return <span className="admin-card-status status-orange">{status.replaceAll("_", " ")}</span>;
+      return <span className="admin-card-status status-orange">{adminText(status.replaceAll("_", " "), lang)}</span>;
     }
-    return <span className="admin-card-status">{status.replaceAll("_", " ")}</span>;
+    return <span className="admin-card-status">{adminText(status.replaceAll("_", " "), lang)}</span>;
   };
 
   const formatAdminDate = (value) => {
@@ -6069,8 +6070,8 @@ function App() {
 
   const renderAdminEmptyState = (title, detail) => (
     <div className="admin-empty-state">
-      <strong>{title}</strong>
-      {detail && <span>{detail}</span>}
+      <strong>{adminText(title, lang)}</strong>
+      {detail && <span>{adminText(detail, lang)}</span>}
     </div>
   );
 
@@ -6092,7 +6093,7 @@ function App() {
 
   const renderAdminMetric = (label, value, tone = "") => (
     <div className={`admin-metric-card ${tone}`}>
-      <span>{label}</span>
+      <span>{adminText(label, lang)}</span>
       <strong>{value}</strong>
     </div>
   );
@@ -6103,8 +6104,8 @@ function App() {
         <div key={item.label} className={`admin-check-row ${item.state || "done"}`}>
           <span>{item.state === "blocked" ? "!" : item.state === "pending" ? "..." : "✓"}</span>
           <div>
-            <strong>{item.label}</strong>
-            {item.detail && <small>{item.detail}</small>}
+            <strong>{adminText(item.label, lang)}</strong>
+            {item.detail && <small>{adminText(item.detail, lang)}</small>}
           </div>
         </div>
       ))}
@@ -6117,7 +6118,7 @@ function App() {
         <thead>
           <tr>
             {headers.map((header) => (
-              <th key={header}>{header}</th>
+              <th key={header}>{adminText(header, lang)}</th>
             ))}
           </tr>
         </thead>
@@ -6139,8 +6140,8 @@ function App() {
       <div className="admin-panel-topline">
         <div>
           <div className="admin-panel-kicker">{stageId}</div>
-          <h4>{title}</h4>
-          {subtitle && <p>{subtitle}</p>}
+          <h4>{adminText(title, lang)}</h4>
+          {subtitle && <p>{adminText(subtitle, lang)}</p>}
         </div>
         {renderAdminStatusPill(status)}
       </div>
@@ -7066,6 +7067,7 @@ function App() {
       sourcing: () => (
         <AdminWorkflowWorkspace
           flow="sourcing"
+          lang={lang}
           project={activeAdminProject}
           supabaseClient={getSupabaseBrowserClient()}
           dbConnected={dbConnected}
@@ -7078,6 +7080,7 @@ function App() {
       production: () => (
         <AdminWorkflowWorkspace
           flow="production"
+          lang={lang}
           project={activeAdminProject}
           supabaseClient={getSupabaseBrowserClient()}
           dbConnected={dbConnected}
@@ -7087,6 +7090,7 @@ function App() {
       shipping: () => (
         <AdminWorkflowWorkspace
           flow="shipping"
+          lang={lang}
           project={activeAdminProject}
           supabaseClient={getSupabaseBrowserClient()}
           dbConnected={dbConnected}
@@ -7119,32 +7123,34 @@ function App() {
     const renderFlowWorkspace = flowWorkspaces[activeAdminFlow] || renderIntakeFlowWorkspace;
 
     return (
-      <div className="admin-status-board">
-        <div className="admin-board-heading">
-          <div>
-            <span className="logo-badge">{lang === "Cn" ? "运营工作区" : "Operations Workspace"}</span>
-            <h3>{flowTitle}</h3>
-            <p>{flowDesc}</p>
+      <AdminLocalized lang={lang}>
+        <div className="admin-status-board">
+          <div className="admin-board-heading">
+            <div>
+              <span className="logo-badge">{lang === "Cn" ? "运营工作区" : "Operations Workspace"}</span>
+              <h3>{flowTitle}</h3>
+              <p>{flowDesc}</p>
+            </div>
+            <div className="admin-stage-chip-row" aria-label="Stage shortcuts">
+              {flowStageIndexes.map((stageIndex) => {
+                const stage = stages[stageIndex];
+                return (
+                  <button
+                    key={stage.id}
+                    type="button"
+                    className={`admin-stage-chip ${currentStage.id === stage.id ? "active" : ""}`}
+                    onClick={() => handleStageChange(stageIndex)}
+                  >
+                    {stage.id}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="admin-stage-chip-row" aria-label="Stage shortcuts">
-            {flowStageIndexes.map((stageIndex) => {
-              const stage = stages[stageIndex];
-              return (
-                <button
-                  key={stage.id}
-                  type="button"
-                  className={`admin-stage-chip ${currentStage.id === stage.id ? "active" : ""}`}
-                  onClick={() => handleStageChange(stageIndex)}
-                >
-                  {stage.id}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
-        {renderFlowWorkspace()}
-      </div>
+          {renderFlowWorkspace()}
+        </div>
+      </AdminLocalized>
     );
   };
 

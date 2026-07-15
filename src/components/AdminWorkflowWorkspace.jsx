@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminLocalized, adminText } from "../adminI18n";
 
 const PROJECT_TABLES = [
   "rfq_batches",
@@ -86,6 +87,7 @@ function Empty({ children }) {
 
 export default function AdminWorkflowWorkspace({
   flow,
+  lang = "En",
   project,
   supabaseClient,
   dbConnected,
@@ -93,6 +95,7 @@ export default function AdminWorkflowWorkspace({
   onProjectChanged
 }) {
   const projectId = project?.id || null;
+  const localize = (content) => <AdminLocalized lang={lang}>{content}</AdminLocalized>;
   const [data, setData] = useState(EMPTY_DATA);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -238,7 +241,7 @@ export default function AdminWorkflowWorkspace({
   }, [loadData]);
 
   const insert = async (table, payload) => {
-    if (!supabaseClient || !projectId) throw new Error("Select a live Supabase project first.");
+    if (!supabaseClient || !projectId) throw new Error(adminText("Select a live Supabase project first.", lang));
     const { data: result, error } = await supabaseClient.from(table).insert(payload).select().single();
     if (error) throw error;
     return result;
@@ -268,16 +271,16 @@ export default function AdminWorkflowWorkspace({
   const runAction = async (successMessage, action) => {
     try {
       if (authStatus !== "authenticated") {
-        throw new Error("Sign in with a Supabase staff account before saving operational data.");
+        throw new Error(adminText("Sign in with a Supabase staff account before saving operational data.", lang));
       }
       setLoading(true);
       setMessage("");
       await action();
-      setMessage(successMessage);
+      setMessage(adminText(successMessage, lang));
       setActiveForm("");
       await loadData();
     } catch (error) {
-      setMessage(error.message || String(error));
+      setMessage(adminText(error.message || String(error), lang));
       setLoading(false);
     }
   };
@@ -580,13 +583,13 @@ export default function AdminWorkflowWorkspace({
   }, [data.supplier_quotes, suppliers]);
 
   if (!dbConnected)
-    return (
+    return localize(
       <Notice tone="error">
         Supabase is not connected. Configure the live database before testing this workspace.
       </Notice>
     );
   if (!projectId)
-    return (
+    return localize(
       <Notice tone="error">
         Select a customer project with a real Supabase project ID before entering operational data.
       </Notice>
@@ -624,7 +627,7 @@ export default function AdminWorkflowWorkspace({
   );
 
   if (flow === "sourcing") {
-    return (
+    return localize(
       <div className="admin-ops-workspace">
         {toolbar}
         {statusBanner}
@@ -1087,7 +1090,7 @@ export default function AdminWorkflowWorkspace({
 
   if (flow === "production") {
     const riskUpdates = data.production_updates.filter((row) => row.risk_level && row.risk_level !== "low");
-    return (
+    return localize(
       <div className="admin-ops-workspace">
         {toolbar}
         {statusBanner}
@@ -1353,7 +1356,7 @@ export default function AdminWorkflowWorkspace({
     );
   }
 
-  return (
+  return localize(
     <div className="admin-ops-workspace">
       {toolbar}
       {statusBanner}
