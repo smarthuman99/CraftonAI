@@ -122,6 +122,13 @@ jobs:
             archive="${{ secrets.VPS_TARGET_DIR }}/server-release.tar.gz"
             runtime="${{ secrets.VPS_TARGET_DIR }}/server-runtime"
             old_env=""
+            port_pid=""
+
+            if command -v fuser >/dev/null 2>&1; then
+              port_pid="$(fuser 8787/tcp 2>/dev/null | tr " " "\n" | grep -E "^[0-9]+$" | head -n 1 || true)"
+            elif command -v lsof >/dev/null 2>&1; then
+              port_pid="$(lsof -t -iTCP:8787 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+            fi
 
             existing_server="$(
               for base in /var/www /home /usr/share/nginx/html /www /srv /opt /root; do
@@ -141,6 +148,20 @@ jobs:
               old_env="$existing_server/server/.env"
             fi
 
+            if [ -n "$port_pid" ]; then
+              live_cwd="$(readlink -f "/proc/$port_pid/cwd" 2>/dev/null || true)"
+              if [ -r "$live_cwd/server/.env" ] && [ -w "$live_cwd" ]; then
+                runtime="$live_cwd"
+                old_env="$live_cwd/server/.env"
+              elif [ -r "$live_cwd/.env" ] && [ "$(basename "$live_cwd")" = "server" ]; then
+                live_root="$(dirname "$live_cwd")"
+                if [ -w "$live_root" ]; then
+                  runtime="$live_root"
+                  old_env="$live_cwd/.env"
+                fi
+              fi
+            fi
+
             mkdir -p "$runtime"
             tar -xzf "$archive" -C "$runtime"
             rm -f "$archive"
@@ -155,12 +176,6 @@ jobs:
               exit 1
             fi
 
-            port_pid=""
-            if command -v fuser >/dev/null 2>&1; then
-              port_pid="$(fuser 8787/tcp 2>/dev/null | tr " " "\n" | grep -E "^[0-9]+$" | head -n 1 || true)"
-            elif command -v lsof >/dev/null 2>&1; then
-              port_pid="$(lsof -t -iTCP:8787 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
-            fi
             if [ -n "$port_pid" ]; then kill "$port_pid" 2>/dev/null || true; sleep 3; fi
 
             if ! curl --fail --silent http://127.0.0.1:8787/health >/dev/null 2>&1; then
