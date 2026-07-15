@@ -360,7 +360,7 @@ export default function AiRfqWorkspace({
       setMessage(t("Approve and save this RFQ before dispatch.", "请先保存并批准这份 RFQ，再发送给供应商。"));
       return;
     }
-    const withoutEmail = selectedSuppliers.filter((supplier) => !supplier.contact_email);
+    const withoutEmail = selectedSuppliers.filter((supplier) => !(supplier.contact_email || supplier.email));
     if (!selectedSuppliers.length || withoutEmail.length) {
       setMessage(
         withoutEmail.length
@@ -385,7 +385,7 @@ export default function AiRfqWorkspace({
         suppliers: selectedSuppliers.map((supplier) => ({
           id: supplier.id,
           name: supplier.name,
-          email: supplier.contact_email
+          email: supplier.contact_email || supplier.email
         }))
       });
       const { error } = await supabaseClient
@@ -538,7 +538,7 @@ export default function AiRfqWorkspace({
                   }
                 />
                 <span>{supplier.name}</span>
-                <small>{supplier.contact_email || t("Email missing", "缺少邮箱")}</small>
+                <small>{supplier.contact_email || supplier.email || t("Email missing", "缺少邮箱")}</small>
               </label>
             ))}
           </div>

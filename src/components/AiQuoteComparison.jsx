@@ -4,6 +4,13 @@ import { callWorkflowAi, sha256Payload } from "./workflowAiClient";
 const money = (value, currency = "USD") =>
   new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(value || 0));
 
+const displayedRisks = (quote, zh) => {
+  if (zh && quote.risksCn?.length) return quote.risksCn;
+  if (zh && quote.aiSummaryCn) return [quote.aiSummaryCn];
+  if (!zh && quote.risksEn?.length) return quote.risksEn;
+  return quote.risks || [];
+};
+
 export default function AiQuoteComparison({
   lang,
   project,
@@ -229,8 +236,8 @@ export default function AiQuoteComparison({
                       </small>
                     </td>
                     <td>
-                      {quote.risks.length ? (
-                        quote.risks.map((risk) => (
+                      {displayedRisks(quote, zh).length ? (
+                        displayedRisks(quote, zh).map((risk) => (
                           <small key={risk} className="ai-risk-line">
                             {risk}
                           </small>
