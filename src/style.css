@@ -1572,6 +1572,15 @@ button.admin-order-card:hover {
   word-break: break-word;
 }
 
+.ai-rfq-lower-grid li img {
+  width: 100%;
+  max-width: 240px;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  border: 1px solid var(--glass-border);
+  background: #f6f5f2;
+}
+
 .ai-rfq-warnings li {
   display: grid;
   grid-template-columns: 62px minmax(0, 1fr);

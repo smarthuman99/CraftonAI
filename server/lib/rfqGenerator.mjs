@@ -120,9 +120,13 @@ export function buildDeterministicRfq(sourceInput = {}) {
   const projectName = source.project.projectName || source.project.orderId || "Crafton furniture project";
   const missing = [];
   const attachments = source.files.map((file) => ({
+    id: file.id,
     name: file.name,
     type: file.mimeType || file.group || "project reference",
-    note: file.note || "Supplier must review this reference with the RFQ."
+    note: file.note || "Supplier must review this reference with the RFQ.",
+    bucket: file.bucket,
+    path: file.path,
+    url: file.url
   }));
 
   const items = source.items.map((item, index) => {
@@ -260,10 +264,13 @@ function normalizeItem(item = {}, index, files) {
 
 function normalizeFile(file = {}) {
   return {
+    id: clean(file.id, 100),
     name: clean(file.name || file.file_name || file.original_name, 240),
     mimeType: clean(file.mimeType || file.mime_type, 120),
     group: clean(file.group || file.file_group || file.intake_type, 120),
     note: clean(file.note || file.notes, 400),
+    bucket: clean(file.bucket || file.storage_bucket, 160),
+    path: clean(file.path || file.storage_path || file.file_path, 1000),
     url: clean(file.url || file.file_url, 1000)
   };
 }

@@ -7,16 +7,28 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-export async function dispatchRfqEmails({ rfqCode, document, suppliers = [] }) {
+export async function dispatchRfqEmails({
+  rfqCode,
+  document,
+  suppliers = [],
+  attachments = [],
+  omittedAttachments = []
+}) {
   if (!process.env.RESEND_API_KEY) {
-    const error = new Error("Supplier email service is not configured. Set RESEND_API_KEY and RFQ_FROM_EMAIL on the VPS.");
+    const error = new Error(
+      "Supplier email service is not configured. Set RESEND_API_KEY and RFQ_FROM_EMAIL on the VPS."
+    );
     error.statusCode = 503;
     throw error;
   }
 
   const recipients = suppliers
     .slice(0, 20)
-    .map((supplier) => ({ id: supplier.id, name: String(supplier.name || "Supplier"), email: String(supplier.email || "").trim() }))
+    .map((supplier) => ({
+      id: supplier.id,
+      name: String(supplier.name || "Supplier"),
+      email: String(supplier.email || "").trim()
+    }))
     .filter((supplier) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplier.email));
   if (!recipients.length) {
     const error = new Error("None of the selected suppliers has a valid email address.");
@@ -37,7 +49,8 @@ export async function dispatchRfqEmails({ rfqCode, document, suppliers = [] }) {
         to: [supplier.email],
         reply_to: process.env.RFQ_REPLY_TO || undefined,
         subject: `[${rfqCode}] ${document.email?.subjectEn || document.titleEn || "Request for Quotation"}`,
-        html: renderRfqEmail({ rfqCode, document, supplier })
+        html: renderRfqEmail({ rfqCode, document, supplier }),
+        attachments
       })
     });
     const payload = await response.json().catch(() => ({}));
@@ -49,7 +62,12 @@ export async function dispatchRfqEmails({ rfqCode, document, suppliers = [] }) {
     results.push({ supplierId: supplier.id, email: supplier.email, providerMessageId: payload.id, status: "sent" });
   }
 
-  return { sentAt: new Date().toISOString(), recipients: results };
+  return {
+    sentAt: new Date().toISOString(),
+    recipients: results,
+    attachmentCount: attachments.length,
+    omittedAttachments
+  };
 }
 
 export function renderRfqEmail({ rfqCode, document, supplier }) {
@@ -67,9 +85,14 @@ export function renderRfqEmail({ rfqCode, document, supplier }) {
     )
     .join("");
   const commercial = (document.commercialRequirements || [])
-    .map((row) => `<li><strong>${escapeHtml(row.labelCn)} / ${escapeHtml(row.labelEn)}:</strong> ${escapeHtml(row.value)}</li>`)
+    .map(
+      (row) =>
+        `<li><strong>${escapeHtml(row.labelCn)} / ${escapeHtml(row.labelEn)}:</strong> ${escapeHtml(row.value)}</li>`
+    )
     .join("");
-  const attachments = (document.attachments || []).map((file) => `<li>${escapeHtml(file.name)} - ${escapeHtml(file.note)}</li>`).join("");
+  const attachments = (document.attachments || [])
+    .map((file) => `<li>${escapeHtml(file.name)} - ${escapeHtml(file.note)}</li>`)
+    .join("");
 
   return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#2f2925;line-height:1.5">
     <div style="max-width:1100px;margin:auto">

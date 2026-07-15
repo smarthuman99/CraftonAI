@@ -41,20 +41,21 @@ export default function AiRfqWorkspace({
   const [status, setStatus] = useState("draft");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  const [attachmentUrls, setAttachmentUrls] = useState({});
   const [form, setForm] = useState({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: [] });
   const projectBatches = useMemo(() => batches.filter((row) => row.project_id === project.id), [batches, project.id]);
   const currentProjectFiles = useMemo(
     () => projectFiles.filter((row) => row.project_id === project.id),
     [projectFiles, project.id]
   );
-  const currentIntakeFiles = useMemo(
-    () => intakeFiles.filter((row) => row.project_id === project.id),
-    [intakeFiles, project.id]
-  );
   const currentIntakeJobs = useMemo(
     () => intakeJobs.filter((row) => row.project_id === project.id),
     [intakeJobs, project.id]
   );
+  const currentIntakeFiles = useMemo(() => {
+    const linkedFileIds = new Set(currentIntakeJobs.map((row) => row.intake_file_id).filter(Boolean));
+    return intakeFiles.filter((row) => row.project_id === project.id || linkedFileIds.has(row.id));
+  }, [intakeFiles, currentIntakeJobs, project.id]);
   const currentSpecifications = useMemo(
     () => specifications.filter((row) => row.project_id === project.id),
     [specifications, project.id]
@@ -68,6 +69,7 @@ export default function AiRfqWorkspace({
         mimeType: file.mime_type,
         group: file.intake_type,
         note: file.notes,
+        bucket: file.storage_bucket,
         path: file.storage_path
       })),
       ...currentProjectFiles
@@ -79,6 +81,7 @@ export default function AiRfqWorkspace({
           group: file.file_group,
           note: file.payload?.note,
           url: file.file_url,
+          bucket: file.payload?.storage_bucket,
           path: file.file_path
         }))
     ];
@@ -106,8 +109,36 @@ export default function AiRfqWorkspace({
     setActiveBatchId(null);
     setStatus("draft");
     setMessage("");
+    setAttachmentUrls({});
     setForm({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: [] });
   }, [project.id]);
+
+  useEffect(() => {
+    let active = true;
+    const attachments = document?.attachments || [];
+    if (!attachments.length) {
+      setAttachmentUrls({});
+      return () => {
+        active = false;
+      };
+    }
+
+    Promise.all(
+      attachments.map(async (file) => {
+        const key = file.id || file.name;
+        if (file.url) return [key, file.url];
+        if (!file.bucket || !file.path) return [key, ""];
+        const { data } = await supabaseClient.storage.from(file.bucket).createSignedUrl(file.path, 60 * 60);
+        return [key, data?.signedUrl || ""];
+      })
+    ).then((entries) => {
+      if (active) setAttachmentUrls(Object.fromEntries(entries));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [document?.attachments, supabaseClient]);
 
   async function token() {
     const { data, error } = await supabaseClient.auth.getSession();
@@ -348,6 +379,7 @@ export default function AiRfqWorkspace({
       const batch = projectBatches.find((row) => row.id === activeBatchId) || { id: activeBatchId, rfq_code: "RFQ" };
       const receipt = await post(AI_API_URL, {
         action: "dispatch_rfq",
+        projectId: project.id,
         rfqCode: batch.rfq_code,
         document,
         suppliers: selectedSuppliers.map((supplier) => ({
@@ -693,6 +725,10 @@ export default function AiRfqWorkspace({
                 <ul>
                   {document.attachments.map((file, index) => (
                     <li key={`${file.name}-${index}`}>
+                      {attachmentUrls[file.id || file.name] &&
+                        (file.type?.startsWith("image/") || /\.(png|jpe?g|webp|avif|heic)$/i.test(file.name)) && (
+                          <img src={attachmentUrls[file.id || file.name]} alt={file.name} />
+                        )}
                       <strong>{file.name}</strong>
                       <span>
                         {file.type} · {file.note}

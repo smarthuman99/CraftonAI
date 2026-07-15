@@ -19,12 +19,23 @@ test("RFQ generation preserves verified production data and source files", () =>
         materialEn: "Solid wood and fabric"
       }
     ],
-    files: [{ original_name: "chair-reference.jpg", mime_type: "image/jpeg" }]
+    files: [
+      {
+        id: "source-file-1",
+        original_name: "chair-reference.jpg",
+        mime_type: "image/jpeg",
+        storage_bucket: "intake-files",
+        storage_path: "client/chair-reference.jpg"
+      }
+    ]
   });
 
   assert.equal(document.items[0].quantity, 15);
   assert.equal(document.items[0].dimensions, "L 500 x W 550 x H 900 mm");
   assert.equal(document.attachments[0].name, "chair-reference.jpg");
+  assert.equal(document.attachments[0].id, "source-file-1");
+  assert.equal(document.attachments[0].bucket, "intake-files");
+  assert.equal(document.attachments[0].path, "client/chair-reference.jpg");
   assert.equal(document.missingInformation.length, 0);
 });
 

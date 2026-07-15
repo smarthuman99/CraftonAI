@@ -6,6 +6,7 @@ import { createAiSupportReply } from "./lib/aiSupportAgent.mjs";
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { createRfqDraft } from "./lib/rfqGenerator.mjs";
 import { dispatchRfqEmails } from "./lib/rfqDispatch.mjs";
+import { buildEmailAttachmentsFromSupabase, enrichRfqContextFromSupabase } from "./lib/rfqSourceData.mjs";
 
 const port = Number(process.env.AI_SUPPORT_PORT || 8787);
 const logDir = path.resolve("server", "logs");
@@ -43,27 +44,43 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url === "/api/ai-support-chat") {
       if (body.action === "generate_rfq") {
-        await requireAuthenticatedUser(req);
-        result = await createRfqDraft({ context: body.context });
+        const { supabase } = await requireAuthenticatedUser(req);
+        const context = await enrichRfqContextFromSupabase({ supabase, context: body.context });
+        result = await createRfqDraft({ context });
       } else if (body.action === "dispatch_rfq") {
-        await requireAuthenticatedUser(req);
+        const { supabase } = await requireAuthenticatedUser(req);
+        const sourceAttachments = await buildEmailAttachmentsFromSupabase({
+          supabase,
+          projectId: body.projectId,
+          document: body.document
+        });
         result = await dispatchRfqEmails({
           rfqCode: String(body.rfqCode || "RFQ"),
           document: body.document || {},
-          suppliers: body.suppliers || []
+          suppliers: body.suppliers || [],
+          attachments: sourceAttachments.attachments,
+          omittedAttachments: sourceAttachments.omitted
         });
       } else {
         result = await createAiSupportReply({ messages: body.messages, context: body.context });
       }
     } else if (req.url === "/api/ai-rfq-generate") {
-      await requireAuthenticatedUser(req);
-      result = await createRfqDraft({ context: body.context });
+      const { supabase } = await requireAuthenticatedUser(req);
+      const context = await enrichRfqContextFromSupabase({ supabase, context: body.context });
+      result = await createRfqDraft({ context });
     } else if (req.url === "/api/rfq-dispatch") {
-      await requireAuthenticatedUser(req);
+      const { supabase } = await requireAuthenticatedUser(req);
+      const sourceAttachments = await buildEmailAttachmentsFromSupabase({
+        supabase,
+        projectId: body.projectId,
+        document: body.document
+      });
       result = await dispatchRfqEmails({
         rfqCode: String(body.rfqCode || "RFQ"),
         document: body.document || {},
-        suppliers: body.suppliers || []
+        suppliers: body.suppliers || [],
+        attachments: sourceAttachments.attachments,
+        omittedAttachments: sourceAttachments.omitted
       });
     } else {
       sendJson(res, 404, { error: "Not found" });
@@ -120,7 +137,9 @@ function readJsonBody(req) {
 }
 
 async function requireAuthenticatedUser(req) {
-  const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+  const token = String(req.headers.authorization || "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
   if (!token) {
     const error = new Error("A Supabase staff login is required.");
     error.statusCode = 401;
@@ -134,7 +153,7 @@ async function requireAuthenticatedUser(req) {
     error.statusCode = 401;
     throw error;
   }
-  return data.user;
+  return { user: data.user, supabase };
 }
 
 function logSupportError(requestId, err) {
