@@ -129,10 +129,19 @@ jobs:
                 lsof -t -iTCP:8787 -sTCP:LISTEN 2>/dev/null | head -n 1 || true
               elif command -v fuser >/dev/null 2>&1; then
                 fuser 8787/tcp 2>/dev/null | tr " " "\n" | grep -E "^[0-9]+$" | head -n 1 || true
+              elif command -v ss >/dev/null 2>&1; then
+                ss -ltnp "sport = :8787" 2>/dev/null | sed -n "s/.*pid=\([0-9][0-9]*\).*/\1/p" | head -n 1 || true
               fi
             }
 
             port_pid="$(listener_pid)"
+            if [ -z "$port_pid" ]; then
+              port_pid="$(ps -eo pid=,args= | awk "/[a]i-support-server[.]mjs/ { print \$1; exit }" || true)"
+            fi
+
+            echo "Available process tools: lsof=$(command -v lsof || true) fuser=$(command -v fuser || true) ss=$(command -v ss || true)"
+            echo "Crafton AI process candidates:"
+            ps -eo pid=,ppid=,user=,args= | awk "/[a]i-support-server[.]mjs/ { print }" || true
 
             if [ -n "$port_pid" ]; then
               live_cwd="$(readlink -f "/proc/$port_pid/cwd" 2>/dev/null || true)"
