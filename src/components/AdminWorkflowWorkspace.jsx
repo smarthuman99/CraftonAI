@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminLocalized, adminText } from "../adminI18n";
 import AiRfqWorkspace from "./AiRfqWorkspace";
+import AiQuoteComparison from "./AiQuoteComparison";
+import AiOperationsAutomation from "./AiOperationsAutomation";
 
 const PROJECT_TABLES = [
   "rfq_batches",
@@ -42,14 +44,20 @@ const calculateQuoteScores = (quotes) => {
     .map((quote) => {
       const unitPrice = Number(quote.unit_price || 0);
       const lead = Number(quote.lead_time_days || 999);
-      const quality = Number(quote.quality_score || 0);
+      const quality = Number(quote.quality_score || (quote.suppliers?.rating ? quote.suppliers.rating * 20 : 0));
       const reliability = Number(quote.reliability_score || quote.suppliers?.reliability_score || 0);
       const priceScore = unitPrice > 0 && Number.isFinite(cheapest) ? (cheapest / unitPrice) * 40 : 0;
       const leadScore = lead > 0 && fastest < 999 ? (fastest / lead) * 20 : 0;
       const score = priceScore + leadScore + Math.min(quality, 100) * 0.25 + Math.min(reliability, 100) * 0.15;
-      return { ...quote, comparisonScore: Math.round(score * 10) / 10 };
+      const aiScore = Number(quote.payload?.ai_analysis?.totalScore);
+      const aiRank = Number(quote.payload?.ai_analysis?.rank);
+      return {
+        ...quote,
+        comparisonScore: Number.isFinite(aiScore) && aiScore > 0 ? aiScore : Math.round(score * 10) / 10,
+        aiRank: Number.isFinite(aiRank) && aiRank > 0 ? aiRank : null
+      };
     })
-    .sort((a, b) => b.comparisonScore - a.comparisonScore);
+    .sort((a, b) => (a.aiRank && b.aiRank ? a.aiRank - b.aiRank : b.comparisonScore - a.comparisonScore));
 };
 
 function Notice({ tone = "", children }) {
@@ -291,11 +299,18 @@ export default function AdminWorkflowWorkspace({
     event.preventDefault();
     runAction("Supplier saved to Supabase.", async () => {
       const payload = {
-        ...supplierForm,
+        name: supplierForm.name,
+        code: supplierForm.code || null,
+        categories: valueList(supplierForm.category),
+        contact_person: supplierForm.contact_name,
+        email: supplierForm.contact_email,
+        phone: supplierForm.phone,
+        address: [supplierForm.country, supplierForm.city].filter(Boolean).join(" / "),
         capabilities: valueList(supplierForm.capabilities),
-        quality_score: Number(supplierForm.quality_score || 0),
+        rating: Number(supplierForm.quality_score || 0) / 20,
         reliability_score: Number(supplierForm.reliability_score || 0),
-        status: "active"
+        notes: supplierForm.notes,
+        is_active: true
       };
       const { error } = await supabaseClient.from("suppliers").insert(payload);
       if (error) throw error;
@@ -736,11 +751,11 @@ export default function AdminWorkflowWorkspace({
                         </td>
                         <td>{(supplier.capabilities || []).join(", ") || "-"}</td>
                         <td>
-                          {supplier.contact_name || "-"}
+                          {supplier.contact_person || "-"}
                           <br />
-                          <small>{supplier.contact_email || supplier.phone}</small>
+                          <small>{supplier.email || supplier.phone}</small>
                         </td>
-                        <td>{supplier.quality_score || "-"}</td>
+                        <td>{supplier.rating ? Math.round(Number(supplier.rating) * 20) : "-"}</td>
                         <td>{supplier.reliability_score || "-"}</td>
                       </tr>
                     ))}
@@ -806,7 +821,7 @@ export default function AdminWorkflowWorkspace({
                       setQuoteForm({
                         ...quoteForm,
                         supplier_id: e.target.value,
-                        quality_score: supplier?.quality_score || quoteForm.quality_score,
+                        quality_score: supplier?.rating ? Number(supplier.rating) * 20 : quoteForm.quality_score,
                         reliability_score: supplier?.reliability_score || quoteForm.reliability_score
                       });
                     }}
@@ -904,55 +919,15 @@ export default function AdminWorkflowWorkspace({
                 </div>
               </form>
             )}
-            {scoredQuotes.length ? (
-              <div className="admin-table-wrap">
-                <table className="admin-mini-table">
-                  <thead>
-                    <tr>
-                      <th>Rank</th>
-                      <th>Supplier</th>
-                      <th>Unit / total</th>
-                      <th>Lead / MOQ</th>
-                      <th>Quality / reliability</th>
-                      <th>Score</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scoredQuotes.map((quote, index) => (
-                      <tr key={quote.id}>
-                        <td>#{index + 1}</td>
-                        <td>
-                          <strong>{quote.supplier_name || quote.suppliers?.name}</strong>
-                          <br />
-                          <small>{quote.payment_terms}</small>
-                        </td>
-                        <td>
-                          {money(quote.unit_price, quote.currency)}
-                          <br />
-                          <small>{money(quote.total_amount, quote.currency)}</small>
-                        </td>
-                        <td>
-                          {quote.lead_time_days || "-"} days
-                          <br />
-                          <small>MOQ {quote.moq || "-"}</small>
-                        </td>
-                        <td>
-                          {quote.quality_score || "-"} /{" "}
-                          {quote.reliability_score || quote.suppliers?.reliability_score || "-"}
-                        </td>
-                        <td>
-                          <strong>{quote.comparisonScore}</strong>
-                        </td>
-                        <td>{quote.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty>No quotes recorded. Add supplier quotations to enable comparison.</Empty>
-            )}
+            <AiQuoteComparison
+              lang={lang}
+              project={project}
+              supabaseClient={supabaseClient}
+              batches={data.rfq_batches}
+              quotes={data.supplier_quotes}
+              projectFiles={data.project_files}
+              onChanged={loadData}
+            />
           </StageSection>
 
           <StageSection
@@ -1008,6 +983,17 @@ export default function AdminWorkflowWorkspace({
               <button onClick={() => setActiveForm(activeForm === "production" ? "" : "production")}>Add update</button>
             }
           >
+            <AiOperationsAutomation
+              scope="production"
+              lang={lang}
+              project={project}
+              supabaseClient={supabaseClient}
+              projectFiles={data.project_files}
+              productionUpdates={data.production_updates}
+              shipmentDocuments={data.shipment_documents}
+              onChanged={loadData}
+              onOpenLoadingAi={onOpenLoadingAi}
+            />
             {activeForm === "production" && (
               <form className="admin-ops-form" onSubmit={submitProduction}>
                 <Field label="Item / package">
@@ -1276,6 +1262,17 @@ export default function AdminWorkflowWorkspace({
             </button>
           }
         >
+          <AiOperationsAutomation
+            scope="delivery"
+            lang={lang}
+            project={project}
+            supabaseClient={supabaseClient}
+            projectFiles={data.project_files}
+            productionUpdates={data.production_updates}
+            shipmentDocuments={data.shipment_documents}
+            onChanged={loadData}
+            onOpenLoadingAi={onOpenLoadingAi}
+          />
           {data.packing_plans.length ? (
             <div className="admin-table-wrap">
               <table className="admin-mini-table">

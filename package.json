@@ -10,6 +10,7 @@
     "lint": "eslint src/app.jsx src/main.jsx src/components --report-unused-disable-directives --max-warnings 0",
     "test:intake": "node --test server/lib/intakeProcessor.test.mjs",
     "test:rfq": "node --test server/lib/rfqGenerator.test.mjs",
+    "test:workflow-ai": "node --test server/lib/quoteAnalyzer.test.mjs server/lib/operationsAutomation.test.mjs",
     "format": "prettier --write .",
     "support:ai": "node --env-file-if-exists=server/.env server/ai-support-server.mjs",
     "worker:intake": "node --env-file-if-exists=server/.env server/intake-worker.mjs",

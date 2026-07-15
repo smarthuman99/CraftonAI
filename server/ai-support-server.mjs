@@ -7,6 +7,9 @@ import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { createRfqDraft } from "./lib/rfqGenerator.mjs";
 import { dispatchRfqEmails } from "./lib/rfqDispatch.mjs";
 import { buildEmailAttachmentsFromSupabase, enrichRfqContextFromSupabase } from "./lib/rfqSourceData.mjs";
+import { createQuoteAnalysis } from "./lib/quoteAnalyzer.mjs";
+import { createOperationsPlan } from "./lib/operationsAutomation.mjs";
+import { loadOperationsContext, loadQuoteAnalysisContext } from "./lib/workflowContext.mjs";
 
 const port = Number(process.env.AI_SUPPORT_PORT || 8787);
 const logDir = path.resolve("server", "logs");
@@ -61,6 +64,18 @@ const server = http.createServer(async (req, res) => {
           attachments: sourceAttachments.attachments,
           omittedAttachments: sourceAttachments.omitted
         });
+      } else if (body.action === "analyze_quotes") {
+        const { supabase } = await requireAuthenticatedUser(req);
+        const context = await loadQuoteAnalysisContext({
+          supabase,
+          projectId: body.projectId,
+          rfqBatchId: body.rfqBatchId
+        });
+        result = await createQuoteAnalysis(context);
+      } else if (body.action === "generate_operations_plan") {
+        const { supabase } = await requireAuthenticatedUser(req);
+        const context = await loadOperationsContext({ supabase, projectId: body.projectId });
+        result = await createOperationsPlan(context, body.scope || "all");
       } else {
         result = await createAiSupportReply({ messages: body.messages, context: body.context });
       }

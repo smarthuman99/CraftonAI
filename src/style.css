@@ -1270,6 +1270,315 @@ button.admin-order-card:hover {
   margin-top: 0.55rem;
 }
 
+.ai-quote-workspace,
+.ai-operations-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.ai-workflow-commandbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(124, 114, 103, 0.22);
+  background: #f8f7f4;
+}
+
+.ai-workflow-commandbar > div,
+.ai-workflow-commandbar label,
+.ai-workflow-commandbar label > span,
+.ai-data-source {
+  display: block;
+}
+
+.ai-workflow-commandbar > div:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.ai-workflow-commandbar label > span,
+.ai-data-source {
+  margin-bottom: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ai-workflow-commandbar select {
+  min-width: 260px;
+  height: 38px;
+  border: 1px solid var(--glass-border);
+  border-radius: 3px;
+  background: #fff;
+  padding: 0 0.6rem;
+  color: var(--text-primary);
+}
+
+.ai-workflow-commandbar button,
+.ai-delivery-columns button {
+  min-height: 36px;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0.5rem 0.75rem;
+  font: 700 0.7rem var(--font-sans);
+}
+
+.ai-workflow-commandbar button.btn-premium {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.ai-workflow-commandbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.ai-workflow-empty {
+  padding: 1rem;
+  border: 1px dashed var(--glass-border);
+  color: var(--text-secondary);
+}
+
+.ai-workflow-empty strong,
+.ai-workflow-empty p {
+  margin: 0;
+}
+
+.ai-workflow-empty p {
+  margin-top: 0.3rem;
+  font-size: 0.76rem;
+}
+
+.ai-recommendation-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.35fr);
+  gap: 1rem;
+  padding: 1rem;
+  border-left: 4px solid #58705b;
+  background: #f2f6f1;
+}
+
+.ai-recommendation-banner span,
+.ai-recommendation-banner small,
+.ai-recommendation-metrics strong {
+  display: block;
+}
+
+.ai-recommendation-banner span {
+  color: #58705b;
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.ai-recommendation-banner h4 {
+  margin: 0.3rem 0;
+  font-size: 1rem;
+}
+
+.ai-recommendation-banner p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.ai-recommendation-metrics {
+  padding-left: 1rem;
+  border-left: 1px solid rgba(88, 112, 91, 0.25);
+}
+
+.ai-recommendation-metrics strong {
+  margin-bottom: 0.35rem;
+  color: #405343;
+  font-size: 0.92rem;
+}
+
+.ai-recommendation-metrics small {
+  margin-top: 0.2rem;
+  color: var(--text-secondary);
+}
+
+.ai-comparison-table tr.recommended {
+  background: rgba(88, 112, 91, 0.07);
+}
+
+.ai-risk-line,
+.ai-ok {
+  display: block;
+  margin: 0.12rem 0;
+}
+
+.ai-risk-line {
+  color: #854f48;
+}
+
+.ai-ok {
+  color: #58705b;
+}
+
+.ai-human-gate {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(151, 117, 56, 0.28);
+  background: rgba(151, 117, 56, 0.06);
+  color: #6f5a36;
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.ai-human-gate p {
+  margin: 0.25rem 0 0;
+}
+
+.ai-plan-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--glass-border);
+}
+
+.ai-plan-summary > div {
+  min-width: 0;
+  padding: 0.75rem;
+  border-right: 1px solid var(--glass-border);
+}
+
+.ai-plan-summary > div:last-child {
+  border-right: 0;
+}
+
+.ai-plan-summary span,
+.ai-plan-summary strong,
+.ai-production-timeline small,
+.ai-delivery-columns small {
+  display: block;
+}
+
+.ai-plan-summary span {
+  margin-bottom: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ai-plan-summary strong {
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.risk-low,
+.risk-clear {
+  color: #58705b;
+}
+
+.risk-medium {
+  color: #8a682c;
+}
+
+.risk-high,
+.risk-blocked {
+  color: #854f48;
+}
+
+.ai-production-timeline {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.ai-production-timeline article {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 62px;
+  padding: 0.65rem;
+  border: 1px solid var(--glass-border);
+  background: #fff;
+}
+
+.ai-production-timeline article > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  font-size: 0.62rem;
+}
+
+.ai-production-timeline strong {
+  display: block;
+  font-size: 0.75rem;
+}
+
+.ai-production-timeline small {
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.64rem;
+}
+
+.ai-production-timeline b {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.ai-delivery-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.ai-delivery-columns > section {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--glass-border);
+  background: #fff;
+}
+
+.ai-delivery-columns h4 {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+}
+
+.ai-delivery-columns p,
+.ai-delivery-columns small {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.ai-delivery-columns button {
+  margin-top: 0.6rem;
+}
+
+.ai-check-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(124, 114, 103, 0.12);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
+.ai-check-row b {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
 .ai-rfq-workspace {
   display: flex;
   flex-direction: column;
@@ -3730,6 +4039,10 @@ button.admin-order-card:hover {
   .admin-flow-grid,
   .admin-ops-grid,
   .admin-ops-form,
+  .ai-recommendation-banner,
+  .ai-plan-summary,
+  .ai-production-timeline,
+  .ai-delivery-columns,
   .ai-rfq-controls,
   .ai-rfq-introduction,
   .ai-rfq-lower-grid,
@@ -3745,9 +4058,28 @@ button.admin-order-card:hover {
   }
 
   .admin-ops-section > header,
-  .admin-ops-toolbar {
+  .admin-ops-toolbar,
+  .ai-workflow-commandbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .ai-workflow-commandbar,
+  .ai-workflow-commandbar label,
+  .ai-workflow-commandbar select {
+    width: 100%;
+  }
+
+  .ai-recommendation-metrics {
+    padding-top: 0.75rem;
+    padding-left: 0;
+    border-top: 1px solid rgba(88, 112, 91, 0.25);
+    border-left: 0;
+  }
+
+  .ai-plan-summary > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--glass-border);
   }
 
   .admin-ops-stage-actions {
