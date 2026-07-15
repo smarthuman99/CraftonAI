@@ -70,6 +70,8 @@ jobs:
           # discovered under common web directories.
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} '
             release="${{ secrets.VPS_TARGET_DIR }}/release.tar.gz"
+            source_release="$(mktemp)"
+            cp "$release" "$source_release"
             targets="${{ secrets.VPS_TARGET_DIR }}"
 
             index_list="$(mktemp)"
@@ -98,12 +100,10 @@ jobs:
                 echo "Skipping non-writable static root: $dir"
                 continue
               fi
-              if [ "$dir" != "${{ secrets.VPS_TARGET_DIR }}" ]; then
-                cp "$release" "$dir/release.tar.gz" || {
-                  echo "Skipping static root after copy failure: $dir"
-                  continue
-                }
-              fi
+              cp "$source_release" "$dir/release.tar.gz" || {
+                echo "Skipping static root after copy failure: $dir"
+                continue
+              }
               (
                 cd "$dir" &&
                   rm -rf assets loading-ai index.html furniture_scan.mp4 hero_chair.jpg &&
@@ -112,6 +112,7 @@ jobs:
                   echo "Deployed Crafton static bundle to: $dir"
               ) || echo "Static root deploy failed but continuing: $dir"
             done
+            rm -f "$source_release" "$release"
           '
 
       - name: Deploy and restart Crafton AI API
@@ -123,7 +124,25 @@ jobs:
             old_pid="$(pgrep -f "[a]i-support-server.mjs" | head -n 1 || true)"
             old_env=""
 
-            if [ -n "$old_pid" ]; then
+            existing_server="$(
+              for base in /var/www /home /usr/share/nginx/html /www /srv /opt /root; do
+                [ -d "$base" ] || continue
+                find "$base" -maxdepth 9 -type f -path "*/server/ai-support-server.mjs" -readable 2>/dev/null || true
+              done | while IFS= read -r candidate; do
+                candidate_root="$(dirname "$(dirname "$candidate")")"
+                if [ -r "$candidate_root/server/.env" ] && grep -q "^DEEPSEEK_API_KEY=" "$candidate_root/server/.env"; then
+                  echo "$candidate_root"
+                  break
+                fi
+              done
+            )"
+
+            if [ -n "$existing_server" ] && [ -w "$existing_server" ]; then
+              runtime="$existing_server"
+              old_env="$existing_server/server/.env"
+            fi
+
+            if [ -n "$old_pid" ] && [ -z "$old_env" ]; then
               old_cwd="$(readlink -f "/proc/$old_pid/cwd" 2>/dev/null || true)"
               if [ -r "$old_cwd/server/.env" ]; then
                 old_env="$old_cwd/server/.env"
@@ -149,10 +168,14 @@ jobs:
               exit 1
             fi
 
-            if [ -n "$old_pid" ]; then
-              kill "$old_pid" 2>/dev/null || true
-              sleep 3
+            port_pid=""
+            if command -v fuser >/dev/null 2>&1; then
+              port_pid="$(fuser 8787/tcp 2>/dev/null | tr " " "\n" | grep -E "^[0-9]+$" | head -n 1 || true)"
+            elif command -v lsof >/dev/null 2>&1; then
+              port_pid="$(lsof -t -iTCP:8787 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
             fi
+            stop_pid="${old_pid:-$port_pid}"
+            if [ -n "$stop_pid" ]; then kill "$stop_pid" 2>/dev/null || true; sleep 3; fi
 
             if ! pgrep -f "[a]i-support-server.mjs" >/dev/null; then
               mkdir -p server/logs
@@ -161,4 +184,10 @@ jobs:
             fi
 
             curl --fail --silent --show-error http://127.0.0.1:8787/health
+            probe_code="$(curl --silent --output /tmp/crafton-rfq-probe.json --write-out "%{http_code}" -X POST -H "Content-Type: application/json" -d "{\"action\":\"generate_rfq\"}" http://127.0.0.1:8787/api/ai-support-chat)"
+            rm -f /tmp/crafton-rfq-probe.json
+            if [ "$probe_code" != "401" ]; then
+              echo "RFQ API version probe failed with HTTP $probe_code"
+              exit 1
+            fi
           '
