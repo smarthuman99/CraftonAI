@@ -121,7 +121,6 @@ jobs:
             set -eu
             archive="${{ secrets.VPS_TARGET_DIR }}/server-release.tar.gz"
             runtime="${{ secrets.VPS_TARGET_DIR }}/server-runtime"
-            old_pid="$(pgrep -f "[a]i-support-server.mjs" | head -n 1 || true)"
             old_env=""
 
             existing_server="$(
@@ -140,18 +139,6 @@ jobs:
             if [ -n "$existing_server" ] && [ -w "$existing_server" ]; then
               runtime="$existing_server"
               old_env="$existing_server/server/.env"
-            fi
-
-            if [ -n "$old_pid" ] && [ -z "$old_env" ]; then
-              old_cwd="$(readlink -f "/proc/$old_pid/cwd" 2>/dev/null || true)"
-              if [ -r "$old_cwd/server/.env" ]; then
-                old_env="$old_cwd/server/.env"
-                if [ -w "$old_cwd" ]; then runtime="$old_cwd"; fi
-              elif [ -r "$old_cwd/.env" ] && [ "$(basename "$old_cwd")" = "server" ]; then
-                old_env="$old_cwd/.env"
-                old_root="$(dirname "$old_cwd")"
-                if [ -w "$old_root" ]; then runtime="$old_root"; fi
-              fi
             fi
 
             mkdir -p "$runtime"
@@ -174,10 +161,9 @@ jobs:
             elif command -v lsof >/dev/null 2>&1; then
               port_pid="$(lsof -t -iTCP:8787 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
             fi
-            stop_pid="${old_pid:-$port_pid}"
-            if [ -n "$stop_pid" ]; then kill "$stop_pid" 2>/dev/null || true; sleep 3; fi
+            if [ -n "$port_pid" ]; then kill "$port_pid" 2>/dev/null || true; sleep 3; fi
 
-            if ! pgrep -f "[a]i-support-server.mjs" >/dev/null; then
+            if ! curl --fail --silent http://127.0.0.1:8787/health >/dev/null 2>&1; then
               mkdir -p server/logs
               nohup node --env-file-if-exists=server/.env server/ai-support-server.mjs > server/logs/ai-support-runtime.log 2>&1 < /dev/null &
               sleep 3
