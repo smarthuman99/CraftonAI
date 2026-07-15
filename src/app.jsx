@@ -9963,22 +9963,23 @@ function App() {
                           transition: "all 0.3s ease"
                         }}
                       >
-                        <SetFurnitureShowcase
-                          lang={lang}
-                          onSelectCategory={(categorySlug) => {
-                            setSetFurnitureCategory(categorySlug);
-                            setSetFurnitureProduct("");
-                            setMarketingTab("SetFurniture");
-                            window.scrollTo({ top: 0, behavior: "smooth" });
-                          }}
-                        />
-
                         {lang === "Cn" ? "開始填寫 →" : "START FORM →"}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* Set furniture is a standalone homepage section, not part of the intake cards. */}
+              <SetFurnitureShowcase
+                lang={lang}
+                onSelectCategory={(categorySlug) => {
+                  setSetFurnitureCategory(categorySlug);
+                  setSetFurnitureProduct("");
+                  setMarketingTab("SetFurniture");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              />
 
               {/* Integration: Material Studio Configurator */}
               <div style={{ maxWidth: "1200px", margin: "0 auto 4rem auto", padding: "0 2rem" }}>
