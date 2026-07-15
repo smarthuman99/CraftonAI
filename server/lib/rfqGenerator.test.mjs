@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDeterministicRfq } from "./rfqGenerator.mjs";
 import { renderRfqEmail } from "./rfqDispatch.mjs";
+import { mergeVerifiedIntakeItems } from "./rfqSourceData.mjs";
 
 test("RFQ generation preserves verified production data and source files", () => {
   const document = buildDeterministicRfq({
@@ -60,4 +61,27 @@ test("supplier email escapes untrusted project text", () => {
 
   assert.doesNotMatch(html, /<script>alert/);
   assert.match(html, /Factory &lt;One&gt;/);
+});
+
+test("Supabase intake dimensions and production fields override incomplete UI items", () => {
+  const items = mergeVerifiedIntakeItems(
+    [{ itemNo: "DRAFT-1", typeEn: "Stool", quantity: 15 }],
+    [
+      {
+        item_type_cn: "凳子",
+        item_type_en: "Stool",
+        quantity: 15,
+        dimensions: { length: "28", width: "28", height: "100", unit: "cm" },
+        tolerance: "±5mm",
+        material_cn: "金属加海绵",
+        material_en: "Metal and foam",
+        fire_standard: "UK Crib 5 required"
+      }
+    ]
+  );
+
+  assert.equal(items[0].dimensions, "L 28 x W 28 x H 100 cm");
+  assert.equal(items[0].tolerance, "±5mm");
+  assert.equal(items[0].materialEn, "Metal and foam");
+  assert.equal(items[0].compliance, "UK Crib 5 required");
 });

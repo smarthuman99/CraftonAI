@@ -20,13 +20,61 @@ export async function enrichRfqContextFromSupabase({ supabase, context = {} }) {
   ]);
 
   const intake = jobs[0]?.result_json || jobs[0] || context.intake || {};
+  const intakeProject = intake.project || {};
   return {
     ...context,
-    project: { ...(context.project || {}), id: projectId },
+    project: {
+      projectName: intakeProject.name,
+      clientName: intakeProject.client_name,
+      destination: intakeProject.destination,
+      deliveryDate: intakeProject.desired_delivery_date,
+      packaging: intake.packaging,
+      ...(context.project || {}),
+      id: projectId
+    },
+    items: mergeVerifiedIntakeItems(context.items || [], intake.items || []),
     files: mergeFiles(files, context.files || []),
     specifications: specifications.length ? specifications : context.specifications || [],
     intake
   };
+}
+
+export function mergeVerifiedIntakeItems(contextItems = [], intakeItems = []) {
+  const count = Math.max(contextItems.length, intakeItems.length);
+  return Array.from({ length: count }, (_, index) => {
+    const current = contextItems[index] || {};
+    const verified = intakeItems[index] || {};
+    const dimensions = verified.dimensions || {};
+    const assembledDimensions = [
+      dimensions.length && `L ${dimensions.length}`,
+      dimensions.width && `W ${dimensions.width}`,
+      dimensions.height && `H ${dimensions.height}`
+    ]
+      .filter(Boolean)
+      .join(" x ");
+    const dimensionText =
+      verified.dimensions_text ||
+      (assembledDimensions ? `${assembledDimensions}${dimensions.unit ? ` ${dimensions.unit}` : ""}` : "");
+
+    return {
+      ...current,
+      itemNo: current.itemNo || current.id || `ITEM-${index + 1}`,
+      typeCn: verified.item_type_cn || current.typeCn || current.nameCn,
+      typeEn: verified.item_type_en || current.typeEn || current.nameEn,
+      quantity: Number(verified.quantity || current.quantity || current.qty || 1),
+      dimensions: dimensionText || current.dimensions,
+      dimensionUnit: dimensions.unit || current.dimensionUnit,
+      tolerance: verified.tolerance || current.tolerance,
+      materialCn: verified.material_cn || current.materialCn,
+      materialEn: verified.material_en || current.materialEn,
+      finish: verified.finish || current.finish,
+      color: verified.color || current.color || current.colour,
+      hardware: verified.hardware || current.hardware || current.base,
+      compliance: verified.fire_standard || current.compliance || current.fireSafetyStandard,
+      usage: verified.usage_location || current.usage || current.useLocation,
+      notes: verified.notes_en || verified.notes_cn || current.notes || current.note
+    };
+  });
 }
 
 export async function buildEmailAttachmentsFromSupabase({ supabase, projectId, document = {} }) {
