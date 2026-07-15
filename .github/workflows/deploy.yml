@@ -124,10 +124,45 @@ jobs:
             old_env=""
             port_pid=""
 
-            if command -v fuser >/dev/null 2>&1; then
-              port_pid="$(fuser 8787/tcp 2>/dev/null | tr " " "\n" | grep -E "^[0-9]+$" | head -n 1 || true)"
-            elif command -v lsof >/dev/null 2>&1; then
-              port_pid="$(lsof -t -iTCP:8787 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+            listener_pid() {
+              if command -v lsof >/dev/null 2>&1; then
+                lsof -t -iTCP:8787 -sTCP:LISTEN 2>/dev/null | head -n 1 || true
+              elif command -v fuser >/dev/null 2>&1; then
+                fuser 8787/tcp 2>/dev/null | tr " " "\n" | grep -E "^[0-9]+$" | head -n 1 || true
+              fi
+            }
+
+            port_pid="$(listener_pid)"
+
+            if [ -n "$port_pid" ]; then
+              live_cwd="$(readlink -f "/proc/$port_pid/cwd" 2>/dev/null || true)"
+              live_exe="$(readlink -f "/proc/$port_pid/exe" 2>/dev/null || true)"
+              live_command="$(tr "\000" " " < "/proc/$port_pid/cmdline" 2>/dev/null || true)"
+              live_script="$(tr "\000" "\n" < "/proc/$port_pid/cmdline" 2>/dev/null | grep "ai-support-server.mjs$" | head -n 1 || true)"
+
+              echo "Crafton API listener PID: $port_pid"
+              echo "Crafton API executable: $live_exe"
+              echo "Crafton API working directory: $live_cwd"
+              echo "Crafton API command: $live_command"
+              echo "Crafton API cgroup:"
+              cat "/proc/$port_pid/cgroup" 2>/dev/null || true
+              ps -o pid=,ppid=,user=,args= -p "$port_pid" 2>/dev/null || true
+
+              if [ -n "$live_script" ]; then
+                case "$live_script" in
+                  /*) resolved_script="$live_script" ;;
+                  *) resolved_script="$live_cwd/$live_script" ;;
+                esac
+                resolved_script="$(readlink -f "$resolved_script" 2>/dev/null || true)"
+                live_root="$(dirname "$(dirname "$resolved_script")")"
+                if [ -n "$resolved_script" ] && [ -r "$live_root/server/.env" ] && [ -w "$live_root" ]; then
+                  runtime="$live_root"
+                  old_env="$live_root/server/.env"
+                  echo "Resolved live API source root from process command: $runtime"
+                fi
+              fi
+            else
+              echo "No existing listener found on port 8787."
             fi
 
             existing_server="$(
@@ -143,13 +178,13 @@ jobs:
               done
             )"
 
-            if [ -n "$existing_server" ] && [ -w "$existing_server" ]; then
+            if [ -z "$old_env" ] && [ -n "$existing_server" ] && [ -w "$existing_server" ]; then
               runtime="$existing_server"
               old_env="$existing_server/server/.env"
+              echo "Using discovered API source root: $runtime"
             fi
 
-            if [ -n "$port_pid" ]; then
-              live_cwd="$(readlink -f "/proc/$port_pid/cwd" 2>/dev/null || true)"
+            if [ -z "$old_env" ] && [ -n "$port_pid" ]; then
               if [ -r "$live_cwd/server/.env" ] && [ -w "$live_cwd" ]; then
                 runtime="$live_cwd"
                 old_env="$live_cwd/server/.env"
@@ -161,6 +196,8 @@ jobs:
                 fi
               fi
             fi
+
+            echo "Deploying Crafton AI runtime to: $runtime"
 
             mkdir -p "$runtime"
             tar -xzf "$archive" -C "$runtime"
@@ -176,7 +213,18 @@ jobs:
               exit 1
             fi
 
-            if [ -n "$port_pid" ]; then kill "$port_pid" 2>/dev/null || true; sleep 3; fi
+            if [ -n "$port_pid" ]; then
+              kill "$port_pid" 2>/dev/null || true
+              sleep 4
+              restarted_pid="$(listener_pid)"
+              if [ -n "$restarted_pid" ]; then
+                restarted_cwd="$(readlink -f "/proc/$restarted_pid/cwd" 2>/dev/null || true)"
+                restarted_command="$(tr "\000" " " < "/proc/$restarted_pid/cmdline" 2>/dev/null || true)"
+                echo "Supervisor restarted listener as PID $restarted_pid"
+                echo "Restarted API working directory: $restarted_cwd"
+                echo "Restarted API command: $restarted_command"
+              fi
+            fi
 
             if ! curl --fail --silent http://127.0.0.1:8787/health >/dev/null 2>&1; then
               mkdir -p server/logs
