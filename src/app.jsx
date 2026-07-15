@@ -597,7 +597,7 @@ function App() {
   const [submittedTrackerProject, setSubmittedTrackerProject] = useState(null);
   const [trackerPreviewUrl, setTrackerPreviewUrl] = useState("");
   const [intakeReviewJobs, setIntakeReviewJobs] = useState([]);
-  const [selectedReviewJobId, setSelectedReviewJobId] = useState("");
+  const [selectedReviewJobId, setSelectedReviewJobId] = useState(() => safeGetItem("crafton_admin_selected_job_id"));
   const [expandedIntakeClientKey, setExpandedIntakeClientKey] = useState("");
   const [reviewDraft, setReviewDraft] = useState(null);
   const [reviewNote, setReviewNote] = useState("");
@@ -637,7 +637,10 @@ function App() {
   const [supportStatus, setSupportStatus] = useState("");
 
   const [currentStageIndex, setCurrentStageIndex] = useState(0); // S01 to S17
-  const [activeAdminFlow, setActiveAdminFlow] = useState("intake");
+  const [activeAdminFlow, setActiveAdminFlow] = useState(() => {
+    const savedFlow = safeGetItem("crafton_admin_active_flow");
+    return ["intake", "sourcing", "production", "shipping"].includes(savedFlow) ? savedFlow : "intake";
+  });
   const [order, setOrder] = useState(JSON.parse(JSON.stringify(mockData.initialOrder)));
   const [logs, setLogs] = useState(JSON.parse(JSON.stringify(mockData.changeLogs)));
   const [chatMessages, setChatMessages] = useState([
@@ -3739,7 +3742,6 @@ function App() {
 
   useEffect(() => {
     if (intakeReviewJobs.length === 0) {
-      setSelectedReviewJobId("");
       setExpandedIntakeClientKey("");
       setReviewDraft(null);
       setAdminIntakePreview({ jobId: "", url: "", status: "idle", message: "" });
@@ -3752,6 +3754,14 @@ function App() {
     }
     syncReviewDraftFromJob(selectedJob);
   }, [intakeReviewJobs, selectedReviewJobId]);
+
+  useEffect(() => {
+    if (selectedReviewJobId) safeSetItem("crafton_admin_selected_job_id", selectedReviewJobId);
+  }, [selectedReviewJobId]);
+
+  useEffect(() => {
+    safeSetItem("crafton_admin_active_flow", activeAdminFlow);
+  }, [activeAdminFlow]);
 
   useEffect(() => {
     const selectedJob = intakeReviewJobs.find((job) => job.id === selectedReviewJobId) || intakeReviewJobs[0];
@@ -5073,7 +5083,7 @@ function App() {
             },
             (payload) => {
               console.log("Realtime Change detected on 'workflow_events':", payload);
-              fetchSupabaseData();
+              loadPrequoteWorkspace();
               loadAdminOperationalData();
             }
           )
@@ -5086,6 +5096,7 @@ function App() {
             },
             (payload) => {
               console.log("Realtime Change detected on 'rfq_batches':", payload);
+              loadPrequoteWorkspace();
               loadAdminOperationalData();
             }
           )
@@ -7030,16 +7041,32 @@ function App() {
     );
   };
 
+  const getActiveAdminProject = () => {
+    const selectedJob =
+      intakeReviewJobs.find((job) => job.id === selectedReviewJobId) ||
+      intakeReviewJobs.find((job) => job.project_id === order.id) ||
+      intakeReviewJobs[0];
+    const selectedDraft =
+      reviewDraft?.id === selectedJob?.id ? reviewDraft : selectedJob ? normalizeReviewJob(selectedJob) : reviewDraft;
+
+    if (selectedDraft?.projectId) {
+      return buildOrderFromReviewDraft(selectedDraft);
+    }
+
+    return order;
+  };
+
   const renderAdminProgressBoard = () => {
     const flowStageIndexes = activeAdminFlowConfig.stageIndexes;
     const flowTitle = lang === "Cn" ? activeAdminFlowConfig.titleCn : activeAdminFlowConfig.titleEn;
     const flowDesc = lang === "Cn" ? activeAdminFlowConfig.descCn : activeAdminFlowConfig.descEn;
+    const activeAdminProject = getActiveAdminProject();
     const flowWorkspaces = {
       intake: renderIntakeFlowWorkspace,
       sourcing: () => (
         <AdminWorkflowWorkspace
           flow="sourcing"
-          project={order}
+          project={activeAdminProject}
           supabaseClient={getSupabaseBrowserClient()}
           dbConnected={dbConnected}
           onProjectChanged={() => {
@@ -7051,7 +7078,7 @@ function App() {
       production: () => (
         <AdminWorkflowWorkspace
           flow="production"
-          project={order}
+          project={activeAdminProject}
           supabaseClient={getSupabaseBrowserClient()}
           dbConnected={dbConnected}
           onProjectChanged={loadAdminOperationalData}
@@ -7060,7 +7087,7 @@ function App() {
       shipping: () => (
         <AdminWorkflowWorkspace
           flow="shipping"
-          project={order}
+          project={activeAdminProject}
           supabaseClient={getSupabaseBrowserClient()}
           dbConnected={dbConnected}
           onOpenLoadingAi={({ project }) => {
