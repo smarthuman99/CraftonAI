@@ -553,6 +553,9 @@ function App() {
   const [authMode, setAuthMode] = useState("login"); // "login" or "signup"
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [supabaseSessionUser, setSupabaseSessionUser] = useState(null);
+  const [supabaseAuthReady, setSupabaseAuthReady] = useState(false);
+  const [adminAccessStatus, setAdminAccessStatus] = useState("checking");
   const isStaffUser = Boolean(user?.isStaff);
 
   // Custom Registration Input States
@@ -917,6 +920,8 @@ function App() {
       if (error) throw error;
       if (!data?.user) throw new Error("No authenticated user returned.");
 
+      setSupabaseSessionUser(data.user);
+      setSupabaseAuthReady(true);
       setUser(mapSupabaseUserToAppUser(data.user));
       setShowAuthGate(false);
     } catch (err) {
@@ -1016,6 +1021,9 @@ function App() {
     const client = getSupabaseBrowserClient();
     setAuthError("");
     setAuthLoading(false);
+    setSupabaseSessionUser(null);
+    setSupabaseAuthReady(true);
+    setAdminAccessStatus("unauthenticated");
     setUser(null);
     setSupportConversationId(null);
     supportConversationIdRef.current = null;
@@ -1046,6 +1054,17 @@ function App() {
         isStaff: false
       });
     } else if (role === "cho") {
+      if (getSupabaseBrowserClient()) {
+        setSignupEmail("cho@crafton.com");
+        setAuthMode("login");
+        setAuthError(
+          lang === "Cn"
+            ? "管理员必须使用真实 Supabase 账号登录，输入 Cho 的密码后才能读取全部客户订单。"
+            : "Administrators must sign in with the real Supabase account before customer orders can be loaded."
+        );
+        setShowAuthGate(true);
+        return;
+      }
       setUser({
         name: "Cho (Manager)",
         email: "cho@crafton.com",
@@ -4441,7 +4460,13 @@ function App() {
     }
 
     const context = await getPortalSupabaseContext({ requireAuth: false });
-    if (!context?.client) {
+    if (!context?.client || !context?.supabaseUser) {
+      resetAdminOperationalData();
+      return;
+    }
+
+    const authenticatedUser = mapSupabaseUserToAppUser(context.supabaseUser);
+    if (!authenticatedUser.isStaff) {
       resetAdminOperationalData();
       return;
     }
@@ -4489,17 +4514,31 @@ function App() {
 
     try {
       const { client, supabaseUser } = context;
-      const { data: reviewData, error: reviewError } = await client
-        .from("intake_jobs")
-        .select("*, intake_files(*), projects(*)")
-        .in("status", ["queued", "processing", "needs_review", "completed"])
-        .order("created_at", { ascending: false })
-        .limit(24);
+      const authenticatedUser = supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null;
 
-      if (reviewError) throw reviewError;
+      if (!supabaseUser) {
+        setAdminAccessStatus("unauthenticated");
+        setIntakeReviewJobs([]);
+        setClientProjectJobs([]);
+        return;
+      }
 
-      const normalizedReviewJobs = reviewData && reviewData.length > 0 ? reviewData : [];
-      setIntakeReviewJobs(normalizedReviewJobs);
+      if (authenticatedUser?.isStaff) {
+        setAdminAccessStatus("loading");
+        const { data: reviewData, error: reviewError } = await client
+          .from("intake_jobs")
+          .select("*, intake_files(*), projects(*)")
+          .in("status", ["queued", "processing", "needs_review", "completed"])
+          .order("created_at", { ascending: false })
+          .limit(24);
+
+        if (reviewError) throw reviewError;
+        setIntakeReviewJobs(reviewData || []);
+        setAdminAccessStatus("ready");
+      } else {
+        setAdminAccessStatus("forbidden");
+        setIntakeReviewJobs([]);
+      }
 
       if (supabaseUser) {
         const { data: clientData, error: clientError } = await client
@@ -4516,6 +4555,7 @@ function App() {
       }
     } catch (err) {
       console.warn("Pre-quote workspace was not loaded from Supabase:", err.message || err);
+      setAdminAccessStatus("error");
       setIntakeReviewJobs([]);
       setClientProjectJobs([]);
     }
@@ -4920,12 +4960,19 @@ function App() {
 
   useEffect(() => {
     const client = getSupabaseBrowserClient();
-    if (!client) return undefined;
+    if (!client) {
+      setSupabaseSessionUser(null);
+      setSupabaseAuthReady(true);
+      return undefined;
+    }
 
     let cancelled = false;
+    setSupabaseAuthReady(false);
 
     const hydrateAuthenticatedUser = async (supabaseUser) => {
       if (cancelled) return;
+      setSupabaseSessionUser(supabaseUser || null);
+      setSupabaseAuthReady(true);
       setUser(supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null);
       if (supabaseUser) {
         await syncAuthenticatedUserProfile(supabaseUser);
@@ -4942,6 +4989,8 @@ function App() {
 
     const { data } = client.auth.onAuthStateChange((event, session) => {
       const supabaseUser = session?.user || null;
+      setSupabaseSessionUser(supabaseUser);
+      setSupabaseAuthReady(true);
       if (!supabaseUser) {
         setSupportConversationId(null);
         supportConversationIdRef.current = null;
@@ -4973,8 +5022,9 @@ function App() {
     if (clientPortalTab === "Support") setClientPortalTab("Intake");
   }, [clientPortalTab]);
 
-  // Re-fetch when connection variables or language change
+  // Re-fetch after the browser has restored its own Supabase session.
   useEffect(() => {
+    if (!supabaseAuthReady) return undefined;
     let cancelled = false;
     (async () => {
       await fetchSupabaseData();
@@ -4985,7 +5035,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [lang]);
+  }, [lang, supabaseAuthReady, supabaseSessionUser?.id]);
 
   // Subscribe to real-time changes on Supabase when connected
   useEffect(() => {
@@ -6075,6 +6125,65 @@ function App() {
     </div>
   );
 
+  const renderAdminAccessNotice = () => {
+    const notices = {
+      checking: {
+        titleCn: "正在验证管理员会话",
+        titleEn: "Verifying administrator session",
+        detailCn: "正在从当前浏览器恢复 Supabase 登录状态，请稍候。",
+        detailEn: "Restoring the Supabase session stored in this browser."
+      },
+      loading: {
+        titleCn: "正在读取客户订单",
+        titleEn: "Loading customer orders",
+        detailCn: "管理员身份已验证，正在读取 Supabase 实时数据。",
+        detailEn: "Administrator access is verified and live Supabase data is loading."
+      },
+      unauthenticated: {
+        titleCn: "当前浏览器尚未登录 Supabase 管理员账号",
+        titleEn: "This browser is not signed in to the Supabase administrator account",
+        detailCn: "不同浏览器不会共享登录会话。请使用 cho@crafton.com 和管理员密码登录；上方“Supabase 已连接”只代表数据库地址可用，不代表已经登录。",
+        detailEn:
+          "Browser sessions are not shared. Sign in as cho@crafton.com; the Supabase connected badge confirms configuration, not administrator authentication."
+      },
+      forbidden: {
+        titleCn: "当前账号没有管理员权限",
+        titleEn: "This account does not have administrator access",
+        detailCn: "请退出当前客户账号，并使用 @crafton.com 管理员账号重新登录。",
+        detailEn: "Sign out of the client account and sign in with an @crafton.com administrator account."
+      },
+      error: {
+        titleCn: "客户订单读取失败",
+        titleEn: "Customer orders could not be loaded",
+        detailCn: "管理员会话存在，但 Supabase 查询失败。请重新登录后再试。",
+        detailEn: "An administrator session exists, but the Supabase query failed. Sign in again and retry."
+      }
+    };
+    const notice = notices[adminAccessStatus] || notices.checking;
+    const canSignIn = ["unauthenticated", "forbidden", "error"].includes(adminAccessStatus);
+
+    return (
+      <div className="admin-empty-state">
+        <strong>{lang === "Cn" ? notice.titleCn : notice.titleEn}</strong>
+        <span>{lang === "Cn" ? notice.detailCn : notice.detailEn}</span>
+        {canSignIn && (
+          <button
+            type="button"
+            className="btn-premium"
+            onClick={() => {
+              setSignupEmail("cho@crafton.com");
+              setAuthMode("login");
+              setAuthError("");
+              setShowAuthGate(true);
+            }}
+          >
+            {lang === "Cn" ? "登录 Cho 管理员账号" : "Sign in as Cho administrator"}
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const getAdminTableMissingText = (tableName) =>
     adminDataStatus.missingTables.includes(tableName)
       ? `${tableName} 表尚未创建，请先运行 Supabase migration。`
@@ -6163,6 +6272,7 @@ function App() {
     const { jobs, selectedJob, draft, bomItems } = getAdminDraftContext();
     const clientGroups = buildClientGroupsFromJobs(jobs);
     const hasActiveIntake = Boolean(draft) || (!dbConnected && Boolean(order.orderId));
+    const hasVerifiedAdminAccess = !dbConnected || (supabaseAuthReady && adminAccessStatus === "ready");
     const sourceFile = selectedJob ? getIntakeFileFromJob(selectedJob) : null;
     const orderPreviewUrl = adminIntakePreview.url || trackerPreviewUrl;
     const uploadedAssets = [
@@ -6291,7 +6401,17 @@ function App() {
         <section className="intake-command-header">
           <div>
             <span className="logo-badge">S01-S05 / Integrated intake review</span>
-            <h4>{draft?.projectName || (!dbConnected ? order.orderId : "") || "No active customer order"}</h4>
+            <h4>
+              {draft?.projectName ||
+                (!dbConnected ? order.orderId : "") ||
+                (!hasVerifiedAdminAccess
+                  ? lang === "Cn"
+                    ? "需要验证管理员身份"
+                    : "Administrator verification required"
+                  : lang === "Cn"
+                    ? "当前没有客户订单"
+                    : "No active customer order")}
+            </h4>
             <p>
               Read the customer order first, then review missing fields, generate the BOM/spec draft, and approve the
               package.
@@ -6406,7 +6526,9 @@ function App() {
           </section>
         )}
 
-        {!hasActiveIntake ? (
+        {!hasVerifiedAdminAccess ? (
+          renderAdminAccessNotice()
+        ) : !hasActiveIntake ? (
           renderAdminEmptyState(
             "No live intake draft",
             "When a client submits an order, intake_jobs and intake_files records will appear here as one readable review packet."
@@ -7818,7 +7940,7 @@ function App() {
             >
               <div style={{ flex: "1", height: "1px", background: "rgba(124, 114, 103, 0.15)" }}></div>
               <span style={{ fontSize: "11px", color: "#9C9287", letterSpacing: "0.05em" }}>
-                {lang === "Cn" ? "快捷免密通道 (Demo)" : "QUICK DEMO LOGINS"}
+                {lang === "Cn" ? "快捷入口" : "QUICK ACCESS"}
               </span>
               <div style={{ flex: "1", height: "1px", background: "rgba(124, 114, 103, 0.15)" }}></div>
             </div>
@@ -7873,7 +7995,7 @@ function App() {
                   e.target.style.borderColor = "rgba(124, 114, 103, 0.15)";
                 }}
               >
-                🛠️ {lang === "Cn" ? "Cho (設計師/經理)" : "Cho (Manager View)"}
+                {lang === "Cn" ? "Cho 管理员登录" : "Cho administrator sign in"}
               </button>
             </div>
 
