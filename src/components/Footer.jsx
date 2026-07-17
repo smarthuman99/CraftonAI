@@ -146,7 +146,7 @@ export default function Footer({ lang, setCurrentStageView, setMarketingTab }) {
           >
             <div>
               <strong style={{ color: "#FAF7F2", display: "block", marginBottom: "2px", fontSize: "0.85rem" }}>
-                🇬🇧 LONDON STUDIO
+                UK · LONDON STUDIO
               </strong>
               <span>+44 20 7946 0192</span>
               <br />
@@ -154,7 +154,7 @@ export default function Footer({ lang, setCurrentStageView, setMarketingTab }) {
             </div>
             <div>
               <strong style={{ color: "#FAF7F2", display: "block", marginBottom: "2px", fontSize: "0.85rem" }}>
-                🇨🇳 GUANGDONG MILL HQ
+                CN · GUANGDONG MILL HQ
               </strong>
               <span>+86 757 2388 9988</span>
               <br />
@@ -162,7 +162,7 @@ export default function Footer({ lang, setCurrentStageView, setMarketingTab }) {
             </div>
             <div>
               <strong style={{ color: "#FAF7F2", display: "block", marginBottom: "2px", fontSize: "0.85rem" }}>
-                🇦🇺 MELBOURNE ATELIER
+                AU · MELBOURNE ATELIER
               </strong>
               <span>+61 3 9846 0118</span>
               <br />
@@ -170,7 +170,7 @@ export default function Footer({ lang, setCurrentStageView, setMarketingTab }) {
             </div>
             <div>
               <strong style={{ color: "#FAF7F2", display: "block", marginBottom: "2px", fontSize: "0.85rem" }}>
-                🇺🇸 MIAMI SHOWROOM
+                US · MIAMI SHOWROOM
               </strong>
               <span>+1 305 555 0143</span>
               <br />

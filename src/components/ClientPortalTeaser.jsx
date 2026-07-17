@@ -187,7 +187,7 @@ const ClientPortalTeaser = ({ lang, selectedFabric, selectedLeg, setActiveIntake
         }}
       >
         {[
-          { id: "specs", icon: "📁", cn: "需求转规格", en: "1. Intake Specs" },
+          { id: "specs", icon: "01", cn: "需求转规格", en: "1. Intake Specs" },
           { id: "inspection", icon: "🔍", cn: "视觉对齐质检", en: "2. Visual QA Check" },
           { id: "packing", icon: "📦", cn: "3D 排柜优化", en: "3. 3D Packing" },
           { id: "shipping", icon: "🚢", cn: "海运物流追踪", en: "4. Transit Tracker" }
@@ -256,7 +256,7 @@ const ClientPortalTeaser = ({ lang, selectedFabric, selectedLeg, setActiveIntake
                   marginBottom: "0.8rem"
                 }}
               >
-                {lang === "Cn" ? "📁 多格式需求智能提取与抗篡改哈希" : "📁 Loose Technical Intake & Compliance Audit"}
+                {lang === "Cn" ? "多格式需求智能提取与抗篡改哈希" : "Loose Technical Intake & Compliance Audit"}
               </h4>
               <p
                 style={{

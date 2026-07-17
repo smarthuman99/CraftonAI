@@ -33,8 +33,8 @@ const MAT_DATA = [
     code: "TL-11",
     originCn: "西西里，意大利",
     originEn: "Sicily, Italy",
-    specsCn: "親膚細膩，純手工阿尼林透染。⚠️ Crib 5 需做額外環保防火焰噴塗。",
-    specsEn: "Soft, hand-finished pure aniline dyed. ⚠️ Crib 5 compliance requires supplementary eco-coating.",
+    specsCn: "親膚細膩，純手工阿尼林透染。Crib 5 需做額外環保防火焰噴塗。",
+    specsEn: "Soft, hand-finished pure aniline dyed. Crib 5 compliance requires supplementary eco-coating.",
     image: "/mat_TL-11.jpg"
   },
   {

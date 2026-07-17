@@ -63,7 +63,7 @@ export default function ContactBlock({ lang, contactMessage, setContactMessage }
               }}
             >
               <div style={{ fontSize: "11px", color: "#9C9287", letterSpacing: "0.1em", fontWeight: "bold" }}>
-                🇬🇧 UNITED KINGDOM
+                UK · UNITED KINGDOM
               </div>
               <div style={{ fontSize: "14px", fontWeight: "600", color: "#1C1B18", margin: "6px 0" }}>
                 London Studio
@@ -83,7 +83,7 @@ export default function ContactBlock({ lang, contactMessage, setContactMessage }
               }}
             >
               <div style={{ fontSize: "11px", color: "#9C9287", letterSpacing: "0.1em", fontWeight: "bold" }}>
-                🇨🇳 CHINA
+                CN · CHINA
               </div>
               <div style={{ fontSize: "14px", fontWeight: "600", color: "#1C1B18", margin: "6px 0" }}>
                 Manufacturing HQ

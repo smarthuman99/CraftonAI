@@ -198,8 +198,8 @@ const mockData = {
       code: "S-1002",
       crib5Compatible: false,
       treatmentRequired: false,
-      notesCn: "⚠️ 警告：精细丝绸防火处理后会严重缩水与变色，禁止用于 Crib 5 项目！",
-      notesEn: "⚠️ WARNING: Fine silk shrinks & discolors under flame coating. BANNED for Crib 5!"
+      notesCn: "警告：精细丝绸防火处理后会严重缩水与变色，禁止用于 Crib 5 项目！",
+      notesEn: "WARNING: Fine silk shrinks & discolors under flame coating. BANNED for Crib 5!"
     },
     {
       id: "FAB-04",

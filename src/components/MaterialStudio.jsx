@@ -17,7 +17,7 @@ const MaterialStudio = ({
   return (
     <div className="material-studio-card animate-fade-in">
       <div className="material-studio-headline">
-        🌿 {lang === "Cn" ? "Crafton 高端面料與金屬工藝定製工坊" : "Crafton Bespoke Project Workshop"}
+        MATERIALS · {lang === "Cn" ? "Crafton 高端面料與金屬工藝定製工坊" : "Crafton Bespoke Project Workshop"}
       </div>
 
       {submittedProject ? (
@@ -231,7 +231,7 @@ function DemoMaterialConfigurator({
               zIndex: 5
             }}
           >
-            ⚠️ {lang === "Cn" ? "CRIB 5 法规禁用" : "CRIB 5 NON-COMPLIANT"}
+            {lang === "Cn" ? "CRIB 5 法规禁用" : "CRIB 5 NON-COMPLIANT"}
           </div>
         )}
       </div>
@@ -378,8 +378,8 @@ function DemoMaterialConfigurator({
                   ? "✓ 符合英国 Crib 5 消防阻燃法规"
                   : "✓ UK Crib 5 Compliance Pass"
                 : lang === "Cn"
-                  ? "⚠️ 警告：面料禁用，不符合 Crib 5 法规"
-                  : "⚠️ BANNED: Fails Crib 5 Regulation"}
+                  ? "警告：面料禁用，不符合 Crib 5 法规"
+                  : "BANNED: Fails Crib 5 Regulation"}
             </div>
           </div>
         )}

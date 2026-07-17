@@ -19,6 +19,7 @@ import ProjectDetailModal from "./components/ProjectDetailModal";
 import Footer from "./components/Footer";
 import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
 import AdminWorkflowWorkspace from "./components/AdminWorkflowWorkspace";
+import ClientOrderDashboard from "./components/ClientOrderDashboard";
 import { AdminLocalized, adminText } from "./adminI18n";
 
 const IMAGES = {
@@ -307,6 +308,7 @@ const normalizeReviewJob = (job = {}) => {
     summaryEn: result.summary_en || "Intake draft parsed from client materials.",
     createdAt: job.created_at || job.submittedAt || "",
     fileName: intakeFile?.original_name || job.fileName || "",
+    previewUrl: job.client_preview_url || job.previewUrl || result.preview_url || "",
     dimensions: dimensionsText,
     tolerance: result.tolerance || firstItem.tolerance || "",
     fireStandard: result.fire_standard || firstItem.fire_standard || "",
@@ -336,7 +338,8 @@ const normalizeReviewJob = (job = {}) => {
       ),
       unitPrice: Number(item.unit_price || item.unitPrice || item.original_unit_price || item.originalUnitPrice || 0),
       notesCn: item.notes_cn || item.notesCn || "",
-      notesEn: item.notes_en || item.notesEn || item.note || ""
+      notesEn: item.notes_en || item.notesEn || item.note || "",
+      imageUrl: item.image_url || item.imageUrl || item.preview_url || ""
     })),
     payments: payments.map((payment, idx) => ({
       id: payment.id || `DRAFT-PAYMENT-${idx + 1}`,
@@ -384,6 +387,140 @@ const buildProjectGroupsFromJobs = (jobs = []) => {
     jobs: group.jobs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
   }));
 };
+
+const buildClientDashboardDemoJobs = () => [
+  {
+    id: "DEMO-REGENT-02",
+    project_id: "DEMO-PROJECT-REGENT",
+    project_name: "Regent Grand Hotel",
+    destination: "Jiangmen, Guangdong",
+    quantity_text: "8 side tables",
+    status: "completed",
+    review_status: "approved",
+    rfq_status: "not_started",
+    created_at: "2026-07-14T09:30:00.000Z",
+    result_json: {
+      project: {
+        name: "Regent Grand Hotel",
+        client_name: "Jenkins Contract Interior Studio",
+        destination: "Jiangmen, Guangdong",
+        desired_delivery_date: "2026-10-20",
+        fire_standard: "Not required"
+      },
+      summary_en:
+        "Eight side tables for the hotel lounge extension. Dimensions, walnut finish and brushed brass base are confirmed.",
+      items: [
+        {
+          item_type_cn: "酒店大堂邊几",
+          item_type_en: "Hotel Lobby Side Table",
+          image_url: "/set-furniture/side-table.jpg",
+          quantity: 8,
+          dimensions_text: "W 520 x D 520 x H 480 mm",
+          material_cn: "胡桃木皮與香檳金不鏽鋼",
+          material_en: "Walnut veneer and brushed champagne steel",
+          finish: "Matt walnut",
+          color: "Warm walnut",
+          hardware: "Brushed brass plinth",
+          usage_location: "Lobby lounge",
+          fire_standard: "Not required"
+        }
+      ],
+      questions: []
+    }
+  },
+  {
+    id: "DEMO-REGENT-01",
+    project_id: "DEMO-PROJECT-REGENT",
+    project_name: "Regent Grand Hotel",
+    destination: "Jiangmen, Guangdong",
+    quantity_text: "15 dining chairs and 4 lounge chairs",
+    status: "needs_review",
+    review_status: "revision_requested",
+    rfq_status: "draft",
+    created_at: "2026-07-12T07:15:00.000Z",
+    intake_files: [{ original_name: "regent-chair-reference.jpg" }],
+    result_json: {
+      project: {
+        name: "Regent Grand Hotel",
+        client_name: "Jenkins Contract Interior Studio",
+        destination: "Jiangmen, Guangdong",
+        desired_delivery_date: "2026-10-15"
+      },
+      summary_en:
+        "Guest-room and restaurant seating package. Product types, quantities and upholstery direction are recorded; dimensions and final compliance choice need confirmation.",
+      items: [
+        {
+          item_type_cn: "餐廳餐椅",
+          item_type_en: "Restaurant Dining Chair",
+          image_url: "/set-furniture/dining-chair.jpg",
+          quantity: 15,
+          dimensions_text: "To confirm",
+          material_cn: "海軍藍亞麻與白橡木",
+          material_en: "Navy linen and white oak",
+          fabric_code: "L-4410",
+          finish: "Matt lacquer",
+          color: "Navy",
+          usage_location: "All-day dining",
+          fire_standard: "UK BS 5852 - Source 5"
+        },
+        {
+          item_type_cn: "客房休閒椅",
+          item_type_en: "Guest Room Lounge Chair",
+          image_url: "/set-furniture/armchair.jpg",
+          quantity: 4,
+          dimensions_text: "To confirm",
+          material_cn: "皇家藍絲絨",
+          material_en: "Royal blue velvet",
+          fabric_code: "V-9082",
+          finish: "Brushed bronze",
+          color: "Royal blue",
+          usage_location: "Guest suites",
+          fire_standard: "UK BS 5852 - Source 5"
+        }
+      ],
+      fire_standard: "UK BS 5852 - Source 5",
+      questions: ["Please confirm the dining chair dimensions.", "Please confirm the final delivery window."]
+    }
+  },
+  {
+    id: "DEMO-WESTLAKE-01",
+    project_id: "DEMO-PROJECT-WESTLAKE",
+    project_name: "Westlake Penthouse",
+    destination: "Geneva, Switzerland",
+    quantity_text: "1 modular sofa",
+    status: "needs_review",
+    review_status: "pending",
+    rfq_status: "not_started",
+    created_at: "2026-07-15T12:20:00.000Z",
+    intake_files: [{ original_name: "westlake-sofa-layout.pdf" }],
+    result_json: {
+      project: {
+        name: "Westlake Penthouse",
+        client_name: "Jenkins Contract Interior Studio",
+        destination: "Geneva, Switzerland",
+        desired_delivery_date: "2026-11-30"
+      },
+      summary_en:
+        "Curved modular sofa for the main living room. The layout and reference image have been received and are under specification review.",
+      items: [
+        {
+          item_type_cn: "弧形組合沙發",
+          item_type_en: "Curved Modular Sofa",
+          image_url: "/set-furniture/sofa.jpg",
+          quantity: 1,
+          dimensions_text: "Approx. W 4200 x D 1300 mm",
+          material_cn: "羊毛混紡面料",
+          material_en: "Wool-blend upholstery",
+          color: "Warm ivory",
+          usage_location: "Main living room",
+          fire_standard: "EU EN 1021-1/2"
+        }
+      ],
+      fire_standard: "EU EN 1021-1/2",
+      questions: []
+    }
+  }
+];
 
 const buildClientGroupsFromJobs = (jobs = []) => {
   const groups = new Map();
@@ -1053,6 +1190,8 @@ function App() {
         messengerId: "+44 7700 900077",
         isStaff: false
       });
+      setClientProjectJobs(buildClientDashboardDemoJobs());
+      setClientPortalTab("Tracker");
     } else if (role === "cho") {
       if (getSupabaseBrowserClient()) {
         setSignupEmail("cho@crafton.com");
@@ -4549,7 +4688,25 @@ function App() {
           .limit(24);
 
         if (clientError) throw clientError;
-        setClientProjectJobs(clientData && clientData.length > 0 ? clientData : []);
+        const clientRows = clientData && clientData.length > 0 ? clientData : [];
+        const clientRowsWithPreviews = await Promise.all(
+          clientRows.map(async (row) => {
+            const file = getIntakeFileFromJob(row);
+            if (!file?.mime_type?.startsWith("image/") || !file.storage_bucket || !file.storage_path) return row;
+
+            try {
+              const { data: signed, error: signedError } = await client.storage
+                .from(file.storage_bucket)
+                .createSignedUrl(file.storage_path, 60 * 60);
+              if (signedError) throw signedError;
+              return { ...row, client_preview_url: signed?.signedUrl || "" };
+            } catch (previewError) {
+              console.warn("Client furniture preview could not be created:", previewError.message || previewError);
+              return row;
+            }
+          })
+        );
+        setClientProjectJobs(clientRowsWithPreviews);
       } else {
         setClientProjectJobs([]);
       }
@@ -5394,10 +5551,10 @@ function App() {
         setIsCrib5Blocked(true);
         if (lang === "Cn") {
           replyText =
-            "⚠️【合规警报 / BANNED】: 检测到您选选用“纯丝绸缎”。英国 (Crib 5) 防火阻燃规定禁止将丝绸进行化学防火图层处理（会导致严重缩水与变色）。订单已自动拦截锁定。请更换为亚麻 (Linen) 或皮质 (Leather)！";
+            "合规警报 / BANNED：检测到您选用“纯丝绸缎”。英国 (Crib 5) 防火阻燃规定禁止将丝绸进行化学防火涂层处理（会导致严重缩水与变色）。订单已自动拦截锁定。请更换为亚麻 (Linen) 或皮质 (Leather)！";
         } else {
           replyText =
-            "⚠️ [COMPLIANCE ALERT / BANNED]: You selected Pure Silk Satin. UK Crib 5 fire codes prohibit flame coating on delicate silks (causes extreme shrinkage & discoloration). Order has been BLOCKED. Please select Linen or Leather!";
+            "COMPLIANCE ALERT / BANNED: You selected Pure Silk Satin. UK Crib 5 fire codes prohibit flame coating on delicate silks (causes extreme shrinkage & discoloration). Order has been BLOCKED. Please select Linen or Leather!";
         }
         // Force process stage to S05 for demonstration
         setCurrentStageIndex(4);
@@ -6049,19 +6206,6 @@ function App() {
                           )}
                         </div>
                       )}
-
-                      {normalized.rfqDraft && (
-                        <div className="rfq-mini-table">
-                          <div className="prequote-section-label">RFQ draft comparison</div>
-                          {normalized.rfqDraft.suppliers?.map((supplier) => (
-                            <div key={supplier.name} className="rfq-mini-row">
-                              <span>{supplier.name}</span>
-                              <strong>${Number(supplier.estimatedTotal || 0).toLocaleString()}</strong>
-                              <span>{supplier.leadTime}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </React.Fragment>
                 );
@@ -6070,6 +6214,53 @@ function App() {
           )}
         </div>
       </div>
+    );
+  };
+
+  const renderClientOrderDashboard = () => {
+    const jobs = clientProjectJobs.length > 0 ? clientProjectJobs : getLocalReviewJobs();
+    const projectGroups = buildProjectGroupsFromJobs(jobs).map((project) => ({
+      ...project,
+      jobs: project.jobs.map((job) =>
+        trackerPreviewUrl && String(job.id) === String(latestIntakeJob?.id)
+          ? { ...job, previewUrl: job.previewUrl || trackerPreviewUrl }
+          : job
+      )
+    }));
+
+    return (
+      <ClientOrderDashboard
+        lang={lang}
+        projectGroups={projectGroups}
+        answerDrafts={clientAnswerDrafts}
+        answerStates={clientAnswerSubmitState}
+        onNewOrder={() => setClientPortalTab("Intake")}
+        onAnswerChange={(jobId, questionIndex, value, savedAnswers) =>
+          setClientAnswerDrafts((previous) => ({
+            ...previous,
+            [jobId]: {
+              ...(previous[jobId] || savedAnswers || {}),
+              [questionIndex]: value
+            }
+          }))
+        }
+        onAnswerInput={(jobId) =>
+          setClientAnswerSubmitState((previous) => {
+            if (previous[jobId]?.status === "submitting") return previous;
+            return {
+              ...previous,
+              [jobId]: {
+                status: "editing",
+                message: lang === "Cn" ? "答案尚未提交。" : "Unsaved answer changes."
+              }
+            };
+          })
+        }
+        onSubmitAnswers={(jobId) => {
+          const sourceJob = jobs.find((job) => String(job.id) === String(jobId));
+          if (sourceJob) handleSubmitClientAnswers(sourceJob);
+        }}
+      />
     );
   };
 
@@ -6142,7 +6333,8 @@ function App() {
       unauthenticated: {
         titleCn: "当前浏览器尚未登录 Supabase 管理员账号",
         titleEn: "This browser is not signed in to the Supabase administrator account",
-        detailCn: "不同浏览器不会共享登录会话。请使用 cho@crafton.com 和管理员密码登录；上方“Supabase 已连接”只代表数据库地址可用，不代表已经登录。",
+        detailCn:
+          "不同浏览器不会共享登录会话。请使用 cho@crafton.com 和管理员密码登录；上方“Supabase 已连接”只代表数据库地址可用，不代表已经登录。",
         detailEn:
           "Browser sessions are not shared. Sign in as cho@crafton.com; the Supabase connected badge confirms configuration, not administrator authentication."
       },
@@ -7970,7 +8162,7 @@ function App() {
                   e.target.style.borderColor = "rgba(124, 114, 103, 0.15)";
                 }}
               >
-                📱 {lang === "Cn" ? "Sarah Jenkins (客戶)" : "Sarah (Client View)"}
+                CLIENT · {lang === "Cn" ? "Sarah Jenkins (客戶)" : "Sarah (Client View)"}
               </button>
               <button
                 onClick={() => loginAsDemo("cho")}
@@ -8593,7 +8785,7 @@ function App() {
 
   console.log("=== APP RENDER STATEMENT REACHED ===");
   return (
-    <div>
+    <div className={`crafton-app view-${currentView.toLowerCase()}`} data-view={currentView}>
       {/* Supabase Connection Drawer */}
       {showDbConfig && (
         <div
@@ -8792,9 +8984,7 @@ function App() {
           }}
           style={{ cursor: "pointer" }}
         >
-          <span className="logo-logo" style={{ letterSpacing: "0.15em", fontWeight: "700" }}>
-            THE CRAFTON
-          </span>
+          <img className="crafton-nav-logo" src="/thecrafton-assets/thecrafton-logo.png" alt="The Crafton" />
         </div>
 
         <div className="nav-links">
@@ -8935,7 +9125,10 @@ function App() {
               {isStaffUser && (
                 <span
                   className={`nav-link ${currentView === "Backoffice" ? "active" : ""}`}
-                  onClick={() => setCurrentStageView("Backoffice")}
+                  onClick={() => {
+                    setCurrentStageView("Backoffice");
+                    setTimeout(() => loadAdminOperationalData(), 0);
+                  }}
                   style={{ fontSize: "0.85rem", cursor: "pointer" }}
                 >
                   {lang === "Cn" ? "管理控制台" : "Backoffice"}
@@ -9034,12 +9227,12 @@ function App() {
 
       {/* VIEW 1: Web Marketing Portal */}
       {currentView === "Marketing" && (
-        <div className="animate-fade-in" style={{ paddingBottom: "4rem" }}>
+        <div className="crafton-marketing animate-fade-in" style={{ paddingBottom: "4rem" }}>
           {marketingTab === "Overview" && (
             <>
               {/* Asymmetrical Editorial Split-Screen Magazine Hero */}
               <div
-                className="animate-editorial-slide-up"
+                className="crafton-hero animate-editorial-slide-up"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1.2fr 1fr",
@@ -9051,7 +9244,10 @@ function App() {
                 }}
               >
                 {/* Left: Typography Editorial Block */}
-                <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
+                <div
+                  className="crafton-hero-copy"
+                  style={{ display: "flex", flexDirection: "column", textAlign: "left" }}
+                >
                   <div
                     style={{
                       fontSize: "0.75rem",
@@ -9066,6 +9262,8 @@ function App() {
                     EST. 2021 | BESPOKE B2B CONTRACT ATELIER
                   </div>
 
+                  <img className="crafton-hero-logo" src="/thecrafton-assets/thecrafton-logo.png" alt="The Crafton" />
+
                   {lang === "Cn" ? (
                     <h1
                       style={{
@@ -9078,7 +9276,6 @@ function App() {
                         letterSpacing: "-0.5px"
                       }}
                     >
-                      THE CRAFTON <br />
                       <span
                         style={{
                           fontSize: "1.8rem",
@@ -9103,7 +9300,6 @@ function App() {
                         letterSpacing: "-1px"
                       }}
                     >
-                      THE CRAFTON <br />
                       <span
                         style={{
                           fontSize: "2rem",
@@ -9202,8 +9398,8 @@ function App() {
                       loading="lazy"
                       decoding="async"
                       className="hero-image-zoom"
-                      src={IMAGES.heroChair}
-                      alt="The Crafton Luxury Contract Armchair"
+                      src="/thecrafton-assets/crafton-hero-interior.jpg"
+                      alt="A curated contract furniture interior by The Crafton"
                       style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                     />
                     {/* Editorial Model Tag */}
@@ -9224,7 +9420,7 @@ function App() {
                         border: "1px solid var(--glass-border)"
                       }}
                     >
-                      MODEL: L-CR04
+                      CURATED ENVIRONMENTS
                     </div>
                     {/* Subtext info overlay at bottom of image */}
                     <div
@@ -9247,7 +9443,7 @@ function App() {
                           letterSpacing: "0.5px"
                         }}
                       >
-                        Tuscan Minimalist Lounge Armchair
+                        Selected work — build-to-rent
                       </div>
                       <div
                         style={{
@@ -9259,7 +9455,7 @@ function App() {
                           fontFamily: "var(--font-sans)"
                         }}
                       >
-                        Specs: W: 650mm / D: 600mm / H: 850mm
+                        Designed · made · delivered
                       </div>
                     </div>
                   </div>
@@ -12877,7 +13073,10 @@ function App() {
 
       {/* VIEW 2: Client Portal (Member Center) */}
       {currentView === "ClientPortal" && (
-        <div className="animate-fade-in" style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
+        <div
+          className="crafton-client-view animate-fade-in"
+          style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}
+        >
           {!user ? (
             /* Premium Hard Gated Information Screen if not logged in */
             <div
@@ -13071,11 +13270,10 @@ function App() {
                       fontSize: "0.85rem"
                     }}
                   >
-                    {lang === "Cn" ? "在途訂單狀態: " : "Order Tracking: "}
                     <strong
                       style={{ color: "var(--accent-primary)", fontFamily: "var(--font-tech)", fontWeight: "bold" }}
                     >
-                      {currentStage.id} - {lang === "Cn" ? currentStage.nameCn : currentStage.nameEn}
+                      {lang === "Cn" ? "項目與訂單總覽" : "Projects & Orders Overview"}
                     </strong>
                   </div>
                   <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
@@ -14139,198 +14337,203 @@ function App() {
                 <div className="dashboard-panels animate-fade-in">
                   {/* Left Column: Member Order Dashboard */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-                    <MaterialStudio
-                      lang={lang}
-                      selectedFabric={selectedFabric}
-                      selectedLeg={selectedLeg}
-                      configuratorCrib5Blocked={configuratorCrib5Blocked}
-                      handleFabricSelect={handleFabricSelect}
-                      handleLegSelect={handleLegSelect}
-                      submittedProject={submittedTrackerProject}
-                      submittedPreviewUrl={trackerPreviewUrl}
-                    />
-                    {renderClientPrequoteWorkspace()}
-                    <div className="glass-card">
-                      <div className="panel-header">
-                        <div className="panel-title" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <svg
-                            style={{ width: "16px", height: "16px", flexShrink: 0, color: "var(--accent-primary)" }}
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
-                            <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
-                          </svg>
-                          <span>{lang === "Cn" ? "在单定制规格与进度" : "Bespoke Items & Specs"}</span>
-                        </div>
-                        <span
-                          style={{ fontSize: "0.8rem", color: "var(--accent-green)", fontFamily: "var(--font-tech)" }}
-                        >
-                          {order.quoteStatus === "pending_quote"
-                            ? lang === "Cn"
-                              ? "报价待定"
-                              : "Quote pending"
-                            : `Total: $${getOrderTotal().toLocaleString()}`}
-                        </span>
-                      </div>
-                      <div className="panel-body">
-                        <table className="order-table">
-                          <thead>
-                            <tr>
-                              <th>{lang === "Cn" ? "项目类型" : "Item"}</th>
-                              <th>{lang === "Cn" ? "数量" : "Qty"}</th>
-                              <th>{lang === "Cn" ? "预选材质" : "Material Specs"}</th>
-                              <th>{lang === "Cn" ? "单价" : "Price"}</th>
-                              <th>{lang === "Cn" ? "小计" : "Subtotal"}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {order.items.map((item) => (
-                              <tr
-                                key={item.id}
-                                className={
-                                  splitDeliveryActive && (item.qty === 38 || item.qty === 4) ? "strike-row" : ""
-                                }
+                    {renderClientOrderDashboard()}
+                    {clientPortalTab === "LegacyTracker" && (
+                      <>
+                        {renderClientPrequoteWorkspace()}
+                        <div className="glass-card">
+                          <div className="panel-header">
+                            <div className="panel-title" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <svg
+                                style={{ width: "16px", height: "16px", flexShrink: 0, color: "var(--accent-primary)" }}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                               >
-                                <td style={{ fontWeight: "500" }}>{lang === "Cn" ? item.typeCn : item.typeEn}</td>
-                                <td>
-                                  {splitDeliveryActive && item.id === "ITEM-01" ? (
-                                    <span>
-                                      <span style={{ textDecoration: "line-through", color: "var(--accent-red)" }}>
-                                        40
-                                      </span>{" "}
-                                      <strong style={{ color: "var(--accent-green)" }}>38</strong>
-                                    </span>
-                                  ) : splitDeliveryActive && item.id === "ITEM-03" ? (
-                                    <span>
-                                      <span style={{ textDecoration: "line-through", color: "var(--accent-red)" }}>
-                                        5
-                                      </span>{" "}
-                                      <strong style={{ color: "var(--accent-green)" }}>4</strong>
-                                    </span>
-                                  ) : (
-                                    item.qtyDisplay || item.qty
-                                  )}
-                                </td>
-                                <td style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                                  {lang === "Cn" ? item.materialCn : item.materialEn}
-                                  {item.note && (
-                                    <div
-                                      style={{ color: "var(--accent-orange)", fontSize: "0.75rem", marginTop: "3px" }}
-                                    >
-                                      {item.note}
-                                    </div>
-                                  )}
-                                </td>
-                                <td>
-                                  {item.quotePending || order.quoteStatus === "pending_quote"
-                                    ? lang === "Cn"
-                                      ? "待报价"
-                                      : "Pending quote"
-                                    : `$${item.unitPrice}`}
-                                </td>
-                                <td style={{ fontWeight: "bold" }}>
-                                  {item.quotePending || order.quoteStatus === "pending_quote"
-                                    ? lang === "Cn"
-                                      ? "待报价"
-                                      : "Pending quote"
-                                    : `$${(item.unitPrice * item.qty).toLocaleString()}`}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {order.quoteStatus === "pending_quote" && (
-                          <div
+                                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+                                <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
+                              </svg>
+                              <span>{lang === "Cn" ? "在单定制规格与进度" : "Bespoke Items & Specs"}</span>
+                            </div>
+                            <span
+                              style={{
+                                fontSize: "0.8rem",
+                                color: "var(--accent-green)",
+                                fontFamily: "var(--font-tech)"
+                              }}
+                            >
+                              {order.quoteStatus === "pending_quote"
+                                ? lang === "Cn"
+                                  ? "报价待定"
+                                  : "Quote pending"
+                                : `Total: $${getOrderTotal().toLocaleString()}`}
+                            </span>
+                          </div>
+                          <div className="panel-body">
+                            <table className="order-table">
+                              <thead>
+                                <tr>
+                                  <th>{lang === "Cn" ? "项目类型" : "Item"}</th>
+                                  <th>{lang === "Cn" ? "数量" : "Qty"}</th>
+                                  <th>{lang === "Cn" ? "预选材质" : "Material Specs"}</th>
+                                  <th>{lang === "Cn" ? "单价" : "Price"}</th>
+                                  <th>{lang === "Cn" ? "小计" : "Subtotal"}</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {order.items.map((item) => (
+                                  <tr
+                                    key={item.id}
+                                    className={
+                                      splitDeliveryActive && (item.qty === 38 || item.qty === 4) ? "strike-row" : ""
+                                    }
+                                  >
+                                    <td style={{ fontWeight: "500" }}>{lang === "Cn" ? item.typeCn : item.typeEn}</td>
+                                    <td>
+                                      {splitDeliveryActive && item.id === "ITEM-01" ? (
+                                        <span>
+                                          <span style={{ textDecoration: "line-through", color: "var(--accent-red)" }}>
+                                            40
+                                          </span>{" "}
+                                          <strong style={{ color: "var(--accent-green)" }}>38</strong>
+                                        </span>
+                                      ) : splitDeliveryActive && item.id === "ITEM-03" ? (
+                                        <span>
+                                          <span style={{ textDecoration: "line-through", color: "var(--accent-red)" }}>
+                                            5
+                                          </span>{" "}
+                                          <strong style={{ color: "var(--accent-green)" }}>4</strong>
+                                        </span>
+                                      ) : (
+                                        item.qtyDisplay || item.qty
+                                      )}
+                                    </td>
+                                    <td style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                                      {lang === "Cn" ? item.materialCn : item.materialEn}
+                                      {item.note && (
+                                        <div
+                                          style={{
+                                            color: "var(--accent-orange)",
+                                            fontSize: "0.75rem",
+                                            marginTop: "3px"
+                                          }}
+                                        >
+                                          {item.note}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td>
+                                      {item.quotePending || order.quoteStatus === "pending_quote"
+                                        ? lang === "Cn"
+                                          ? "待报价"
+                                          : "Pending quote"
+                                        : `$${item.unitPrice}`}
+                                    </td>
+                                    <td style={{ fontWeight: "bold" }}>
+                                      {item.quotePending || order.quoteStatus === "pending_quote"
+                                        ? lang === "Cn"
+                                          ? "待报价"
+                                          : "Pending quote"
+                                        : `$${(item.unitPrice * item.qty).toLocaleString()}`}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {order.quoteStatus === "pending_quote" && (
+                              <div
+                                style={{
+                                  marginTop: "0.9rem",
+                                  padding: "0.75rem 0.85rem",
+                                  background: "rgba(122, 135, 117, 0.08)",
+                                  border: "1px solid rgba(122, 135, 117, 0.28)",
+                                  borderRadius: "4px",
+                                  color: "var(--text-secondary)",
+                                  fontSize: "0.82rem",
+                                  lineHeight: "1.55"
+                                }}
+                              >
+                                {lang === "Cn"
+                                  ? "报价状态：待供应商报价。Crafton 团队已接收您的产品资料与附件；供应商价格、交期和可行性确认后，我们会主动通知您。"
+                                  : "Quote status: supplier quotation pending. The Crafton team has received your product details and attachment; we will notify you once pricing, timing, and feasibility are confirmed."}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Step bar inside member portal */}
+                        <div className="glass-card" style={{ padding: "1.2rem" }}>
+                          <h4
                             style={{
-                              marginTop: "0.9rem",
-                              padding: "0.75rem 0.85rem",
-                              background: "rgba(122, 135, 117, 0.08)",
-                              border: "1px solid rgba(122, 135, 117, 0.28)",
-                              borderRadius: "4px",
-                              color: "var(--text-secondary)",
-                              fontSize: "0.82rem",
-                              lineHeight: "1.55"
+                              fontFamily: "var(--font-tech)",
+                              fontSize: "0.85rem",
+                              marginBottom: "1rem",
+                              color: "var(--accent-cyan)",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px"
                             }}
                           >
-                            {lang === "Cn"
-                              ? "报价状态：待供应商报价。Crafton 团队已接收您的产品资料与附件；供应商价格、交期和可行性确认后，我们会主动通知您。"
-                              : "Quote status: supplier quotation pending. The Crafton team has received your product details and attachment; we will notify you once pricing, timing, and feasibility are confirmed."}
+                            <svg
+                              style={{ width: "16px", height: "16px", flexShrink: 0 }}
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            <span>
+                              {lang === "Cn" ? "製造與合規進度追蹤" : "Production & Compliance Progress Tracker"}
+                            </span>
+                          </h4>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(17, 1fr)",
+                              gap: "4px",
+                              height: "10px",
+                              background: "var(--bg-tertiary)",
+                              borderRadius: "5px",
+                              overflow: "hidden"
+                            }}
+                          >
+                            {stages.map((st, sidx) => {
+                              let bg = "var(--bg-tertiary)";
+                              if (sidx < currentStageIndex) bg = "var(--accent-green)";
+                              if (sidx === currentStageIndex) bg = "var(--accent-cyan)";
+                              return (
+                                <div
+                                  key={st.id}
+                                  title={`${st.id} - ${lang === "Cn" ? st.nameCn : st.nameEn}`}
+                                  style={{ background: bg, transition: "background 0.3s" }}
+                                ></div>
+                              );
+                            })}
                           </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Step bar inside member portal */}
-                    <div className="glass-card" style={{ padding: "1.2rem" }}>
-                      <h4
-                        style={{
-                          fontFamily: "var(--font-tech)",
-                          fontSize: "0.85rem",
-                          marginBottom: "1rem",
-                          color: "var(--accent-cyan)",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px"
-                        }}
-                      >
-                        <svg
-                          style={{ width: "16px", height: "16px", flexShrink: 0 }}
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <span>{lang === "Cn" ? "製造與合規進度追蹤" : "Production & Compliance Progress Tracker"}</span>
-                      </h4>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(17, 1fr)",
-                          gap: "4px",
-                          height: "10px",
-                          background: "var(--bg-tertiary)",
-                          borderRadius: "5px",
-                          overflow: "hidden"
-                        }}
-                      >
-                        {stages.map((st, sidx) => {
-                          let bg = "var(--bg-tertiary)";
-                          if (sidx < currentStageIndex) bg = "var(--accent-green)";
-                          if (sidx === currentStageIndex) bg = "var(--accent-cyan)";
-                          return (
-                            <div
-                              key={st.id}
-                              title={`${st.id} - ${lang === "Cn" ? st.nameCn : st.nameEn}`}
-                              style={{ background: bg, transition: "background 0.3s" }}
-                            ></div>
-                          );
-                        })}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          fontSize: "0.75rem",
-                          color: "var(--text-muted)",
-                          marginTop: "0.5rem"
-                        }}
-                      >
-                        <span>{lang === "Cn" ? "項目登錄" : "Intake Specs"}</span>
-                        <span>{lang === "Cn" ? "Crib 5 消防驗證" : "Crib 5 Gate"}</span>
-                        <span>{lang === "Cn" ? "视觉质检" : "Visual Inspection"}</span>
-                        <span>{lang === "Cn" ? "交付完成" : "Delivery Complete"}</span>
-                      </div>
-                    </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: "0.75rem",
+                              color: "var(--text-muted)",
+                              marginTop: "0.5rem"
+                            }}
+                          >
+                            <span>{lang === "Cn" ? "項目登錄" : "Intake Specs"}</span>
+                            <span>{lang === "Cn" ? "Crib 5 消防驗證" : "Crib 5 Gate"}</span>
+                            <span>{lang === "Cn" ? "视觉质检" : "Visual Inspection"}</span>
+                            <span>{lang === "Cn" ? "交付完成" : "Delivery Complete"}</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Right Column: OpenClaw Web chat for member to talk directly to AI Agent */}
@@ -14388,7 +14591,7 @@ function App() {
                             setTimeout(handleSendMessage, 100);
                           }}
                         >
-                          Pure Silk Satin (⚠️ WILL BLOCK)
+                          Pure Silk Satin (NON-COMPLIANT)
                         </button>
                       </div>
 
@@ -14419,7 +14622,7 @@ function App() {
       {/* VIEW 3: Internal Backoffice (Cho / Client View) */}
       {currentView === "Backoffice" && !isStaffUser && (
         <div
-          className="glass-card"
+          className="crafton-backoffice-gate glass-card"
           style={{ maxWidth: "760px", margin: "4rem auto", padding: "3rem", textAlign: "center" }}
         >
           <span className="logo-badge">{lang === "Cn" ? "STAFF ONLY" : "STAFF ONLY"}</span>
@@ -14443,7 +14646,7 @@ function App() {
         </div>
       )}
       {currentView === "Backoffice" && isStaffUser && (
-        <div className="dashboard-grid animate-fade-in">
+        <div className="crafton-backoffice dashboard-grid animate-fade-in">
           {/* Sidebar Left: Order progress controller */}
           <div className="sidebar">
             <h3 className="sidebar-title">{lang === "Cn" ? "订单进度菜单" : "Order Progress Menu"}</h3>
