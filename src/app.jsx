@@ -1038,7 +1038,11 @@ function App() {
 
     const client = getSupabaseBrowserClient();
     if (!client) {
-      setAuthError(lang === "Cn" ? "请先连接 Supabase 再登录。" : "Connect Supabase before signing in.");
+      setAuthError(
+        lang === "Cn"
+          ? "账户服务暂时不可用，请稍后再试。"
+          : "The account service is temporarily unavailable. Please try again later."
+      );
       return;
     }
 
@@ -1074,7 +1078,11 @@ function App() {
 
     const client = getSupabaseBrowserClient();
     if (!client) {
-      setAuthError(lang === "Cn" ? "请先连接 Supabase 再注册。" : "Connect Supabase before registering.");
+      setAuthError(
+        lang === "Cn"
+          ? "账户服务暂时不可用，请稍后再试。"
+          : "The account service is temporarily unavailable. Please try again later."
+      );
       return;
     }
 
@@ -1136,7 +1144,11 @@ function App() {
     setAuthError("");
     const client = getSupabaseBrowserClient();
     if (!client) {
-      setAuthError(lang === "Cn" ? "请先连接 Supabase 再使用第三方登录。" : "Connect Supabase before OAuth sign in.");
+      setAuthError(
+        lang === "Cn"
+          ? "账户服务暂时不可用，请稍后再试。"
+          : "The account service is temporarily unavailable. Please try again later."
+      );
       return;
     }
 
@@ -6333,10 +6345,8 @@ function App() {
       unauthenticated: {
         titleCn: "当前浏览器尚未登录 Supabase 管理员账号",
         titleEn: "This browser is not signed in to the Supabase administrator account",
-        detailCn:
-          "不同浏览器不会共享登录会话。请使用 cho@crafton.com 和管理员密码登录；上方“Supabase 已连接”只代表数据库地址可用，不代表已经登录。",
-        detailEn:
-          "Browser sessions are not shared. Sign in as cho@crafton.com; the Supabase connected badge confirms configuration, not administrator authentication."
+        detailCn: "不同浏览器不会共享登录会话。请使用 cho@crafton.com 和管理员密码登录。",
+        detailEn: "Browser sessions are not shared. Sign in with the Cho administrator account to continue."
       },
       forbidden: {
         titleCn: "当前账号没有管理员权限",
@@ -8787,7 +8797,7 @@ function App() {
   return (
     <div className={`crafton-app view-${currentView.toLowerCase()}`} data-view={currentView}>
       {/* Supabase Connection Drawer */}
-      {showDbConfig && (
+      {showDbConfig && import.meta.env.DEV && (
         <div
           className="animate-fade-in"
           style={{
@@ -9056,39 +9066,6 @@ function App() {
         <div className="navbar-actions">
           <button
             className="btn-secondary"
-            onClick={() => setShowDbConfig(true)}
-            style={{
-              padding: "0.4rem 0.8rem",
-              fontSize: "0.8rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              borderColor: dbConnected ? "rgba(122, 135, 117, 0.45)" : "var(--glass-border)",
-              color: dbConnected ? "var(--accent-green)" : "var(--text-secondary)"
-            }}
-          >
-            <span
-              style={{
-                width: "7px",
-                height: "7px",
-                borderRadius: "50%",
-                background: dbConnected ? "var(--accent-green)" : "var(--accent-orange)",
-                display: "inline-block"
-              }}
-            />
-            <span>
-              {dbConnected
-                ? lang === "Cn"
-                  ? "Supabase 已连接"
-                  : "Supabase Connected"
-                : lang === "Cn"
-                  ? "连接 Supabase"
-                  : "Connect Supabase"}
-            </span>
-          </button>
-
-          <button
-            className="btn-secondary"
             onClick={handleLangToggle}
             style={{ padding: "0.4rem 0.8rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px" }}
           >
@@ -9181,7 +9158,7 @@ function App() {
         </div>
       </nav>
 
-      {dbError && !dbConnected && (
+      {dbError && !dbConnected && import.meta.env.DEV && (
         <div
           className="animate-fade-in"
           style={{
