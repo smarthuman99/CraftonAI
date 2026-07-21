@@ -92,6 +92,28 @@ const ENV_SUPABASE_ANON_KEY = (
   ""
 ).trim();
 const isSupabaseConfiguredByEnv = Boolean(ENV_SUPABASE_URL && ENV_SUPABASE_ANON_KEY);
+const WORKSHOP_MILESTONE_MEDIA = {
+  frame: {
+    src: "/thecrafton-assets/workshop/frame-woodwork.webp",
+    altCn: "佛山家具工厂内，工匠正在组装并检查实木休闲椅木架。",
+    altEn: "A craftsperson assembling and checking a solid-wood lounge-chair frame in the Foshan furniture mill."
+  },
+  upholstery: {
+    src: "/thecrafton-assets/workshop/upholstery-sewing.webp",
+    altCn: "软包工匠正在为休闲椅手工定位并贴合海军蓝面料。",
+    altEn: "An upholsterer hand-fitting and aligning navy fabric on a lounge chair."
+  },
+  finishing: {
+    src: "/thecrafton-assets/workshop/artisan-finishing.webp",
+    altCn: "表面处理工匠正在通风工位精细打磨胡桃木椅架。",
+    altEn: "A finishing artisan carefully sanding a walnut chair frame at a ventilated workstation."
+  },
+  packaging: {
+    src: "/thecrafton-assets/workshop/protective-packaging.webp",
+    altCn: "两名工人正在为成品休闲椅安装护角并固定到出口木托。",
+    altEn: "Two workers fitting corner protection and securing a finished lounge chair to an export pallet."
+  }
+};
 
 const getSupabaseUrl = () => ENV_SUPABASE_URL || safeGetItem("supabase_url");
 const getSupabaseKey = () => ENV_SUPABASE_ANON_KEY || safeGetItem("supabase_key");
@@ -823,6 +845,7 @@ function App() {
   const [activeSwatch, setActiveSwatch] = useState("nubuck"); // nubuck, linen, gold, walnut
   const [blueprintSliderPos, setBlueprintSliderPos] = useState(50);
   const [demoMilestone, setDemoMilestone] = useState("frame");
+  const activeWorkshopMedia = WORKSHOP_MILESTONE_MEDIA[demoMilestone] || WORKSHOP_MILESTONE_MEDIA.frame;
 
   // V1.2/1.3 Intake Modal States
   const [activeIntakeModal, setActiveIntakeModal] = useState(null); // 'pdf', 'excel', 'words', 'item', or null
@@ -11520,16 +11543,8 @@ function App() {
                         }}
                       >
                         <img
-                          src={
-                            demoMilestone === "frame"
-                              ? "https://images.unsplash.com/photo-1540555700478-4be289fbecef?q=80&w=600&auto=format&fit=crop"
-                              : demoMilestone === "upholstery"
-                                ? "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?q=80&w=600&auto=format&fit=crop"
-                                : demoMilestone === "finishing"
-                                  ? "https://images.unsplash.com/photo-1505691938895-1758d7feb511?q=80&w=600&auto=format&fit=crop"
-                                  : "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=600&auto=format&fit=crop"
-                          }
-                          alt="Live mill process tracking view"
+                          src={activeWorkshopMedia.src}
+                          alt={lang === "Cn" ? activeWorkshopMedia.altCn : activeWorkshopMedia.altEn}
                           loading="lazy"
                           decoding="async"
                           style={{ width: "100%", height: "100%", objectFit: "cover" }}
