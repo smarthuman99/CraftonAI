@@ -399,6 +399,102 @@ export function SetFurnitureCatalog({
     );
   }
 
+  if (!product) {
+    return (
+      <main className="set-furniture-reference" aria-labelledby="set-furniture-reference-title">
+        <header className="set-furniture-reference-header">
+          <div className="set-furniture-reference-wrap">
+            <div className="set-furniture-reference-kicker">Set Furniture — Ready Ranges</div>
+            <h1 id="set-furniture-reference-title">Set Furniture</h1>
+            <p>
+              Proven, contract-grade collections you can specify today — no drawings, no lead-time on design. Trade
+              price in, your margin on top. We make it, ship it and land it to your client’s door. Open a collection to
+              browse and build your order.
+            </p>
+            <div className="set-furniture-reference-rule" aria-label="Collection information">
+              <span>The Collections</span>
+              <span>Trade pricing · landed, not FOB</span>
+            </div>
+          </div>
+        </header>
+
+        <div className="set-furniture-reference-wrap">
+          <article className="set-furniture-reference-feature">
+            <div className="set-furniture-reference-cover">
+              <span className="set-furniture-reference-live">● Live · 24 pieces</span>
+              <img
+                src="/thecrafton-assets/set-furniture/stand-collection-hero.jpg"
+                alt="The Stand Collection dining table and chairs in a richly layered interior"
+              />
+            </div>
+            <div className="set-furniture-reference-body">
+              <div className="set-furniture-reference-collection-kicker">Collection 01</div>
+              <h2>The Stand Collection</h2>
+              <p>
+                Sculptural furniture in honest materials — solid marble, travertine, onyx, oak and boucle. Made with our
+                partner Opinord, landed to your door.
+              </p>
+              <div className="set-furniture-reference-thumbs" aria-label="The Stand Collection preview images">
+                <img src="/thecrafton-assets/set-furniture/stand-thumb-red.jpg" alt="Stand sideboard in a red room" />
+                <img src="/thecrafton-assets/set-furniture/stand-thumb-green.jpg" alt="Green Stand sofa" />
+                <img
+                  src="/thecrafton-assets/set-furniture/stand-thumb-interior.jpg"
+                  alt="Stand Collection interior vignette"
+                />
+              </div>
+              <button
+                type="button"
+                className="set-furniture-reference-go"
+                onClick={() => onSelectProduct(category.products[0].id)}
+              >
+                Explore the collection →
+              </button>
+              <div className="set-furniture-reference-meta">Seating · Tables · Storage · trade pricing</div>
+            </div>
+          </article>
+
+          <div className="set-furniture-reference-upcoming">More collections — rolling out through 2026</div>
+          <section className="set-furniture-reference-grid" aria-label="Upcoming furniture collections">
+            <article className="set-furniture-reference-card">
+              <div className="set-furniture-reference-card-image">
+                <span>Coming soon</span>
+                <img src="/thecrafton-assets/set-furniture/upcoming-seating.jpg" alt="Curved upholstered seating" />
+              </div>
+              <h3>The Seating Range</h3>
+              <p>Contract-grade sofas, lounge &amp; occasional seating — Crib 5 compliant.</p>
+            </article>
+            <article className="set-furniture-reference-card">
+              <div className="set-furniture-reference-card-image">
+                <span>Coming soon</span>
+                <img
+                  src="/thecrafton-assets/set-furniture/upcoming-essentials.jpg"
+                  alt="Ready-made furniture essentials"
+                />
+              </div>
+              <h3>Ready-Made Essentials</h3>
+              <p>The everyday contract pieces — case goods, beds and desks, ready to specify.</p>
+            </article>
+            <article className="set-furniture-reference-card">
+              <div className="set-furniture-reference-card-image">
+                <span>Coming soon</span>
+                <img
+                  src="/thecrafton-assets/set-furniture/upcoming-dining.jpg"
+                  alt="Pale stone dining table and chair"
+                />
+              </div>
+              <h3>The Dining Range</h3>
+              <p>Statement dining tables and chairs in marble, travertine and solid oak.</p>
+            </article>
+          </section>
+        </div>
+
+        <div className="set-furniture-reference-footer-note">
+          The Crafton · Set Furniture · Trade price in · your margin on top · landed to the door
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="set-furniture-catalogue">
       <header className="set-furniture-catalogue-header">

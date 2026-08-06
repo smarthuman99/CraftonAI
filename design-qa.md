@@ -1,49 +1,47 @@
-# Cho Craft UI — Design QA
+# Set Furniture — Design QA
 
-## Scope and source of truth
+## Scope and visual truth
 
-- Reference: `public/thecrafton_draft_site/index.html` and the related HTML drafts in the same folder.
-- Implementation: the existing Crafton React application at `http://127.0.0.1:4173/`.
-- State preserved: existing marketing content, authentication roles, client project/order data, backoffice stages, Supabase controls, and navigation destinations.
-- Visual intent: translate Cho's craft-led language into the existing product, not replace product workflows with a static landing-page clone.
+- Source: `E:\下载\TheCrafton_Website_Mockups\thecrafton_set_furniture.html`
+- Implementation: the existing Crafton React application at `http://127.0.0.1:4180/`, after selecting `Set Furniture` / `标准家具` in the global navigation.
+- Product constraint: the existing site-wide navigation, language, login, project controls, footer, authentication, and product-detail flow remain intact. The destination-page design, copy, and photography are matched to the supplied HTML.
 
-## Evidence
+## Comparison evidence
 
-| Surface | State | Evidence |
-| --- | --- | --- |
-| Cho source | Homepage, desktop | `scratch/design-qa/cho-home-1440-final.png` |
-| Implementation | Homepage, desktop | `scratch/design-qa/current-home-after-1440-final.png` |
-| Combined comparison | Source left, implementation right; normalized to a shared 1422 × 800 comparison canvas | `scratch/design-qa/cho-vs-implementation-final.png` |
-| Implementation | Homepage, mobile; effective browser capture 469 × 1041 | `scratch/design-qa/current-home-after-390-final.png` |
-| Implementation | Client Portal, Sarah Jenkins demo data | `scratch/design-qa/client-portal-final.png` |
-| Implementation | Backoffice, Cho administrator, S01 intake | `scratch/design-qa/backoffice-final.png` |
-
-The homepage hero is the full-view and focused-region comparison target because it contains all of the reference's defining surfaces: paper grid, walnut ink, brand mark, display italic, technical mono labels, pill CTA, and editorial furniture photography. Client Portal and Backoffice have no one-to-one source screen in Cho's draft, so they were checked for faithful token and component translation rather than pixel matching.
+| Surface                     | State                                                                                | Evidence                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Source                      | Desktop first viewport                                                               | `scratch/design-qa/set-furniture-reference-desktop-viewport-v2.png`      |
+| Implementation              | Desktop first viewport                                                               | `scratch/design-qa/set-furniture-implementation-desktop-viewport-v2.png` |
+| Combined desktop comparison | Source left, implementation right; density-normalized to a shared 1600 × 1111 canvas | `scratch/design-qa/set-furniture-desktop-comparison-v2.png`              |
+| Source                      | Mobile first viewport, 417 × 902 CSS viewport                                        | `scratch/design-qa/set-furniture-reference-mobile-viewport-v2.png`       |
+| Implementation              | Mobile first viewport, 417 × 902 CSS viewport                                        | `scratch/design-qa/set-furniture-implementation-mobile-viewport-v2.png`  |
+| Combined mobile comparison  | Source left, implementation right                                                    | `scratch/design-qa/set-furniture-mobile-comparison-v2.png`               |
+| Combined focused comparison | Featured collection body at `scrollY: 720`; source left, implementation right        | `scratch/design-qa/set-furniture-mobile-focus-comparison-v2.png`         |
 
 ## Fidelity review
 
-- **Typography:** Fraunces supplies the editorial italic voice; Inter handles UI/body text; JetBrains Mono supplies technical labels, indices, and stage metadata. Chinese copy uses the same high-contrast editorial hierarchy without forcing a Latin-only composition.
-- **Spacing and layout:** a 46 px drafting grid, thin rules, large quiet margins, and asymmetrical editorial grouping reproduce the reference rhythm. The existing dense operational screens retain their information hierarchy while using the same grid and surface rules.
-- **Colors and surfaces:** warm paper, dark walnut, muted sand, and olive success tones are centralized as tokens. Heavy shadows and generic blue SaaS panels were removed from the redesigned surfaces.
-- **Imagery:** the supplied Cho interior and brand artwork are used directly; no placeholder or approximate drawn assets were introduced.
-- **Copy and product content:** the product's Chinese/English content and real demo records remain intact. Only hero framing and craft-oriented microcopy were adjusted where required to express the design direction.
+- Typography: Fraunces, Inter, and JetBrains Mono match the reference hierarchy and weights.
+- Colors: cream `#EFE7D6`, paper `#FBF6EC`, ink `#232220`, walnut `#4A3525`, and stone `#8F8064` match the supplied design tokens.
+- Spacing: desktop content starts at 64 px. The featured card measures 523 px high, matching the source. Mobile retains the source's 64 px page inset and the feature image's native 1500:937 ratio.
+- Copy: all destination-page headings, descriptions, metadata, collection status, CTA, and footer note are reproduced verbatim.
+- Imagery: all seven furniture photographs are byte-for-byte extracted from the supplied HTML rather than approximated or replaced.
+- Structure: hero, collection rule, featured split card, preview thumbnails, upcoming collection grid, and page note follow the source order and proportions.
 
-## Interaction checks
+## Interaction and responsive checks
 
-- Marketing navigation and primary CTA remain interactive.
-- Login modal opens and supports the supplied demo roles.
-- Sarah Jenkins login → Client Portal works and renders projects, orders, furniture details, tracker, and live-chat controls.
-- Cho administrator login → Management Console works and renders S01–S05 intake workflow and stage navigation.
-- Browser console errors on the final Backoffice state: none.
-- Production build: passed.
+- Global `Set Furniture` navigation opens the new page.
+- `Explore the collection →` opens the existing Arden product-detail flow.
+- `← 返回产品目录` returns to the new collection landing page.
+- Desktop and mobile layouts were checked visually against the source.
+- Mobile overflow check: `scrollWidth: 405`, `innerWidth: 417`; no horizontal overflow.
+- Browser console errors: none.
 - ESLint with zero warnings: passed.
+- Production build: passed.
 
-## Responsive comparison history
+## Comparison history and findings
 
-1. Initial mobile pass showed horizontal overflow at the effective 434 px viewport (`scrollWidth: 442`) caused by desktop inline grid columns and a 1000 px CAD comparison element.
-2. Mobile rules now collapse marketing grids to one column and constrain the CAD element to the viewport.
-3. Final mobile measurement: `innerWidth: 434`, `scrollWidth: 422`; no horizontal overflow.
+1. Desktop v1 rendered the feature card at 537 px versus the source's 523 px. It was corrected to 523 px and recaptured.
+2. Mobile v1 introduced smaller typography and narrow margins that were not present in Cho's source. Those overrides were removed; mobile v2 now preserves the source's 64 px inset, 68 px display title, and native feature-image ratio.
+3. No P0, P1, or P2 visual or functional issues remain. P3 differences are limited to the existing global product shell and the source's decorative corner crosses, which were not recreated without an approved icon asset.
 
-## Final assessment
-
-**Passed.** No remaining P0, P1, or P2 visual or functional issues were found in the checked states. The remaining difference from Cho's homepage is intentional product content: the live site keeps bilingual navigation, Supabase status, authentication controls, and operational data while adopting Cho's visual grammar.
+final result: passed
