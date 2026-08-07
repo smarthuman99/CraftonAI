@@ -20,6 +20,7 @@ import Footer from "./components/Footer";
 import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
 import AdminWorkflowWorkspace from "./components/AdminWorkflowWorkspace";
 import ClientOrderDashboard from "./components/ClientOrderDashboard";
+import CraftonHomepage from "./components/CraftonHomepage";
 import { AdminLocalized, adminText } from "./adminI18n";
 
 const IMAGES = {
@@ -9227,8 +9228,36 @@ function App() {
 
       {/* VIEW 1: Web Marketing Portal */}
       {currentView === "Marketing" && (
-        <div className="crafton-marketing animate-fade-in" style={{ paddingBottom: "4rem" }}>
+        <div
+          className={`crafton-marketing animate-fade-in ${marketingTab === "Overview" ? "home-reference-host" : ""}`}
+          style={{ paddingBottom: "4rem" }}
+        >
           {marketingTab === "Overview" && (
+            <CraftonHomepage
+              onStartOrder={() => {
+                if (user) {
+                  setCurrentStageView("ClientPortal");
+                  setClientPortalTab("Intake");
+                } else {
+                  setAuthMode("signup");
+                  setShowAuthGate(true);
+                }
+              }}
+              onOpenCollection={() => {
+                setSetFurnitureCategory("");
+                setSetFurnitureProduct("");
+                setMarketingTab("SetFurniture");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onFactoryApply={() => {
+                setContactMessage("I would like to apply to join The Crafton factory network.");
+                setMarketingTab("Contact");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
+          )}
+
+          {marketingTab === "LegacyOverview" && (
             <>
               {/* Asymmetrical Editorial Split-Screen Magazine Hero */}
               <div

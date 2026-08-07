@@ -6592,3 +6592,851 @@ select:focus,
     transition-duration: 0.01ms !important;
   }
 }
+/* Homepage matched to the supplied thecrafton_site.html reference. */
+.home-reference-host {
+  padding-bottom: 0 !important;
+}
+
+.home-reference-page {
+  --home-cream: #efe7d6;
+  --home-paper: #fbf6ec;
+  --home-ink: #232220;
+  --home-walnut: #4a3525;
+  --home-stone: #8f8064;
+  --home-line: rgba(35, 34, 32, 0.14);
+  --home-grid: rgba(35, 34, 32, 0.05);
+  --home-good: #4a6b4f;
+  min-height: 100vh;
+  color: var(--home-ink);
+  background: var(--home-cream);
+  font-family: "Inter", Arial, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.home-reference-page,
+.home-reference-page * {
+  box-sizing: border-box;
+}
+
+.home-reference-page a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.home-reference-page img {
+  display: block;
+  max-width: 100%;
+}
+
+.home-reference-page button {
+  color: inherit;
+  font: inherit;
+}
+
+.home-reference-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 40px;
+}
+
+.home-reference-kicker {
+  color: var(--home-walnut);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 2.6px;
+  text-transform: uppercase;
+}
+
+.home-reference-page h1,
+.home-reference-page h2,
+.home-reference-page h3 {
+  color: var(--home-ink);
+  font-family: "Fraunces", serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.5px;
+  line-height: 1.05;
+}
+
+.home-reference-btn {
+  display: inline-block;
+  padding: 13px 24px;
+  border: 1.5px solid var(--home-walnut);
+  border-radius: 40px;
+  background: transparent;
+  color: var(--home-walnut);
+  cursor: pointer;
+  font-family: "Inter", Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  transition: 0.15s;
+}
+
+.home-reference-page .home-reference-btn-fill {
+  border-color: var(--home-walnut);
+  background: var(--home-walnut);
+  color: var(--home-paper);
+}
+
+.home-reference-page .home-reference-btn-fill:hover {
+  border-color: var(--home-ink);
+  background: var(--home-ink);
+}
+
+.home-reference-btn-ghost:hover {
+  background: rgba(74, 53, 37, 0.07);
+}
+
+.home-reference-btn-small {
+  padding: 9px 16px;
+  font-size: 13px;
+}
+
+.home-reference-nav {
+  position: sticky;
+  z-index: 60;
+  top: 0;
+  border-bottom: 1px solid var(--home-line);
+  background: rgba(239, 231, 214, 0.92);
+  backdrop-filter: blur(8px);
+}
+
+.home-reference-nav-inner {
+  display: flex;
+  align-items: center;
+  height: 70px;
+  gap: 30px;
+}
+
+.home-reference-logo-link {
+  flex: 0 0 auto;
+}
+
+.home-reference-logo {
+  width: auto;
+  height: 20px;
+}
+
+.home-reference-links {
+  display: flex;
+  gap: 24px;
+  margin-left: 14px;
+}
+
+.home-reference-links a {
+  color: #4a4438;
+  font-size: 14px;
+}
+
+.home-reference-links a:hover {
+  color: var(--home-walnut);
+}
+
+.home-reference-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.home-reference-login {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--home-stone) !important;
+  cursor: pointer;
+  font-family: "JetBrains Mono", monospace !important;
+  font-size: 13px !important;
+  letter-spacing: 0.5px;
+}
+
+.home-reference-login:hover {
+  color: var(--home-walnut) !important;
+}
+
+.home-reference-hero {
+  border-bottom: 1px solid var(--home-line);
+  background-image:
+    linear-gradient(var(--home-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--home-grid) 1px, transparent 1px);
+  background-size: 46px 46px;
+}
+
+.home-reference-hero-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  align-items: center;
+  gap: 56px;
+  padding: 70px 0 64px;
+}
+
+.home-reference-hero h1 {
+  max-width: 12ch;
+  margin: 16px 0 0;
+  font-size: 66px;
+}
+
+.home-reference-segment {
+  display: inline-flex;
+  padding: 4px;
+  margin-top: 22px;
+  border: 1px solid var(--home-line);
+  border-radius: 40px;
+  background: var(--home-paper);
+}
+
+.home-reference-segment button,
+.home-reference-filters button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: "JetBrains Mono", monospace;
+  text-transform: uppercase;
+}
+
+.home-reference-segment button {
+  padding: 9px 18px;
+  border-radius: 40px;
+  color: var(--home-stone);
+  font-size: 11px;
+  letter-spacing: 1.4px;
+}
+
+.home-reference-segment button.is-active {
+  background: var(--home-walnut);
+  color: var(--home-paper);
+}
+
+.home-reference-lead {
+  min-height: 52px;
+  max-width: 48ch;
+  margin: 22px 0 24px;
+  color: #4a4438;
+  font-size: 17px;
+}
+
+.home-reference-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.home-reference-hero-frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--home-line);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(35, 34, 32, 0.16);
+}
+
+.home-reference-hero-frame > img {
+  width: 100%;
+  height: 520px;
+  object-fit: cover;
+}
+
+.home-reference-hero-chip {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  padding: 8px 14px;
+  border: 1px solid var(--home-line);
+  border-radius: 30px;
+  background: rgba(239, 231, 214, 0.94);
+  backdrop-filter: blur(4px);
+  color: var(--home-walnut);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.home-reference-hero-chip b {
+  color: var(--home-good);
+}
+
+.home-reference-statbar {
+  border-bottom: 1px solid var(--home-line);
+  background: var(--home-paper);
+}
+
+.home-reference-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.home-reference-stat {
+  padding: 26px 24px;
+  border-right: 1px solid var(--home-line);
+}
+
+.home-reference-stat:last-child {
+  border-right: 0;
+}
+
+.home-reference-stat .number {
+  color: var(--home-walnut);
+  font-family: "Fraunces", serif;
+  font-size: 30px;
+  font-style: italic;
+  line-height: 1;
+}
+
+.home-reference-stat .label {
+  margin-top: 8px;
+  color: #4a4438;
+  font-size: 12px;
+}
+
+.home-reference-page section {
+  padding: 80px 0;
+}
+
+.home-reference-section-head {
+  max-width: 60ch;
+  margin-bottom: 42px;
+}
+
+.home-reference-section-head h2 {
+  margin: 12px 0;
+  font-size: 40px;
+}
+
+.home-reference-section-head p {
+  color: #4a4438;
+  font-size: 16px;
+}
+
+.home-reference-value-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.home-reference-value-card {
+  padding: 28px 24px;
+  border: 1px solid var(--home-line);
+  border-radius: 14px;
+  background: var(--home-paper);
+}
+
+.home-reference-value-card .number,
+.home-reference-ddp-step .number {
+  color: var(--home-stone);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.home-reference-value-card h3 {
+  margin: 14px 0 8px;
+  font-size: 20px;
+}
+
+.home-reference-value-card p {
+  color: #4a4438;
+  font-size: 14px;
+}
+
+.home-reference-paper-section {
+  border-top: 1px solid var(--home-line);
+  border-bottom: 1px solid var(--home-line);
+  background: var(--home-paper);
+}
+
+.home-reference-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.home-reference-filters button {
+  padding: 8px 16px;
+  border: 1px solid var(--home-line);
+  border-radius: 30px;
+  color: var(--home-stone);
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  transition: 0.15s;
+}
+
+.home-reference-filters button.is-active {
+  border-color: var(--home-walnut);
+  background: var(--home-walnut);
+  color: var(--home-paper);
+}
+
+.home-reference-product-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 22px;
+}
+
+.home-reference-product {
+  overflow: hidden;
+  border: 1px solid var(--home-line);
+  border-radius: 14px;
+  background: var(--home-cream);
+  transition: 0.18s;
+}
+
+.home-reference-product:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(35, 34, 32, 0.1);
+}
+
+.home-reference-product .photo {
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  background: #20201e;
+}
+
+.home-reference-product .photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-reference-product .info {
+  padding: 15px 16px 18px;
+}
+
+.home-reference-product .row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.home-reference-product .name {
+  font-family: "Fraunces", serif;
+  font-size: 19px;
+  font-style: italic;
+}
+
+.home-reference-product .price {
+  color: var(--home-walnut);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.home-reference-product .type {
+  margin-top: 3px;
+  color: var(--home-stone);
+  font-size: 12px;
+}
+
+.home-reference-collection-more {
+  margin-top: 32px;
+}
+
+.home-reference-ddp {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  margin-top: 10px;
+  border: 1px solid var(--home-line);
+  border-radius: 14px;
+  background: var(--home-paper);
+}
+
+.home-reference-ddp-step {
+  position: relative;
+  flex: 1;
+  padding: 22px 18px;
+  border-right: 1px solid var(--home-line);
+}
+
+.home-reference-ddp-step:last-child {
+  border-right: 0;
+}
+
+.home-reference-ddp-step .number {
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.home-reference-ddp-step h4,
+.home-reference-market h4 {
+  color: var(--home-ink);
+  font-family: "Fraunces", serif;
+  font-size: 17px;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.home-reference-ddp-step h4 {
+  margin: 8px 0 4px;
+}
+
+.home-reference-ddp-step p {
+  color: #4a4438;
+  font-size: 12px;
+}
+
+.home-reference-ddp-step.is-crafton {
+  background: var(--home-walnut);
+}
+
+.home-reference-ddp-step.is-crafton .number {
+  color: #d8c9ae;
+}
+
+.home-reference-ddp-step.is-crafton h4 {
+  color: #fff;
+}
+
+.home-reference-ddp-step.is-crafton p {
+  color: var(--home-cream);
+}
+
+.home-reference-ddp-note {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+  color: var(--home-stone);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.home-reference-ddp-note span:last-child {
+  color: var(--home-walnut);
+}
+
+.home-reference-page section.home-reference-compact-section {
+  padding-top: 20px;
+}
+
+.home-reference-two,
+.home-reference-band {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.home-reference-side,
+.home-reference-band > div {
+  padding: 38px 34px;
+  border: 1px solid var(--home-line);
+  border-radius: 16px;
+}
+
+.home-reference-side.is-trade,
+.home-reference-band > div {
+  background: var(--home-paper);
+}
+
+.home-reference-side.is-factory {
+  background: var(--home-walnut);
+  color: var(--home-paper);
+}
+
+.home-reference-side .tag {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+}
+
+.home-reference-side.is-trade .tag {
+  color: var(--home-walnut);
+}
+
+.home-reference-side.is-factory .tag {
+  color: #d8c9ae;
+}
+
+.home-reference-side h3,
+.home-reference-band h3 {
+  margin: 12px 0 16px;
+  font-size: 26px;
+}
+
+.home-reference-side.is-factory h3 {
+  color: #fff;
+}
+
+.home-reference-side ul {
+  padding: 0;
+  margin: 0 0 24px;
+  list-style: none;
+}
+
+.home-reference-side li {
+  position: relative;
+  padding: 10px 0 10px 24px;
+  border-top: 1px solid var(--home-line);
+  font-size: 15px;
+}
+
+.home-reference-side li:first-child {
+  border-top: 0;
+}
+
+.home-reference-side li::before {
+  position: absolute;
+  top: 17px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--home-walnut);
+  content: "";
+}
+
+.home-reference-side.is-trade li {
+  color: #4a4438;
+}
+
+.home-reference-side.is-factory li {
+  border-top-color: rgba(255, 255, 255, 0.16);
+  color: var(--home-cream);
+}
+
+.home-reference-side.is-factory li::before {
+  background: #d8c9ae;
+}
+
+.home-reference-side.is-factory .home-reference-btn {
+  border-color: var(--home-cream);
+  color: var(--home-cream);
+}
+
+.home-reference-side.is-factory .home-reference-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.home-reference-steps {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-top: 1px solid var(--home-line);
+}
+
+.home-reference-step {
+  padding: 26px 20px 8px;
+  border-right: 1px solid var(--home-line);
+}
+
+.home-reference-step:last-child {
+  border-right: 0;
+}
+
+.home-reference-step .number {
+  color: var(--home-walnut);
+  font-family: "Fraunces", serif;
+  font-size: 30px;
+  font-style: italic;
+}
+
+.home-reference-step h3 {
+  margin: 10px 0 6px;
+  font-size: 17px;
+}
+
+.home-reference-step p {
+  color: #4a4438;
+  font-size: 13px;
+}
+
+.home-reference-market-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.home-reference-market {
+  padding: 20px 22px;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  background: var(--home-paper);
+}
+
+.home-reference-market h4 {
+  font-size: 18px;
+}
+
+.home-reference-market p {
+  margin-top: 5px;
+  color: #4a4438;
+  font-size: 13px;
+}
+
+.home-reference-market .tag {
+  float: right;
+  color: var(--home-walnut);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.home-reference-faq {
+  max-width: 820px;
+}
+
+.home-reference-question {
+  border-top: 1px solid var(--home-line);
+}
+
+.home-reference-question:last-child {
+  border-bottom: 1px solid var(--home-line);
+}
+
+.home-reference-question > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 20px 0;
+  border: 0;
+  background: none;
+  color: var(--home-ink);
+  cursor: pointer;
+  font-family: "Fraunces", serif;
+  font-size: 19px;
+  font-style: italic;
+  text-align: left;
+}
+
+.home-reference-question > button i {
+  color: var(--home-walnut);
+  font-size: 14px;
+}
+
+.home-reference-question .answer {
+  overflow: hidden;
+  max-height: 0;
+  transition: 0.25s;
+}
+
+.home-reference-question .answer p {
+  max-width: 70ch;
+  padding: 0 0 20px;
+  color: #4a4438;
+  font-size: 14px;
+}
+
+.home-reference-question.is-open .answer {
+  max-height: 200px;
+}
+
+.home-reference-band > div {
+  padding: 40px 36px;
+}
+
+.home-reference-band h3 {
+  margin: 0 0 14px;
+}
+
+.home-reference-band p {
+  margin-bottom: 22px;
+  color: #4a4438;
+  font-size: 15px;
+}
+
+.home-reference-footer {
+  padding: 56px 0 40px;
+  border-top: 1px solid var(--home-line);
+  background: var(--home-paper);
+}
+
+.home-reference-footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 30px;
+  margin-bottom: 40px;
+}
+
+.home-reference-footer-grid .home-reference-logo {
+  height: 22px;
+  margin-bottom: 14px;
+}
+
+.home-reference-footer .tagline {
+  color: var(--home-walnut);
+  font-family: "Fraunces", serif;
+  font-size: 19px;
+  font-style: italic;
+}
+
+.home-reference-footer .column h4 {
+  margin-bottom: 14px;
+  color: var(--home-stone);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+.home-reference-footer .column a,
+.home-reference-footer .column button {
+  display: block;
+  padding: 5px 0;
+  border: 0;
+  background: none;
+  color: #4a4438;
+  cursor: pointer;
+  font-family: "Inter", Arial, sans-serif;
+  font-size: 14px;
+  text-align: left;
+}
+
+.home-reference-footer .column a:hover,
+.home-reference-footer .column button:hover {
+  color: var(--home-walnut);
+}
+
+.home-reference-fine {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 22px;
+  border-top: 1px solid var(--home-line);
+  color: var(--home-stone);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 920px) {
+  .home-reference-hero-grid,
+  .home-reference-value-grid,
+  .home-reference-two,
+  .home-reference-steps,
+  .home-reference-product-grid,
+  .home-reference-stats,
+  .home-reference-market-grid,
+  .home-reference-band,
+  .home-reference-footer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-reference-links {
+    display: none;
+  }
+
+  .home-reference-hero h1 {
+    font-size: 46px;
+  }
+
+  .home-reference-hero-frame > img {
+    height: 340px;
+  }
+
+  .home-reference-ddp {
+    flex-direction: column;
+  }
+
+  .home-reference-ddp-step {
+    border-right: 0;
+    border-bottom: 1px solid var(--home-line);
+  }
+}
