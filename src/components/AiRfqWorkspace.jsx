@@ -688,8 +688,8 @@ export default function AiRfqWorkspace({
           </button>
           <span>
             {t(
-              `${project.items?.length || 0} item rows and ${sourceFiles.length} source files will be used.`,
-              `将引用 ${project.items?.length || 0} 项订单明细及 ${sourceFiles.length} 个源文件。`
+              `${project.items?.length || 0} item rows and ${Math.max(sourceFiles.length, document?.attachments?.length || 0)} source references will be used.`,
+              `将引用 ${project.items?.length || 0} 项订单明细及 ${Math.max(sourceFiles.length, document?.attachments?.length || 0)} 个资料参考。`
             )}
           </span>
         </div>
