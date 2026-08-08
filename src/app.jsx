@@ -391,6 +391,7 @@ const normalizeReviewJob = (job = {}) => {
   return {
     id: job.id || "LOCAL-INTAKE-DEMO",
     projectId: job.project_id || null,
+    sourceMode: result.source_mode || result.sourceMode || "",
     projectName: job.project_name || project.name || linkedProject.name || job.projectName || "To confirm",
     clientName: project.client_name || job.projects?.client_name || "Portal Intake Client",
     destination: job.destination || project.destination || linkedProject.client_contact || "",
@@ -710,9 +711,10 @@ const buildAiProjectOverviewFromJobs = (jobs = [], currentDraft = {}) => {
 };
 
 const denormalizeReviewDraft = (draft) => ({
+  source_mode: draft.sourceMode || "",
   project: {
     name: draft.projectName || "Crafton Intake Project",
-    client_name: "Portal Intake Client",
+    client_name: draft.clientName || "Portal Intake Client",
     destination: draft.destination || "",
     delivery_address: draft.deliveryAddress || "",
     desired_delivery_date: draft.desiredDeliveryDate || "",
@@ -721,6 +723,7 @@ const denormalizeReviewDraft = (draft) => ({
     currency: draft.currency || "USD"
   },
   items: (draft.items || []).map((item) => ({
+    id: item.id || "",
     item_type_cn: item.typeCn || item.typeEn || "Custom item",
     item_type_en: item.typeEn || "Custom item",
     quantity: Number(item.qty || 0),
@@ -738,6 +741,8 @@ const denormalizeReviewDraft = (draft) => ({
     fire_standard: item.fireStandard || draft.fireStandard || "",
     original_unit_price: Number(item.originalUnitPrice || item.unitPrice || 0),
     unit_price: Number(item.unitPrice || item.originalUnitPrice || 0),
+    currency: item.currency || draft.currency || "USD",
+    image_url: item.imageUrl || "",
     notes_cn: item.notesCn || item.notesEn || "",
     notes_en: item.notesEn || ""
   })),
@@ -748,7 +753,7 @@ const denormalizeReviewDraft = (draft) => ({
   packaging: draft.packaging || "",
   site_access: draft.siteAccess || "",
   summary_cn: "Cho reviewed the intake draft.",
-  summary_en: "Cho reviewed the intake draft and prepared it for pre-quote handling.",
+  summary_en: draft.summaryEn || "Cho reviewed the intake draft and prepared it for pre-quote handling.",
   source_notes: draft.sourceNotes || ""
 });
 
@@ -4796,10 +4801,14 @@ function App() {
             review_status: "pending",
             rfq_status: "not_started",
             result_json: {
+              ...(submittedTrackerProject.structuredBrief || {}),
+              source_mode: submittedTrackerProject.structuredBrief?.source_mode || "",
               project: {
+                ...(submittedTrackerProject.structuredBrief?.project || {}),
                 name: submittedTrackerProject.projectName,
                 client_name: user?.company || "Portal Intake Client",
-                destination: submittedTrackerProject.destination
+                destination: submittedTrackerProject.destination,
+                desired_delivery_date: submittedTrackerProject.desiredDeliveryDate || ""
               },
               items: buildSubmittedOrderItems(
                 submittedTrackerProject.quantityText,
@@ -4823,12 +4832,13 @@ function App() {
                 notes_en: item.note,
                 image_url: item.imageUrl || ""
               })),
-              questions: [
+              questions: submittedTrackerProject.structuredBrief?.questions || [
                 "Confirm exact dimensions for each furniture type.",
                 "Confirm final fabric code and Crib 5 fire requirement.",
                 "Confirm target delivery date and receiving window."
               ],
-              summary_en: "Local intake draft ready for Cho review.",
+              summary_en:
+                submittedTrackerProject.structuredBrief?.summary_en || "Local intake draft ready for Cho review.",
               source_notes: submittedTrackerProject.fileName || "Portal intake submission"
             }
           }
@@ -5105,8 +5115,20 @@ function App() {
       typeCn: item.typeCn || item.typeEn || "客户提交定制产品",
       typeEn: item.typeEn || item.typeCn || "Submitted Bespoke Item",
       qty: Number(item.qty || 0),
+      qtyDisplay: item.qtyDisplay || String(item.qty || ""),
+      dimensions: item.dimensions || {},
+      dimensionsText: item.dimensionsText || "",
+      tolerance: item.tolerance || "",
       materialCn: item.materialCn || "待确认",
       materialEn: item.materialEn || "To confirm",
+      fabricCode: item.fabricCode || "",
+      finish: item.finish || "",
+      color: item.color || "",
+      hardware: item.hardware || "",
+      usageLocation: item.usageLocation || "",
+      fireStandard: item.fireStandard || "",
+      imageUrl: item.imageUrl || "",
+      currency: item.currency || draft.currency || "USD",
       originalUnitPrice: Number(item.originalUnitPrice || item.unitPrice || 0),
       unitPrice: Number(item.unitPrice || item.originalUnitPrice || 0),
       status: "Draft",
@@ -6848,7 +6870,11 @@ function App() {
     const hasActiveIntake = Boolean(draft) || (!dbConnected && Boolean(order.orderId));
     const hasVerifiedAdminAccess = !dbConnected || (supabaseAuthReady && adminAccessStatus === "ready");
     const sourceFile = selectedJob ? getIntakeFileFromJob(selectedJob) : null;
-    const orderPreviewUrl = adminIntakePreview.url || trackerPreviewUrl;
+    const isSetFurnitureIntake = draft?.sourceMode === "set_furniture";
+    const primaryBomItem = bomItems[0] || null;
+    const cataloguePreviewItem = isSetFurnitureIntake ? bomItems.find((item) => item.imageUrl || item.image_url) : null;
+    const cataloguePreviewUrl = cataloguePreviewItem?.imageUrl || cataloguePreviewItem?.image_url || "";
+    const orderPreviewUrl = adminIntakePreview.url || trackerPreviewUrl || cataloguePreviewUrl;
     const uploadedAssets = [
       sourceFile
         ? {
@@ -6863,6 +6889,16 @@ function App() {
         : null
     ].filter(Boolean);
     const hasUploadedEvidence = uploadedAssets.length > 0 || Boolean(orderPreviewUrl);
+    const catalogueAssets = isSetFurnitureIntake
+      ? bomItems.map((item, index) => ({
+          id: `catalogue-${item.id || index}`,
+          name: [item.id, item.typeEn || item.typeCn].filter(Boolean).join(" · "),
+          type: "Set Furniture catalogue",
+          size: "Product image and specifications linked"
+        }))
+      : [];
+    const referenceAssets = [...uploadedAssets, ...catalogueAssets];
+    const hasSpecificationEvidence = hasUploadedEvidence || catalogueAssets.length > 0;
 
     const bomRows = bomItems.map((item) => [
       item.typeEn || item.typeCn || item.item_type_en || item.item_type_cn || "-",
@@ -6896,15 +6932,33 @@ function App() {
       formatAdminDate(approval.reviewed_at || approval.created_at)
     ]);
 
-    const derivedMissingQuestions = [
-      draft?.clientName || order.clientName ? null : "Customer name is missing.",
-      draft?.destination || order.projectLocation ? null : "Delivery destination is missing.",
-      bomItems.length ? null : "Furniture item, quantity, or material rows are missing.",
-      draft?.desiredDeliveryDate || draft?.deliveryWindow ? null : "Desired delivery date is missing.",
-      draft?.dimensions || bomItems.some((item) => item.dimensionsText) ? null : "Furniture dimensions are missing.",
-      hasUploadedEvidence ? null : "Furniture drawing, photo, or source file is missing."
-    ].filter(Boolean);
-    const missingQuestions = Array.from(new Set([...(draft?.questions || []), ...derivedMissingQuestions]));
+    const derivedMissingQuestions = isSetFurnitureIntake
+      ? [
+          bomItems.length ? null : "Furniture item, quantity, or material rows are missing.",
+          bomItems.length && bomItems.every((item) => item.dimensionsText || item.dimensions_text)
+            ? null
+            : "Furniture dimensions are missing.",
+          bomItems.length &&
+          bomItems.every(
+            (item) =>
+              item.materialEn || item.materialCn || item.material_en || item.material_cn || item.finish || item.color
+          )
+            ? null
+            : "Furniture item, quantity, or material rows are missing."
+        ].filter(Boolean)
+      : [
+          draft?.clientName || order.clientName ? null : "Customer name is missing.",
+          draft?.destination || order.projectLocation ? null : "Delivery destination is missing.",
+          bomItems.length ? null : "Furniture item, quantity, or material rows are missing.",
+          draft?.desiredDeliveryDate || draft?.deliveryWindow ? null : "Desired delivery date is missing.",
+          draft?.dimensions || bomItems.some((item) => item.dimensionsText)
+            ? null
+            : "Furniture dimensions are missing.",
+          hasUploadedEvidence ? null : "Furniture drawing, photo, or source file is missing."
+        ].filter(Boolean);
+    const missingQuestions = Array.from(
+      new Set([...(isSetFurnitureIntake ? [] : draft?.questions || []), ...derivedMissingQuestions])
+    );
     const hasMissingInfo = missingQuestions.length > 0;
     const isIntakeApproved = ["approved", "rfq_ready"].includes(draft?.reviewStatus);
     const liveRfqPackage = adminRfqBatches.find((batch) => batch.intake_job_id === selectedJob?.id);
@@ -6939,8 +6993,12 @@ function App() {
       },
       {
         label: "Drawings / photos / files",
-        value: hasUploadedEvidence ? `${uploadedAssets.length || 1} uploaded` : "No upload found",
-        state: hasUploadedEvidence ? "done" : "pending"
+        value: isSetFurnitureIntake
+          ? `${catalogueAssets.length} catalogue product${catalogueAssets.length === 1 ? "" : "s"} linked`
+          : hasUploadedEvidence
+            ? `${uploadedAssets.length || 1} uploaded`
+            : "No upload found",
+        state: hasSpecificationEvidence ? "done" : "pending"
       },
       ...(String(sourceFile?.mime_type || "").startsWith("image/")
         ? [
@@ -7158,7 +7216,14 @@ function App() {
                 <div className="intake-upload-zone">
                   <div className="intake-preview-frame">
                     {orderPreviewUrl ? (
-                      <img src={orderPreviewUrl} alt="Customer uploaded furniture reference" />
+                      <img
+                        src={orderPreviewUrl}
+                        alt={
+                          isSetFurnitureIntake
+                            ? primaryBomItem?.typeEn || primaryBomItem?.typeCn || "Set Furniture catalogue product"
+                            : "Customer uploaded furniture reference"
+                        }
+                      />
                     ) : (
                       <div className="intake-preview-fallback">
                         {renderChairSVG(selectedFabric, selectedLeg)}
@@ -7167,9 +7232,13 @@ function App() {
                     )}
                   </div>
                   <div className="intake-upload-list">
-                    <strong>Uploaded drawings / photos / files</strong>
-                    {uploadedAssets.length ? (
-                      uploadedAssets.map((asset) => (
+                    <strong>
+                      {isSetFurnitureIntake
+                        ? "Product references / uploaded files"
+                        : "Uploaded drawings / photos / files"}
+                    </strong>
+                    {referenceAssets.length ? (
+                      referenceAssets.map((asset) => (
                         <div className="intake-file-card" key={asset.id}>
                           <span>{asset.type}</span>
                           <strong>{asset.name}</strong>
@@ -7266,7 +7335,23 @@ function App() {
                   <div className="intake-spec-summary-grid">
                     <div className="intake-spec-thumb">
                       {orderPreviewUrl ? (
-                        <img src={orderPreviewUrl} alt="Generated specification thumbnail" />
+                        <>
+                          <img
+                            src={orderPreviewUrl}
+                            alt={
+                              isSetFurnitureIntake
+                                ? primaryBomItem?.typeEn || primaryBomItem?.typeCn || "Set Furniture catalogue product"
+                                : "Generated specification thumbnail"
+                            }
+                          />
+                          {isSetFurnitureIntake && primaryBomItem && (
+                            <div className="intake-spec-thumb-caption">
+                              <strong>{primaryBomItem.id || "Set Furniture"}</strong>
+                              <span>{primaryBomItem.typeEn || primaryBomItem.typeCn}</span>
+                              {bomItems.length > 1 && <small>+ {bomItems.length - 1} more catalogue products</small>}
+                            </div>
+                          )}
+                        </>
                       ) : (
                         renderChairSVG(selectedFabric, selectedLeg)
                       )}
