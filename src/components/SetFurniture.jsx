@@ -25,6 +25,12 @@ const SET_FURNITURE_PRICES = {
   "MU-603": 3950
 };
 
+const SET_FURNITURE_PRODUCT_IMAGES = {
+  "SF-101": "/thecrafton-assets/set-furniture/stand-thumb-green.jpg",
+  "SF-102": "/thecrafton-assets/set-furniture/upcoming-seating.jpg",
+  "SF-103": "/set-furniture/sofa.jpg"
+};
+
 const formatPrice = (value, currency = SET_FURNITURE_CURRENCY) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -329,6 +335,7 @@ export const SET_FURNITURE_CATEGORIES = [
     ...product,
     minimum: "10 pcs",
     price: SET_FURNITURE_PRICES[product.code],
+    image: SET_FURNITURE_PRODUCT_IMAGES[product.code] || category.image,
     currency: SET_FURNITURE_CURRENCY,
     finish: "Made to project finish schedule",
     warranty: "3-year commercial warranty",
@@ -391,10 +398,12 @@ export function SetFurnitureCatalog({
 }) {
   const category = getCategory(categorySlug) || SET_FURNITURE_CATEGORIES[0];
   const product = category.products.find((item) => item.id === productId);
+  const [collectionOpen, setCollectionOpen] = useState(Boolean(productId));
   const [cart, setCart] = useState(readStoredCart);
   const [cartOpen, setCartOpen] = useState(false);
   const [detailQuantity, setDetailQuantity] = useState(product ? parseMinimumQuantity(product.minimum) : 10);
   const [addedProductCode, setAddedProductCode] = useState("");
+  const isChinese = lang === "Cn";
 
   const cartItems = useMemo(
     () =>
@@ -423,6 +432,7 @@ export function SetFurnitureCatalog({
   useEffect(() => {
     setDetailQuantity(product ? parseMinimumQuantity(product.minimum) : 10);
     setAddedProductCode("");
+    if (product) setCollectionOpen(true);
   }, [product]);
 
   const addToProject = (selectedProduct, selectedCategory, quantity) => {
@@ -470,6 +480,11 @@ export function SetFurnitureCatalog({
     setCartOpen(false);
   };
 
+  const openStandCollection = () => {
+    setCollectionOpen(true);
+    onSelectCategory("sofa");
+  };
+
   const projectCart = (
     <>
       <button
@@ -497,11 +512,11 @@ export function SetFurnitureCatalog({
             >
               <header>
                 <div>
-                  <span>{lang === "Cn" ? "SET FURNITURE 项目" : "SET FURNITURE PROJECT"}</span>
-                  <h2 id="set-project-cart-title">{lang === "Cn" ? "项目清单" : "Project list"}</h2>
+                  <span>{isChinese ? "SET FURNITURE 项目" : "SET FURNITURE PROJECT"}</span>
+                  <h2 id="set-project-cart-title">{isChinese ? "项目清单" : "Project list"}</h2>
                 </div>
-                <button type="button" onClick={() => setCartOpen(false)} aria-label={lang === "Cn" ? "关闭" : "Close"}>
-                  ×
+                <button type="button" onClick={() => setCartOpen(false)} aria-label={isChinese ? "关闭" : "Close"}>
+                  <i className="fa-solid fa-xmark" aria-hidden="true" />
                 </button>
               </header>
               {cartItems.length ? (
@@ -509,15 +524,15 @@ export function SetFurnitureCatalog({
                   <div className="set-project-cart-items">
                     {cartItems.map((entry) => (
                       <article key={`${entry.category.slug}-${entry.product.id}`}>
-                        <img src={entry.category.image} alt="" />
+                        <img src={entry.product.image || entry.category.image} alt="" />
                         <div className="set-project-cart-item-copy">
                           <span>{entry.product.code}</span>
-                          <h3>{lang === "Cn" ? entry.product.nameCn : entry.product.name}</h3>
+                          <h3>{isChinese ? entry.product.nameCn : entry.product.name}</h3>
                           <p>
-                            {formatPrice(entry.product.price, entry.product.currency)} / {lang === "Cn" ? "件" : "unit"}
+                            {formatPrice(entry.product.price, entry.product.currency)} / {isChinese ? "件" : "unit"}
                           </p>
                           <label>
-                            <span>{lang === "Cn" ? "数量" : "Quantity"}</span>
+                            <span>{isChinese ? "数量" : "Quantity"}</span>
                             <input
                               type="number"
                               min={parseMinimumQuantity(entry.product.minimum)}
@@ -528,7 +543,7 @@ export function SetFurnitureCatalog({
                           </label>
                         </div>
                         <button type="button" className="set-project-cart-remove" onClick={() => removeCartItem(entry)}>
-                          {lang === "Cn" ? "移除" : "Remove"}
+                          {isChinese ? "移除" : "Remove"}
                         </button>
                       </article>
                     ))}
@@ -536,15 +551,15 @@ export function SetFurnitureCatalog({
                   <footer>
                     <div>
                       <span>
-                        {lang === "Cn" ? `共 ${cartCount} 件 · 参考合计` : `${cartCount} pieces · Estimated total`}
+                        {isChinese ? `共 ${cartCount} 件 · 参考合计` : `${cartCount} pieces · Estimated total`}
                       </span>
                       <strong>{formatPrice(cartTotal)}</strong>
                     </div>
                     <button type="button" className="btn-premium" onClick={submitProjectCart}>
-                      {lang === "Cn" ? "创建项目并下单" : "Create project & order"}
+                      {isChinese ? "创建项目并下单" : "Create project & order"}
                     </button>
                     <small>
-                      {lang === "Cn"
+                      {isChinese
                         ? "最终价格会根据饰面、数量、合规与交付地址确认。"
                         : "Final pricing is confirmed against finishes, quantity, compliance and delivery address."}
                     </small>
@@ -552,12 +567,12 @@ export function SetFurnitureCatalog({
                 </>
               ) : (
                 <div className="set-project-cart-empty">
-                  <span>＋</span>
-                  <h3>{lang === "Cn" ? "项目清单还是空的" : "Your project list is empty"}</h3>
+                  <span>
+                    <i className="fa-solid fa-plus" aria-hidden="true" />
+                  </span>
+                  <h3>{isChinese ? "项目清单还是空的" : "Your project list is empty"}</h3>
                   <p>
-                    {lang === "Cn"
-                      ? "打开产品详情，把喜欢的家具加入项目。"
-                      : "Open a product and add furniture you like."}
+                    {isChinese ? "打开产品详情，把喜欢的家具加入项目。" : "Open a product and add furniture you like."}
                   </p>
                 </div>
               )}
@@ -570,139 +585,250 @@ export function SetFurnitureCatalog({
 
   if (product) {
     return (
-      <main className="set-product-detail">
+      <main className={`set-product-detail set-furniture-cho-page${isChinese ? " set-furniture-cn" : ""}`}>
         {projectCart}
-        <button type="button" className="set-furniture-back" onClick={onBackToCatalog}>
-          ← {lang === "Cn" ? "返回产品目录" : "Back to catalogue"}
-        </button>
-        <div className="set-product-detail-grid">
-          <div className="set-product-detail-image">
-            <img src={category.image} alt={lang === "Cn" ? product.nameCn : product.name} />
-            <span>{product.code}</span>
-          </div>
-          <div className="set-product-detail-copy">
-            <span className="set-product-kicker">{lang === "Cn" ? category.nameCn : category.nameEn}</span>
-            <h1>{lang === "Cn" ? product.nameCn : product.name}</h1>
-            <p className="set-product-lede">{product.description}</p>
-            <div className="set-product-price">
-              <span>{lang === "Cn" ? "项目参考单价" : "Project guide price"}</span>
-              <strong>{formatPrice(product.price, product.currency)}</strong>
-              <small>{lang === "Cn" ? "/ 件 · 未含税" : "/ unit · excl. tax"}</small>
+        <div className="set-furniture-cho-wrap">
+          <button type="button" className="set-furniture-back" onClick={onBackToCatalog}>
+            <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+            {isChinese ? "返回 The Stand Collection" : "Back to The Stand Collection"}
+          </button>
+          <div className="set-product-detail-grid">
+            <div className="set-product-detail-gallery">
+              <div className="set-product-detail-image">
+                <img src={product.image || category.image} alt={isChinese ? product.nameCn : product.name} />
+                <span>{product.code}</span>
+              </div>
+              <div className="set-product-image-caption">
+                <span>{isChinese ? "目录图像" : "CATALOGUE IMAGE"}</span>
+                <p>
+                  {isChinese
+                    ? "饰面与软包颜色可按项目调整。"
+                    : "Finish and upholstery colour can be tailored to the project."}
+                </p>
+              </div>
             </div>
-            <dl className="set-product-specs">
-              <div>
-                <dt>{lang === "Cn" ? "产品编号" : "Product code"}</dt>
-                <dd>{product.code}</dd>
+            <section className="set-product-detail-copy" aria-labelledby="set-product-title">
+              <span className="set-product-kicker">THE STAND COLLECTION · {product.code}</span>
+              <h1 id="set-product-title">{isChinese ? product.nameCn : product.name}</h1>
+              <p className="set-product-lede">{product.description}</p>
+              <div className="set-product-price">
+                <span>{isChinese ? "项目参考单价" : "Project guide price"}</span>
+                <strong>{formatPrice(product.price, product.currency)}</strong>
+                <small>{isChinese ? "/ 件 · 未含税" : "/ unit · excl. tax"}</small>
               </div>
-              <div>
-                <dt>{lang === "Cn" ? "材质" : "Material"}</dt>
-                <dd>{product.material}</dd>
+              <div className="set-product-spec-heading">
+                <span>{isChinese ? "产品参数" : "PRODUCT SPECIFICATION"}</span>
+                <span>{isChinese ? "贸易价 · 送达价" : "TRADE PRICE · LANDED"}</span>
               </div>
-              <div>
-                <dt>{lang === "Cn" ? "参考尺寸" : "Reference size"}</dt>
-                <dd>{product.dimensions}</dd>
+              <dl className="set-product-specs">
+                {[
+                  [isChinese ? "产品编号" : "Product code", product.code],
+                  [isChinese ? "材质" : "Material", product.material],
+                  [isChinese ? "参考尺寸" : "Reference size", product.dimensions],
+                  [isChinese ? "生产周期" : "Lead time", product.lead],
+                  [isChinese ? "起订量" : "Minimum order", product.minimum],
+                  [isChinese ? "合规选项" : "Compliance", product.compliance],
+                  [isChinese ? "饰面" : "Finish", product.finish],
+                  [isChinese ? "可定制项" : "Customisation", product.customisation],
+                  [isChinese ? "商用质保" : "Warranty", product.warranty]
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="set-product-project-actions">
+                <label>
+                  <span>{isChinese ? "数量" : "Quantity"}</span>
+                  <input
+                    type="number"
+                    min={parseMinimumQuantity(product.minimum)}
+                    step="1"
+                    value={detailQuantity}
+                    onChange={(event) =>
+                      setDetailQuantity(
+                        Math.max(parseMinimumQuantity(product.minimum), Number(event.target.value || 1))
+                      )
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="set-product-add-button"
+                  onClick={() => addToProject(product, category, detailQuantity)}
+                >
+                  <i className="fa-solid fa-plus" aria-hidden="true" />
+                  {addedProductCode === product.code
+                    ? isChinese
+                      ? "已加入 · 查看项目清单"
+                      : "Added · View project list"
+                    : isChinese
+                      ? "加入项目"
+                      : "Add to project"}
+                </button>
               </div>
-              <div>
-                <dt>{lang === "Cn" ? "生产周期" : "Lead time"}</dt>
-                <dd>{product.lead}</dd>
-              </div>
-              <div>
-                <dt>{lang === "Cn" ? "起订量" : "Minimum order"}</dt>
-                <dd>{product.minimum}</dd>
-              </div>
-              <div>
-                <dt>{lang === "Cn" ? "合规选项" : "Compliance"}</dt>
-                <dd>{product.compliance}</dd>
-              </div>
-              <div>
-                <dt>{lang === "Cn" ? "饰面" : "Finish"}</dt>
-                <dd>{product.finish}</dd>
-              </div>
-              <div>
-                <dt>{lang === "Cn" ? "可定制项" : "Customisation"}</dt>
-                <dd>{product.customisation}</dd>
-              </div>
-              <div>
-                <dt>{lang === "Cn" ? "商用质保" : "Warranty"}</dt>
-                <dd>{product.warranty}</dd>
-              </div>
-            </dl>
-            <div className="set-product-project-actions">
-              <label>
-                <span>{lang === "Cn" ? "数量" : "Quantity"}</span>
-                <input
-                  type="number"
-                  min={parseMinimumQuantity(product.minimum)}
-                  step="1"
-                  value={detailQuantity}
-                  onChange={(event) => setDetailQuantity(Math.max(1, Number(event.target.value || 1)))}
-                />
-              </label>
-              <button
-                type="button"
-                className="btn-premium set-product-quote"
-                onClick={() => addToProject(product, category, detailQuantity)}
-              >
+              <p className="set-product-note" aria-live="polite">
                 {addedProductCode === product.code
-                  ? lang === "Cn"
-                    ? "已加入 · 查看项目清单"
-                    : "Added · View project list"
-                  : lang === "Cn"
-                    ? "加入项目"
-                    : "Add to project"}
-              </button>
-            </div>
-            <p className="set-product-note">
-              {lang === "Cn"
-                ? "图片为目录演示参考，最终材质、颜色与尺寸以项目确认文件为准。"
-                : "Catalogue imagery is for reference. Final dimensions, materials and finishes are confirmed per project."}
-            </p>
+                  ? isChinese
+                    ? `${product.nameCn} 已加入项目清单。`
+                    : `${product.name} has been added to the project list.`
+                  : isChinese
+                    ? "最终价格会根据饰面、数量、合规与交付地址确认。"
+                    : "Final pricing is confirmed against finish, quantity, compliance and delivery address."}
+              </p>
+            </section>
           </div>
         </div>
       </main>
     );
   }
 
-  if (!product) {
+  if (!collectionOpen) {
     return (
-      <main className="set-furniture-catalogue">
+      <main className="set-furniture-reference">
         {projectCart}
-        <header className="set-furniture-catalogue-header">
-          <span>{lang === "Cn" ? "THE CRAFTON 标准家具" : "THE CRAFTON SET FURNITURE"}</span>
-          <h1>
-            {lang === "Cn" ? "选择成熟款式，建立你的家具项目。" : "Choose proven pieces. Build your furniture project."}
-          </h1>
-          <p>
-            {lang === "Cn"
-              ? "查看透明参考价格与完整产品参数，把喜欢的家具加入项目清单，再统一提交订单。"
-              : "Review guide pricing and complete specifications, add favourites to a project list, then submit one considered order."}
-          </p>
+        <header className="set-furniture-reference-header">
+          <i
+            className="fa-solid fa-plus set-furniture-reference-mark set-furniture-reference-mark-tl"
+            aria-hidden="true"
+          />
+          <i
+            className="fa-solid fa-plus set-furniture-reference-mark set-furniture-reference-mark-tr"
+            aria-hidden="true"
+          />
+          <i
+            className="fa-solid fa-plus set-furniture-reference-mark set-furniture-reference-mark-bl"
+            aria-hidden="true"
+          />
+          <i
+            className="fa-solid fa-plus set-furniture-reference-mark set-furniture-reference-mark-br"
+            aria-hidden="true"
+          />
+          <div className="set-furniture-reference-wrap">
+            <div className="set-furniture-reference-kicker">Set Furniture — Ready Ranges</div>
+            <h1>Set Furniture</h1>
+            <p>
+              Proven, contract-grade collections you can specify today — no drawings, no lead-time on design. Trade
+              price in, your margin on top. We make it, ship it and land it to your client’s door. Open a collection to
+              browse and build your order.
+            </p>
+            <div className="set-furniture-reference-rule">
+              <span>The Collections</span>
+              <span>Trade pricing · landed, not FOB</span>
+            </div>
+          </div>
         </header>
-        <nav className="set-furniture-filters" aria-label="Furniture categories">
-          {SET_FURNITURE_CATEGORIES.map((item) => (
+        <div className="set-furniture-reference-wrap">
+          <article className="set-furniture-reference-feature">
             <button
               type="button"
-              className={item.slug === category.slug ? "active" : ""}
-              onClick={() => onSelectCategory(item.slug)}
-              key={item.slug}
-            >
-              {lang === "Cn" ? item.nameCn : item.nameEn}
-            </button>
-          ))}
-        </nav>
-        <section className="set-furniture-product-grid" aria-label={category.nameEn}>
+              className="set-furniture-reference-feature-action"
+              onClick={openStandCollection}
+              aria-label="Explore The Stand Collection"
+            />
+            <div className="set-furniture-reference-cover">
+              <span className="set-furniture-reference-live">
+                <i className="fa-solid fa-circle" aria-hidden="true" /> Live · 3 pieces
+              </span>
+              <img
+                src="/thecrafton-assets/set-furniture/stand-collection-hero.jpg"
+                alt="The Stand Collection dining furniture"
+              />
+            </div>
+            <div className="set-furniture-reference-body">
+              <div className="set-furniture-reference-collection-kicker">Collection 01</div>
+              <h2>The Stand Collection</h2>
+              <p>
+                Sculptural furniture in honest materials — solid marble, travertine, onyx, oak and boucle. Made with our
+                partner Opinord, landed to your door.
+              </p>
+              <div className="set-furniture-reference-thumbs" aria-hidden="true">
+                <img src="/thecrafton-assets/set-furniture/stand-thumb-red.jpg" alt="" />
+                <img src="/thecrafton-assets/set-furniture/stand-thumb-green.jpg" alt="" />
+                <img src="/thecrafton-assets/set-furniture/stand-thumb-interior.jpg" alt="" />
+              </div>
+              <span className="set-furniture-reference-go">
+                Explore the collection <i className="fa-solid fa-arrow-right" aria-hidden="true" />
+              </span>
+              <div className="set-furniture-reference-meta">Seating · Tables · Storage · trade pricing</div>
+            </div>
+          </article>
+
+          <div className="set-furniture-reference-upcoming">More collections — rolling out through 2026</div>
+          <section className="set-furniture-reference-grid" aria-label="Upcoming collections">
+            {[
+              {
+                image: "/thecrafton-assets/set-furniture/upcoming-seating.jpg",
+                title: "The Seating Range",
+                text: "Contract-grade sofas, lounge & occasional seating — Crib 5 compliant."
+              },
+              {
+                image: "/thecrafton-assets/set-furniture/upcoming-essentials.jpg",
+                title: "Ready-Made Essentials",
+                text: "The everyday contract pieces — case goods, beds and desks, ready to specify."
+              },
+              {
+                image: "/thecrafton-assets/set-furniture/upcoming-dining.jpg",
+                title: "The Dining Range",
+                text: "Statement dining tables and chairs in marble, travertine and solid oak."
+              }
+            ].map((item) => (
+              <article className="set-furniture-reference-card" key={item.title}>
+                <div className="set-furniture-reference-card-image">
+                  <span>Coming soon</span>
+                  <img src={item.image} alt={item.title} loading="lazy" />
+                </div>
+                <h3>{item.title}</h3>
+                <p>{item.text}</p>
+              </article>
+            ))}
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className={`set-furniture-catalogue set-furniture-cho-page${isChinese ? " set-furniture-cn" : ""}`}>
+      {projectCart}
+      <div className="set-furniture-cho-wrap">
+        <button type="button" className="set-furniture-back" onClick={() => setCollectionOpen(false)}>
+          <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+          {isChinese ? "返回全部系列" : "Back to all collections"}
+        </button>
+        <header className="set-furniture-catalogue-header">
+          <div>
+            <span>COLLECTION 01 · LIVE</span>
+            <h1>The Stand Collection</h1>
+          </div>
+          <p>
+            {isChinese
+              ? "从三件成熟的工程级座椅中选择。点击产品查看完整参数与价格，再加入项目统一下单。"
+              : "Choose from three proven contract-grade seating pieces. Open any product for full specifications and guide pricing, then add it to your project."}
+          </p>
+        </header>
+        <div className="set-furniture-collection-rule">
+          <span>{isChinese ? "三件产品" : "THREE PIECES"}</span>
+          <span>{isChinese ? "贸易价 · 未含税" : "TRADE PRICING · EXCL. TAX"}</span>
+        </div>
+        <section className="set-furniture-product-grid" aria-label="The Stand Collection products">
           {category.products.map((item, index) => (
             <article className="set-furniture-product-card" key={item.id}>
               <button type="button" className="set-furniture-product-link" onClick={() => onSelectProduct(item.id)}>
-                <div className={`set-furniture-product-image product-tone-${index + 1}`}>
-                  <img src={category.image} alt={lang === "Cn" ? item.nameCn : item.name} />
+                <div className="set-furniture-product-image">
+                  <img src={item.image || category.image} alt={isChinese ? item.nameCn : item.name} />
                   <span>{item.code}</span>
                 </div>
                 <div className="set-furniture-product-copy">
-                  <h2>{lang === "Cn" ? item.nameCn : item.name}</h2>
+                  <div className="set-furniture-product-index">{String(index + 1).padStart(2, "0")}</div>
+                  <h2>{isChinese ? item.nameCn : item.name}</h2>
                   <p>{item.material}</p>
                   <strong>{formatPrice(item.price, item.currency)}</strong>
-                  <span>{lang === "Cn" ? "查看产品详情" : "View product details"} →</span>
+                  <span>
+                    {isChinese ? "查看产品详情" : "View product details"}
+                    <i className="fa-solid fa-arrow-right" aria-hidden="true" />
+                  </span>
                 </div>
               </button>
               <button
@@ -710,12 +836,13 @@ export function SetFurnitureCatalog({
                 className="set-furniture-card-add"
                 onClick={() => addToProject(item, category, parseMinimumQuantity(item.minimum))}
               >
-                ＋ {lang === "Cn" ? "加入项目" : "Add to project"}
+                <i className="fa-solid fa-plus" aria-hidden="true" />
+                {isChinese ? "加入项目" : "Add to project"}
               </button>
             </article>
           ))}
         </section>
-      </main>
-    );
-  }
+      </div>
+    </main>
+  );
 }
