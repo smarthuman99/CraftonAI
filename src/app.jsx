@@ -274,6 +274,72 @@ const safeJsonObject = (value, fallback = {}) => {
   }
 };
 
+const GENERIC_CLARIFICATION_MESSAGES = new Set(
+  [
+    "Please answer the missing specification questions before RFQ.",
+    "Please provide the missing specification details.",
+    "Requested client clarification before RFQ.",
+    "Client submitted clarification answers.",
+    "请补充缺少的规格资料。",
+    "请在询价前回答缺失的规格问题。"
+  ].map((message) => message.toLowerCase())
+);
+
+const normalizeClarificationQuestions = (...sources) => {
+  const questions = sources
+    .flatMap((source) => (Array.isArray(source) ? source : [source]))
+    .flatMap((entry) => {
+      const value =
+        entry && typeof entry === "object" ? entry.question || entry.text || entry.message || "" : String(entry || "");
+      return value.split(/\r?\n+/);
+    })
+    .map((question) =>
+      question
+        .replace(/^\s*(?:[-*\u2022]|\d+[.)])\s*/, "")
+        .replace(/\s+/g, " ")
+        .trim()
+    )
+    .filter((question) => question && !GENERIC_CLARIFICATION_MESSAGES.has(question.toLowerCase()));
+
+  return Array.from(new Set(questions));
+};
+
+const buildSpecificClarificationFallback = ({ job = {}, project = {}, result = {}, items = [] } = {}) => {
+  if (
+    !project.desired_delivery_date &&
+    !result.desired_delivery_date &&
+    !project.delivery_window &&
+    !result.delivery_window
+  ) {
+    return "Please confirm your target delivery date or required delivery window.";
+  }
+
+  if (!job.destination && !project.destination && !project.delivery_address && !result.delivery_address) {
+    return "Please confirm the delivery destination and full receiving address.";
+  }
+
+  if (!job.quantity_text && !items.some((item) => Number(item.quantity || item.qty || 0) > 0)) {
+    return "Please confirm the required quantity for each furniture item.";
+  }
+
+  if (
+    items.some(
+      (item) =>
+        !item.dimensions_text &&
+        !(typeof item.dimensions === "string" && item.dimensions.trim()) &&
+        !(item.dimensions && typeof item.dimensions === "object" && Object.keys(item.dimensions).length)
+    )
+  ) {
+    return "Please confirm the width, depth, and height required for each furniture item.";
+  }
+
+  if (items.some((item) => !item.material_en && !item.material_cn && !item.fabric_code)) {
+    return "Please confirm the required material or fabric specification for each furniture item.";
+  }
+
+  return "Please confirm the outstanding specification requested by the Crafton project team.";
+};
+
 const normalizeGroupingText = (value) =>
   String(value || "")
     .toLowerCase()
@@ -302,7 +368,18 @@ const normalizeReviewJob = (job = {}) => {
   const items = Array.isArray(result.items) ? result.items : [];
   const firstItem = items[0] || {};
   const payments = Array.isArray(result.payments) ? result.payments : [];
-  const questions = Array.isArray(result.questions) ? result.questions : [];
+  const reviewStatus = job.review_status || (job.status === "completed" ? "approved" : "pending");
+  const savedQuestions = normalizeClarificationQuestions(
+    result.questions,
+    result.client_questions,
+    result.clarification_questions
+  );
+  const reviewNoteQuestions =
+    reviewStatus === "revision_requested" ? normalizeClarificationQuestions(job.review_notes) : [];
+  const questions = Array.from(new Set([...reviewNoteQuestions, ...savedQuestions]));
+  if (reviewStatus === "revision_requested" && questions.length === 0) {
+    questions.push(buildSpecificClarificationFallback({ job, project, result, items }));
+  }
   const rfqDraft = safeJsonObject(job.rfq_draft_json, null);
   const intakeFile = getIntakeFileFromJob(job);
   const dimensionsText =
@@ -324,7 +401,7 @@ const normalizeReviewJob = (job = {}) => {
     currency: project.currency || result.currency || "USD",
     quantityText: job.quantity_text || job.quantityText || "",
     status: job.status || "needs_review",
-    reviewStatus: job.review_status || (job.status === "completed" ? "approved" : "pending"),
+    reviewStatus,
     rfqStatus: job.rfq_status || "not_started",
     reviewNotes: job.review_notes || "",
     clientAnswers: safeJsonObject(job.client_answers, {}),
@@ -813,6 +890,9 @@ function App() {
   const [supportStatus, setSupportStatus] = useState("");
 
   const [currentStageIndex, setCurrentStageIndex] = useState(0); // S01 to S17
+  const [adminWorkspaceMode, setAdminWorkspaceMode] = useState("overview");
+  const [adminPortfolioSearch, setAdminPortfolioSearch] = useState("");
+  const [adminPortfolioFilter, setAdminPortfolioFilter] = useState("all");
   const [activeAdminFlow, setActiveAdminFlow] = useState(() => {
     const savedFlow = safeGetItem("crafton_admin_active_flow");
     return ["intake", "sourcing", "production", "shipping"].includes(savedFlow) ? savedFlow : "intake";
@@ -5198,11 +5278,23 @@ function App() {
     if (!job || !reviewDraft) return;
 
     const resultJson = denormalizeReviewDraft(reviewDraft);
+    const clarificationQuestions = normalizeClarificationQuestions(reviewNote, reviewDraft.questions);
+    if (clarificationQuestions.length === 0) {
+      clarificationQuestions.push(
+        buildSpecificClarificationFallback({
+          job,
+          project: resultJson.project || {},
+          result: resultJson,
+          items: resultJson.items || []
+        })
+      );
+    }
+    resultJson.questions = clarificationQuestions;
     const updates = {
       status: "needs_review",
       step: "client_clarification_requested",
       review_status: "revision_requested",
-      review_notes: reviewNote || "Please answer the missing specification questions before RFQ.",
+      review_notes: clarificationQuestions[0],
       result_json: resultJson
     };
 
@@ -6732,8 +6824,17 @@ function App() {
     </section>
   );
 
+  const getAdminWorkspaceJobs = () => {
+    if (intakeReviewJobs.length > 0) return intakeReviewJobs;
+    if (dbConnected) return [];
+    const localJobs = getLocalReviewJobs();
+    if (localJobs.length > 0) return localJobs;
+    if (clientProjectJobs.length > 0) return clientProjectJobs;
+    return buildClientDashboardDemoJobs();
+  };
+
   const getAdminDraftContext = () => {
-    const jobs = intakeReviewJobs.length > 0 ? intakeReviewJobs : dbConnected ? [] : getLocalReviewJobs();
+    const jobs = getAdminWorkspaceJobs();
     const selectedJob = jobs.find((job) => job.id === selectedReviewJobId) || jobs[0];
     const selectedNormalized = selectedJob ? normalizeReviewJob(selectedJob) : null;
     const draft = reviewDraft || selectedNormalized;
@@ -6920,7 +7021,7 @@ function App() {
           </div>
         </section>
 
-        {clientGroups.length > 0 && (
+        {adminWorkspaceMode === "overview" && clientGroups.length > 0 && (
           <section className="intake-client-project-directory" aria-label="Customer project directory">
             <div className="intake-directory-heading">
               <div>
@@ -7658,11 +7759,404 @@ function App() {
     );
   };
 
+  const getAdminPortfolioStage = (job = {}) => {
+    const projectId = job.projectId || job.project_id || null;
+    const relatedRfqBatches = adminRfqBatches.filter(
+      (batch) => batch.project_id === projectId || batch.intake_job_id === job.id
+    );
+    const relatedBatchIds = new Set(relatedRfqBatches.map((batch) => batch.id));
+    const relatedQuotes = adminSupplierQuotes.filter(
+      (quote) =>
+        quote.project_id === projectId || relatedBatchIds.has(quote.rfq_batch_id) || relatedBatchIds.has(quote.rfq_id)
+    );
+    const eventStages = adminWorkflowEvents
+      .filter((event) => event.project_id === projectId || event.intake_job_id === job.id)
+      .map((event) => {
+        const match = String(event.stage_id || event.to_stage || event.stage || "").match(/(\d{1,2})/);
+        return match ? Number(match[1]) : 0;
+      });
+
+    let inferredStage = 1;
+    if (job.items?.length) inferredStage = 3;
+    if (job.reviewStatus === "revision_requested") inferredStage = 2;
+    if (["approved", "rfq_ready"].includes(job.reviewStatus)) inferredStage = 6;
+    if (relatedRfqBatches.length || ["draft", "sent"].includes(job.rfqStatus)) inferredStage = 6;
+    if (relatedQuotes.length) inferredStage = 7;
+
+    const stage = Math.max(Number(job.currentStage || 0), inferredStage, ...eventStages, 1);
+    return Math.min(17, Math.max(1, stage));
+  };
+
+  const getAdminPortfolioFlow = (stage) => {
+    if (stage <= 5) return "intake";
+    if (stage <= 8) return "sourcing";
+    if (stage <= 11) return "production";
+    return "shipping";
+  };
+
+  const openAdminProjectWorkspace = (job) => {
+    const stage = getAdminPortfolioStage(job);
+    setSelectedReviewJobId(job.id);
+    setActiveAdminFlow(getAdminPortfolioFlow(stage));
+    setCurrentStageIndex(stage - 1);
+    setAdminWorkspaceMode("project");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const renderAdminPortfolioOverview = () => {
+    const jobs = getAdminWorkspaceJobs();
+    const clientGroups = buildClientGroupsFromJobs(jobs);
+    const stageLabels = [
+      ["订单资料接入", "Order intake"],
+      ["规格缺口审核", "Specification gap review"],
+      ["BOM 与规格草稿", "BOM and specification draft"],
+      ["Cho 技术审批", "Cho technical approval"],
+      ["合规放行", "Compliance release"],
+      ["RFQ 准备与发送", "RFQ preparation and dispatch"],
+      ["供应商报价比较", "Supplier quote comparison"],
+      ["Cho 供应商决策", "Cho supplier decision"],
+      ["生产启动", "Production kickoff"],
+      ["生产风险跟进", "Production risk follow-up"],
+      ["出货前质检", "Pre-shipment inspection"],
+      ["装柜方案", "Container loading plan"],
+      ["出口文件合规", "Export document compliance"],
+      ["物流追踪", "Shipment tracking"],
+      ["分批交付核对", "Split delivery audit"],
+      ["客户交接验收", "Client handover"],
+      ["项目归档", "Project archive"]
+    ];
+    const flowMeta = {
+      intake: { index: 0, cn: "订单接入", en: "Order intake", range: "S01-S05" },
+      sourcing: { index: 1, cn: "询价与比价", en: "RFQ and sourcing", range: "S06-S08" },
+      production: { index: 2, cn: "生产执行", en: "Production", range: "S09-S11" },
+      shipping: { index: 3, cn: "出货与交付", en: "Shipping and handover", range: "S12-S17" }
+    };
+    const nextActionCopy = (job, stage) => {
+      if (job.reviewStatus === "revision_requested") {
+        return lang === "Cn"
+          ? "等待客户补齐规格资料，并检查回复"
+          : "Await the client's missing specifications and review the reply";
+      }
+      if (stage <= 2)
+        return lang === "Cn"
+          ? "审核客户资料与 AI 识别出的规格缺口"
+          : "Review the client brief and AI-detected specification gaps";
+      if (stage === 3)
+        return lang === "Cn"
+          ? "检查 BOM、双语规格、尺寸与材质"
+          : "Check the BOM, bilingual specifications, dimensions and materials";
+      if (stage <= 5)
+        return lang === "Cn"
+          ? "由 Cho 批准技术资料并放行 RFQ"
+          : "Cho to approve the technical package and release it for RFQ";
+      if (stage === 6)
+        return lang === "Cn" ? "确认询价单与受邀供应商后发送" : "Confirm the RFQ and invited suppliers, then dispatch";
+      if (stage === 7)
+        return lang === "Cn"
+          ? "收集报价并查看 AI 标准化比价结果"
+          : "Collect quotations and review the AI-normalized comparison";
+      if (stage === 8) return lang === "Cn" ? "由 Cho 决定中选供应商" : "Cho to select the winning supplier";
+      if (stage <= 10)
+        return lang === "Cn" ? "检查生产进度、证据与延期风险" : "Review production progress, evidence and delay risks";
+      if (stage === 11)
+        return lang === "Cn" ? "审核质检结果并决定是否放行" : "Review inspection results and decide whether to release";
+      if (stage <= 14)
+        return lang === "Cn"
+          ? "核对装柜、出口文件与物流节点"
+          : "Verify loading, export documents and shipment milestones";
+      if (stage <= 16)
+        return lang === "Cn"
+          ? "确认到货数量、问题与客户签收"
+          : "Confirm delivered quantities, issues and client sign-off";
+      return lang === "Cn" ? "项目已完成，可查看审计归档" : "Project complete; audit archive is available";
+    };
+
+    const projects = clientGroups.flatMap((clientGroup) =>
+      clientGroup.projects.map((project) => {
+        const latestJob = project.jobs[0];
+        const stage = getAdminPortfolioStage(latestJob);
+        const flow = getAdminPortfolioFlow(stage);
+        const isDecisionStage = [4, 5, 8, 11, 16].includes(stage);
+        const needsAction =
+          latestJob.reviewStatus === "revision_requested" ||
+          (stage <= 5 && latestJob.reviewStatus === "pending") ||
+          isDecisionStage;
+        return {
+          ...project,
+          clientKey: clientGroup.key,
+          clientName: clientGroup.clientName,
+          latestJob,
+          stage,
+          flow,
+          needsAction,
+          nextAction: nextActionCopy(latestJob, stage)
+        };
+      })
+    );
+    const activeProjects = projects.filter((project) => project.stage < 17);
+    const activeClientKeys = new Set(activeProjects.map((project) => project.clientKey));
+    const phaseCounts = Object.keys(flowMeta).reduce(
+      (counts, flow) => ({ ...counts, [flow]: activeProjects.filter((project) => project.flow === flow).length }),
+      {}
+    );
+    const searchTerm = adminPortfolioSearch.trim().toLowerCase();
+    const filteredProjects = activeProjects.filter((project) => {
+      const matchesSearch =
+        !searchTerm ||
+        [project.clientName, project.projectName, project.destination, project.latestJob.quantityText]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(searchTerm));
+      const matchesFilter =
+        adminPortfolioFilter === "all" ||
+        (adminPortfolioFilter === "action" ? project.needsAction : project.flow === adminPortfolioFilter);
+      return matchesSearch && matchesFilter;
+    });
+    const visibleClientGroups = clientGroups
+      .map((clientGroup) => ({
+        ...clientGroup,
+        portfolioProjects: filteredProjects.filter((project) => project.clientKey === clientGroup.key)
+      }))
+      .filter((clientGroup) => clientGroup.portfolioProjects.length > 0);
+    const portfolioFilters = [
+      { id: "all", cn: "全部", en: "All" },
+      { id: "action", cn: "待处理", en: "Needs action" },
+      { id: "intake", cn: "订单接入", en: "Intake" },
+      { id: "sourcing", cn: "询价", en: "Sourcing" },
+      { id: "production", cn: "生产", en: "Production" },
+      { id: "shipping", cn: "交付", en: "Shipping" }
+    ];
+
+    return (
+      <AdminLocalized lang={lang}>
+        <div className={`admin-portfolio-dashboard lang-${lang.toLowerCase()}`}>
+          <header className="admin-portfolio-hero">
+            <div>
+              <span className="logo-badge">{lang === "Cn" ? "管理员后台" : "Backoffice control"}</span>
+              <h2>{lang === "Cn" ? "订单管理总览" : "Order portfolio overview"}</h2>
+              <p>
+                {lang === "Cn"
+                  ? "先掌握全部客户项目、当前阶段与待办事项，再进入单个项目执行自动化流程。"
+                  : "See every client project, its current stage and the next decision before opening the automation workspace."}
+              </p>
+            </div>
+            <div className="admin-portfolio-live">
+              <span aria-hidden="true"></span>
+              <strong>{dbConnected ? "Supabase live" : lang === "Cn" ? "本地预览资料" : "Local preview data"}</strong>
+              <small>{lang === "Cn" ? "刚刚同步" : "Synced just now"}</small>
+            </div>
+          </header>
+
+          <section className="admin-portfolio-overview" aria-labelledby="admin-order-overview-title">
+            <div className="admin-portfolio-section-heading">
+              <div>
+                <span className="admin-section-kicker">{lang === "Cn" ? "总体订单详情" : "Overall order details"}</span>
+                <h3 id="admin-order-overview-title">{lang === "Cn" ? "当前订单组合" : "Current order portfolio"}</h3>
+              </div>
+              <p>
+                {lang === "Cn"
+                  ? `${activeClientKeys.size} 个活跃客户，共 ${activeProjects.length} 个进行中项目`
+                  : `${activeClientKeys.size} active clients across ${activeProjects.length} live projects`}
+              </p>
+            </div>
+
+            <div className="admin-portfolio-metrics">
+              <div className="admin-portfolio-metric">
+                <span>{lang === "Cn" ? "活跃客户" : "Active clients"}</span>
+                <strong>{activeClientKeys.size}</strong>
+                <small>{lang === "Cn" ? "有进行中项目" : "with live projects"}</small>
+              </div>
+              <div className="admin-portfolio-metric">
+                <span>{lang === "Cn" ? "进行中项目" : "Active projects"}</span>
+                <strong>{activeProjects.length}</strong>
+                <small>{lang === "Cn" ? `${jobs.length} 条订单提交记录` : `${jobs.length} intake submissions`}</small>
+              </div>
+              <div className="admin-portfolio-metric primary attention">
+                <span>{lang === "Cn" ? "需要处理" : "Needs action"}</span>
+                <strong>{activeProjects.filter((project) => project.needsAction).length}</strong>
+                <small>{lang === "Cn" ? "等待 Cho 或客户" : "waiting on Cho or client"}</small>
+              </div>
+              <div className="admin-portfolio-metric">
+                <span>{lang === "Cn" ? "询价与比价" : "RFQ and sourcing"}</span>
+                <strong>{phaseCounts.sourcing || 0}</strong>
+                <small>S06-S08</small>
+              </div>
+              <div className="admin-portfolio-metric">
+                <span>{lang === "Cn" ? "生产中" : "In production"}</span>
+                <strong>{phaseCounts.production || 0}</strong>
+                <small>S09-S11</small>
+              </div>
+              <div className="admin-portfolio-metric">
+                <span>{lang === "Cn" ? "出货与交付" : "Shipping and handover"}</span>
+                <strong>{phaseCounts.shipping || 0}</strong>
+                <small>S12-S17</small>
+              </div>
+            </div>
+
+            <div
+              className="admin-portfolio-pipeline"
+              aria-label={lang === "Cn" ? "订单阶段分布" : "Order stage distribution"}
+            >
+              {Object.entries(flowMeta).map(([flow, meta]) => (
+                <div className="admin-portfolio-pipeline-step" key={flow}>
+                  <span>0{meta.index + 1}</span>
+                  <div>
+                    <strong>{lang === "Cn" ? meta.cn : meta.en}</strong>
+                    <small>{meta.range}</small>
+                  </div>
+                  <b>{phaseCounts[flow] || 0}</b>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="admin-active-clients" aria-labelledby="admin-active-clients-title">
+            <div className="admin-active-clients-header">
+              <div>
+                <span className="admin-section-kicker">{lang === "Cn" ? "活跃客户" : "Active clients"}</span>
+                <h3 id="admin-active-clients-title">
+                  {lang === "Cn" ? "客户项目与下一步处理" : "Client projects and next actions"}
+                </h3>
+                <p>
+                  {lang === "Cn"
+                    ? "点击项目进入 S01-S17 自动化操作详情。"
+                    : "Open a project to work through its S01-S17 automation details."}
+                </p>
+              </div>
+              <label className="admin-portfolio-search">
+                <span>{lang === "Cn" ? "搜索" : "Search"}</span>
+                <input
+                  type="search"
+                  value={adminPortfolioSearch}
+                  onChange={(event) => setAdminPortfolioSearch(event.target.value)}
+                  placeholder={lang === "Cn" ? "客户、项目或目的地" : "Client, project or destination"}
+                />
+              </label>
+            </div>
+
+            <div
+              className="admin-portfolio-filters"
+              role="tablist"
+              aria-label={lang === "Cn" ? "项目筛选" : "Project filters"}
+            >
+              {portfolioFilters.map((filter) => (
+                <button
+                  key={filter.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={adminPortfolioFilter === filter.id}
+                  className={adminPortfolioFilter === filter.id ? "active" : ""}
+                  onClick={() => setAdminPortfolioFilter(filter.id)}
+                >
+                  {lang === "Cn" ? filter.cn : filter.en}
+                </button>
+              ))}
+            </div>
+
+            <div className="admin-client-portfolio-list">
+              {visibleClientGroups.length ? (
+                visibleClientGroups.map((clientGroup) => (
+                  <section className="admin-client-portfolio-group" key={clientGroup.key}>
+                    <header>
+                      <span className="admin-client-monogram" aria-hidden="true">
+                        {clientGroup.clientName.slice(0, 1).toUpperCase()}
+                      </span>
+                      <div>
+                        <h4>{clientGroup.clientName}</h4>
+                        <p>
+                          {lang === "Cn"
+                            ? `${clientGroup.portfolioProjects.length} 个活跃项目`
+                            : `${clientGroup.portfolioProjects.length} active project${clientGroup.portfolioProjects.length === 1 ? "" : "s"}`}
+                        </p>
+                      </div>
+                    </header>
+
+                    <div className="admin-client-project-rows">
+                      {clientGroup.portfolioProjects.map((project) => {
+                        const flow = flowMeta[project.flow];
+                        const stageLabel = stageLabels[project.stage - 1];
+                        return (
+                          <button
+                            type="button"
+                            className="admin-portfolio-project-row"
+                            key={project.key}
+                            onClick={() => openAdminProjectWorkspace(project.latestJob)}
+                            aria-label={`${lang === "Cn" ? "打开项目" : "Open project"} ${project.projectName}`}
+                          >
+                            <span className="admin-project-identity">
+                              <span className="admin-project-stage-chip">
+                                S{String(project.stage).padStart(2, "0")}
+                              </span>
+                              <span>
+                                <strong>{project.projectName}</strong>
+                                <small>
+                                  {[
+                                    project.destination || (lang === "Cn" ? "目的地待确认" : "Destination pending"),
+                                    project.latestJob.quantityText
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" / ")}
+                                </small>
+                              </span>
+                            </span>
+
+                            <span className="admin-project-progress-block">
+                              <span className="admin-project-progress-meta">
+                                <strong>{lang === "Cn" ? flow.cn : flow.en}</strong>
+                                <small>{lang === "Cn" ? stageLabel[0] : stageLabel[1]}</small>
+                              </span>
+                              <span className="admin-project-phase-track" aria-hidden="true">
+                                {Object.values(flowMeta).map((phase) => (
+                                  <i
+                                    key={phase.index}
+                                    className={`${phase.index < flow.index ? "complete" : ""} ${phase.index === flow.index ? "current" : ""}`}
+                                  ></i>
+                                ))}
+                              </span>
+                            </span>
+
+                            <span className="admin-project-next-action">
+                              <span>{lang === "Cn" ? "下一步" : "Next action"}</span>
+                              <strong>{project.nextAction}</strong>
+                            </span>
+
+                            <span className="admin-project-row-end">
+                              <small>{formatAdminDate(project.latestJob.createdAt)}</small>
+                              <span className={`admin-project-action-state ${project.needsAction ? "attention" : ""}`}>
+                                {project.needsAction
+                                  ? lang === "Cn"
+                                    ? "需要处理"
+                                    : "Needs action"
+                                  : lang === "Cn"
+                                    ? "进行中"
+                                    : "In progress"}
+                              </span>
+                              <b aria-hidden="true">&rarr;</b>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))
+              ) : (
+                <div className="admin-portfolio-empty">
+                  <strong>{lang === "Cn" ? "没有符合条件的活跃项目" : "No active projects match this view"}</strong>
+                  <p>{lang === "Cn" ? "调整搜索关键词或筛选条件。" : "Change the search term or project filter."}</p>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </AdminLocalized>
+    );
+  };
+
   const getActiveAdminProject = () => {
+    const workspaceJobs = getAdminWorkspaceJobs();
     const selectedJob =
-      intakeReviewJobs.find((job) => job.id === selectedReviewJobId) ||
-      intakeReviewJobs.find((job) => job.project_id === order.id) ||
-      intakeReviewJobs[0];
+      workspaceJobs.find((job) => job.id === selectedReviewJobId) ||
+      workspaceJobs.find((job) => job.project_id === order.id) ||
+      workspaceJobs[0];
     const selectedDraft =
       reviewDraft?.id === selectedJob?.id ? reviewDraft : selectedJob ? normalizeReviewJob(selectedJob) : reviewDraft;
 
@@ -14962,40 +15456,60 @@ function App() {
         </div>
       )}
       {currentView === "Backoffice" && isStaffUser && (
-        <div className="crafton-backoffice dashboard-grid animate-fade-in">
+        <div className={`crafton-backoffice dashboard-grid animate-fade-in admin-${adminWorkspaceMode}-mode`}>
           {/* Sidebar Left: Order progress controller */}
-          <div className="sidebar">
-            <h3 className="sidebar-title">{lang === "Cn" ? "订单进度菜单" : "Order Progress Menu"}</h3>
-            <div className="admin-progress-menu">
-              {adminProgressFlows.map((flow, flowIndex) => {
-                const isActive = activeAdminFlow === flow.id;
-                const firstStage = stages[flow.stageIndexes[0]];
-                const lastStage = stages[flow.stageIndexes[flow.stageIndexes.length - 1]];
-                return (
-                  <button
-                    key={flow.id}
-                    type="button"
-                    className={`admin-progress-button ${isActive ? "active" : ""}`}
-                    onClick={() => {
-                      setActiveAdminFlow(flow.id);
-                      handleStageChange(flow.stageIndexes[0]);
-                    }}
-                  >
-                    <span className="admin-progress-index">0{flowIndex + 1}</span>
-                    <span className="admin-progress-copy">
-                      <strong>{lang === "Cn" ? flow.titleCn : flow.titleEn}</strong>
-                      <small>
-                        {firstStage.id}-{lastStage.id}
-                      </small>
-                    </span>
-                  </button>
-                );
-              })}
+          {adminWorkspaceMode === "project" && (
+            <div className="sidebar">
+              <h3 className="sidebar-title">{lang === "Cn" ? "项目流程菜单" : "Project Workflow"}</h3>
+              <div className="admin-progress-menu">
+                {adminProgressFlows.map((flow, flowIndex) => {
+                  const isActive = activeAdminFlow === flow.id;
+                  const firstStage = stages[flow.stageIndexes[0]];
+                  const lastStage = stages[flow.stageIndexes[flow.stageIndexes.length - 1]];
+                  return (
+                    <button
+                      key={flow.id}
+                      type="button"
+                      className={`admin-progress-button ${isActive ? "active" : ""}`}
+                      onClick={() => {
+                        setActiveAdminFlow(flow.id);
+                        setCurrentStageIndex(flow.stageIndexes[0]);
+                      }}
+                    >
+                      <span className="admin-progress-index">0{flowIndex + 1}</span>
+                      <span className="admin-progress-copy">
+                        <strong>{lang === "Cn" ? flow.titleCn : flow.titleEn}</strong>
+                        <small>
+                          {firstStage.id}-{lastStage.id}
+                        </small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Right Main Admin Area */}
-          <div className="main-content">{renderAdminProgressBoard()}</div>
+          <div className="main-content">
+            {adminWorkspaceMode === "overview" ? (
+              renderAdminPortfolioOverview()
+            ) : (
+              <>
+                <div className="admin-project-workspace-nav">
+                  <button type="button" onClick={() => setAdminWorkspaceMode("overview")}>
+                    <span aria-hidden="true">&larr;</span>
+                    {lang === "Cn" ? "返回全部客户项目" : "Back to all client projects"}
+                  </button>
+                  <div>
+                    <span>{lang === "Cn" ? "当前项目工作区" : "Current project workspace"}</span>
+                    <strong>{reviewDraft?.projectName || getActiveAdminProject()?.orderId || "-"}</strong>
+                  </div>
+                </div>
+                {renderAdminProgressBoard()}
+              </>
+            )}
+          </div>
         </div>
       )}
 
