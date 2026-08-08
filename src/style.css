@@ -9079,6 +9079,870 @@ select:focus,
   }
 }
 
+/* Cho Henley project detail page */
+.cho-project-page {
+  --cho-cream: #efe7d6;
+  --cho-paper: #fbf6ec;
+  --cho-ink: #232220;
+  --cho-walnut: #4a3525;
+  --cho-stone: #8f8064;
+  --cho-body: #5b5446;
+  --cho-placeholder: #ddd6c6;
+  --cho-line: rgba(35, 34, 32, 0.14);
+  --cho-grid: rgba(35, 34, 32, 0.07);
+  width: 100%;
+  min-height: calc(100vh - 92px);
+  color: var(--cho-ink);
+  background-color: var(--cho-cream);
+  background-image:
+    linear-gradient(var(--cho-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cho-grid) 1px, transparent 1px);
+  background-size: 46px 46px;
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.cho-project-page *,
+.cho-project-page *::before,
+.cho-project-page *::after {
+  box-sizing: border-box;
+}
+
+.cho-project-page > .cho-client-wrap {
+  padding-top: 0;
+}
+
+.cho-project-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 65px;
+  color: var(--cho-stone);
+  font: 10px/1.4 "JetBrains Mono", monospace;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+}
+
+.cho-project-breadcrumb button {
+  min-height: 44px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.cho-project-breadcrumb button:hover,
+.cho-project-breadcrumb strong {
+  color: var(--cho-ink);
+}
+
+.cho-project-breadcrumb button:focus-visible,
+.cho-project-page button:focus-visible,
+.cho-project-page a:focus-visible,
+.cho-project-page textarea:focus-visible {
+  outline: 3px solid rgba(74, 53, 37, 0.28);
+  outline-offset: 3px;
+}
+
+.cho-project-hero {
+  position: relative;
+  padding: 14px 0 8px;
+}
+
+.cho-project-corner {
+  position: absolute;
+  top: 18px;
+  color: var(--cho-walnut);
+  font-size: 14px;
+}
+
+.cho-project-corner.left {
+  left: -48px;
+}
+
+.cho-project-corner.right {
+  right: -48px;
+}
+
+.cho-project-title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.cho-project-title-row h1 {
+  margin: 0;
+  color: var(--cho-ink);
+  font-family: "Fraunces", "Noto Serif SC", "Songti SC", serif;
+  font-size: 68px;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.04;
+}
+
+.cho-project-title-row p {
+  margin: 9px 0 0;
+  color: var(--cho-body);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.cho-project-status-pill,
+.cho-project-action-badge,
+.cho-project-row-status,
+.cho-project-stage-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 40px;
+  font: 9px/1.25 "JetBrains Mono", monospace;
+  letter-spacing: 0.8px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.cho-project-status-pill {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 8px 16px;
+  color: var(--cho-paper);
+  background: var(--cho-walnut);
+}
+
+.cho-project-status-pill.tone-action {
+  color: var(--cho-walnut);
+  background: var(--cho-paper);
+  border: 1px solid var(--cho-walnut);
+}
+
+.cho-project-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin: 30px 0 8px;
+}
+
+.cho-project-kpi {
+  min-width: 0;
+  min-height: 96px;
+  padding: 20px;
+  background: var(--cho-paper);
+  border: 1px solid var(--cho-line);
+  border-radius: 12px;
+}
+
+.cho-project-kpi strong,
+.cho-project-kpi span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.cho-project-kpi strong {
+  color: var(--cho-ink);
+  font-family: "Fraunces", serif;
+  font-size: 30px;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+.cho-project-kpi span {
+  margin-top: 7px;
+  color: var(--cho-stone);
+  font: 9px/1.4 "JetBrains Mono", monospace;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.cho-project-card {
+  min-width: 0;
+  margin-top: 22px;
+  padding: 30px;
+  background: var(--cho-paper);
+  border: 1px solid var(--cho-line);
+  border-radius: 16px;
+}
+
+.cho-project-card-label {
+  margin-bottom: 18px;
+  color: var(--cho-stone);
+  font: 10px/1.4 "JetBrains Mono", monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.cho-project-stage-bars {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cho-project-stage-bars > div {
+  min-width: 0;
+}
+
+.cho-project-stage-bars > div > span {
+  display: block;
+  width: 100%;
+  height: 8px;
+  margin-bottom: 12px;
+  background: var(--cho-placeholder);
+  border-radius: 5px;
+}
+
+.cho-project-stage-bars .complete > span,
+.cho-project-stage-bars .current > span {
+  background: var(--cho-walnut);
+}
+
+.cho-project-stage-bars strong,
+.cho-project-stage-bars small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cho-project-stage-bars strong {
+  color: var(--cho-stone);
+  font: 10px/1.4 "JetBrains Mono", monospace;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.cho-project-stage-bars .complete strong,
+.cho-project-stage-bars .current strong {
+  color: var(--cho-ink);
+}
+
+.cho-project-stage-bars small {
+  margin-top: 4px;
+  color: var(--cho-stone);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.cho-project-primary-grid,
+.cho-project-secondary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(330px, 0.95fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.cho-project-side-stack {
+  min-width: 0;
+}
+
+.cho-project-table {
+  width: 100%;
+}
+
+.cho-project-table-head,
+.cho-project-table-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.25fr) 72px 92px 108px minmax(155px, 1fr) 118px;
+  align-items: center;
+}
+
+.cho-project-table-head {
+  color: var(--cho-stone);
+  border-bottom: 1px solid var(--cho-line);
+  font: 9px/1.4 "JetBrains Mono", monospace;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.cho-project-table-head > span,
+.cho-project-table-row > span,
+.cho-project-table-row > div {
+  min-width: 0;
+  padding: 11px 8px;
+}
+
+.cho-project-table-row {
+  min-height: 72px;
+  color: var(--cho-body);
+  font-size: 12px;
+  line-height: 1.45;
+  border-bottom: 1px solid var(--cho-line);
+}
+
+.cho-project-table-row:last-child {
+  border-bottom: 0;
+}
+
+.cho-project-table-row strong,
+.cho-project-table-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.cho-project-table-row strong {
+  color: var(--cho-ink);
+  font-size: 12px;
+}
+
+.cho-project-table-row small {
+  margin-top: 3px;
+  color: var(--cho-stone);
+  font-size: 10px;
+}
+
+.cho-project-item {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.cho-project-item img,
+.cho-project-item > .cho-client-image-placeholder {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  padding: 4px;
+  overflow: hidden;
+  object-fit: cover;
+  color: var(--cho-stone);
+  text-align: center;
+  background: var(--cho-placeholder);
+  border-radius: 7px;
+  font: 7px/1.2 "JetBrains Mono", monospace;
+  text-transform: uppercase;
+}
+
+.cho-project-mono {
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+.cho-project-stage-tag {
+  min-height: 24px;
+  padding: 5px 9px;
+  color: var(--cho-walnut);
+  background: rgba(74, 53, 37, 0.09);
+}
+
+.cho-project-stage-tag.stage-3,
+.cho-project-stage-tag.stage-4 {
+  background: rgba(74, 53, 37, 0.16);
+}
+
+.cho-project-row-status {
+  justify-content: flex-start;
+  color: var(--cho-stone);
+}
+
+.cho-project-row-status.tone-action {
+  min-height: 24px;
+  padding: 4px 8px;
+  color: var(--cho-walnut);
+  border: 1px solid var(--cho-walnut);
+}
+
+.cho-project-row-status.tone-complete {
+  color: var(--cho-walnut);
+}
+
+.cho-project-approval-card article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--cho-line);
+}
+
+.cho-project-approval-card article:last-child {
+  border-bottom: 0;
+}
+
+.cho-project-approval-card article strong,
+.cho-project-approval-card article small {
+  display: block;
+}
+
+.cho-project-approval-card article strong {
+  font-size: 13px;
+}
+
+.cho-project-approval-card article p {
+  display: -webkit-box;
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--cho-body);
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.cho-project-approval-card article small {
+  margin-top: 5px;
+  color: var(--cho-stone);
+  font: 8px/1.3 "JetBrains Mono", monospace;
+  letter-spacing: 1px;
+}
+
+.cho-project-approval-card article button {
+  min-width: 72px;
+  min-height: 38px;
+  padding: 8px 13px;
+  color: var(--cho-paper);
+  background: var(--cho-walnut);
+  border: 1px solid var(--cho-walnut);
+  border-radius: 40px;
+  font: 9px/1.2 "JetBrains Mono", monospace;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.cho-project-empty-note {
+  margin: 0;
+  color: var(--cho-body);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.cho-project-documents > a,
+.cho-project-documents > div:not(.cho-project-card-label) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 12px 0;
+  color: var(--cho-ink);
+  border-bottom: 1px solid var(--cho-line);
+}
+
+.cho-project-documents > a:last-child,
+.cho-project-documents > div:last-child {
+  border-bottom: 0;
+}
+
+.cho-project-documents > a:hover strong {
+  color: var(--cho-walnut);
+}
+
+.cho-project-document-type {
+  flex: 0 0 auto;
+  min-width: 34px;
+  padding: 6px 7px;
+  overflow: hidden;
+  color: var(--cho-paper);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--cho-walnut);
+  border-radius: 5px;
+  font: 8px/1 "JetBrains Mono", monospace;
+  text-transform: uppercase;
+}
+
+.cho-project-documents strong,
+.cho-project-documents small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.cho-project-documents strong {
+  font-size: 12px;
+}
+
+.cho-project-documents small {
+  margin-top: 3px;
+  color: var(--cho-stone);
+  font-size: 10px;
+}
+
+.cho-project-timeline article {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  min-height: 58px;
+  padding: 8px 0;
+}
+
+.cho-project-timeline article > span {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  background: var(--cho-cream);
+  border: 2px solid var(--cho-stone);
+  border-radius: 50%;
+}
+
+.cho-project-timeline article:not(:last-child)::after {
+  position: absolute;
+  top: 22px;
+  bottom: -8px;
+  left: 5px;
+  width: 1px;
+  background: var(--cho-line);
+  content: "";
+}
+
+.cho-project-timeline article.complete > span {
+  background: var(--cho-walnut);
+  border-color: var(--cho-walnut);
+}
+
+.cho-project-timeline article.current > span {
+  border-color: var(--cho-walnut);
+  box-shadow: 0 0 0 4px rgba(74, 53, 37, 0.14);
+}
+
+.cho-project-timeline article strong,
+.cho-project-timeline article small {
+  display: block;
+}
+
+.cho-project-timeline article strong {
+  font-size: 13px;
+}
+
+.cho-project-timeline article.upcoming strong {
+  color: var(--cho-stone);
+}
+
+.cho-project-timeline article small {
+  margin-top: 4px;
+  color: var(--cho-stone);
+  font-size: 10px;
+}
+
+.cho-project-manager-person {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cho-project-manager-person > span {
+  display: grid;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  color: var(--cho-paper);
+  background: var(--cho-walnut);
+  border-radius: 50%;
+  font: 11px/1 "JetBrains Mono", monospace;
+}
+
+.cho-project-manager-person strong,
+.cho-project-manager-person small {
+  display: block;
+}
+
+.cho-project-manager-person strong {
+  font-size: 13px;
+}
+
+.cho-project-manager-person small {
+  margin-top: 4px;
+  color: var(--cho-stone);
+  font: 9px/1.4 "JetBrains Mono", monospace;
+  text-transform: uppercase;
+}
+
+.cho-project-manager > p {
+  margin: 18px 0;
+  color: var(--cho-body);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.cho-project-confirmation-form {
+  scroll-margin-top: 120px;
+}
+
+.cho-project-confirmation-order + .cho-project-confirmation-order {
+  margin-top: 26px;
+  padding-top: 26px;
+  border-top: 1px solid var(--cho-line);
+}
+
+.cho-project-confirmation-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.cho-project-confirmation-heading h2 {
+  margin: 0;
+  font-family: "Fraunces", "Noto Serif SC", "Songti SC", serif;
+  font-size: 26px;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.cho-project-action-badge {
+  min-height: 28px;
+  padding: 6px 11px;
+  color: var(--cho-walnut);
+  border: 1px solid var(--cho-walnut);
+}
+
+.cho-project-confirmation-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+
+.cho-project-confirmation-fields label {
+  display: grid;
+  gap: 8px;
+}
+
+.cho-project-confirmation-fields label > span {
+  color: var(--cho-body);
+  font: 10px/1.5 "JetBrains Mono", monospace;
+}
+
+.cho-project-confirmation-fields textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 13px 14px;
+  resize: vertical;
+  color: var(--cho-ink);
+  background: var(--cho-paper);
+  border: 1px solid var(--cho-line);
+  border-radius: 6px;
+  font: 14px/1.55 "Inter", sans-serif;
+}
+
+.cho-project-confirmation-fields textarea:focus {
+  border-color: var(--cho-walnut);
+}
+
+.cho-project-confirmation-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.cho-project-page-actions {
+  display: flex;
+  gap: 14px;
+  margin: 26px 0 0;
+  padding-bottom: 6px;
+}
+
+.cho-client-project-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 17px;
+  color: var(--cho-walnut);
+  font: 10px/1.2 "JetBrains Mono", monospace;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.cho-client-project-open i {
+  transition: transform 300ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.cho-client-project-card:hover .cho-client-project-open i {
+  transform: translateX(3px);
+}
+
+@media (max-width: 1180px) {
+  .cho-project-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cho-project-kpi:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .cho-project-primary-grid,
+  .cho-project-secondary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cho-project-table-head,
+  .cho-project-table-row {
+    grid-template-columns: minmax(190px, 1.25fr) 70px 88px 104px minmax(145px, 0.9fr) 110px;
+  }
+}
+
+@media (max-width: 760px) {
+  .cho-project-page > .cho-client-wrap {
+    padding: 0 18px 64px;
+  }
+
+  .cho-project-breadcrumb {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .cho-project-breadcrumb strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cho-project-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .cho-project-title-row h1 {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: 46px;
+  }
+
+  .cho-project-corner {
+    display: none;
+  }
+
+  .cho-project-kpis {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .cho-project-kpi,
+  .cho-project-kpi:last-child {
+    grid-column: auto;
+    min-height: 104px;
+    padding: 16px;
+  }
+
+  .cho-project-kpi:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .cho-project-kpi strong {
+    font-size: 25px;
+  }
+
+  .cho-project-card {
+    padding: 22px 16px;
+    border-radius: 8px;
+  }
+
+  .cho-project-stage-bars {
+    gap: 5px;
+  }
+
+  .cho-project-stage-bars > div > span {
+    height: 6px;
+  }
+
+  .cho-project-stage-bars strong {
+    font-size: 8px;
+  }
+
+  .cho-project-stage-bars small {
+    display: none;
+  }
+
+  .cho-project-table-head {
+    display: none;
+  }
+
+  .cho-project-table-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin-top: 12px;
+    overflow: hidden;
+    background: var(--cho-paper);
+    border: 1px solid var(--cho-line);
+    border-radius: 8px;
+  }
+
+  .cho-project-table-row > span,
+  .cho-project-table-row > div {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .cho-project-table-row > span::before,
+  .cho-project-table-row > div::before {
+    color: var(--cho-stone);
+    content: attr(data-label);
+    font: 8px/1.3 "JetBrains Mono", monospace;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+
+  .cho-project-table-row > span + span,
+  .cho-project-table-row > div + span {
+    border-top: 1px solid var(--cho-line);
+  }
+
+  .cho-project-item {
+    grid-template-columns: 52px minmax(0, 1fr) !important;
+  }
+
+  .cho-project-item::before {
+    display: none;
+  }
+
+  .cho-project-item img,
+  .cho-project-item > .cho-client-image-placeholder {
+    width: 52px;
+    height: 52px;
+  }
+
+  .cho-project-confirmation-heading,
+  .cho-project-confirmation-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cho-project-confirmation-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .cho-project-page-actions {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 420px) {
+  .cho-project-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .cho-project-kpi:last-child {
+    grid-column: auto;
+  }
+
+  .cho-project-title-row h1 {
+    font-size: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cho-project-page *,
+  .cho-project-page *::before,
+  .cho-project-page *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 /* Set Furniture redesign — supplied Ready Ranges reference + CHO Craft Design System */
 .set-furniture-reference,
 .set-furniture-cho-page {
@@ -10121,5 +10985,467 @@ select:focus,
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* =====================================================================
+   CHO CRAFT BACKOFFICE WORKBENCH
+   Compact navigation rail, high-density operational canvas, and the
+   Cream / Paper / Walnut hierarchy defined by CHO_CRAFT_DESIGN_SYSTEM.md.
+   ===================================================================== */
+
+.crafton-backoffice.dashboard-grid {
+  --backoffice-rail-width: clamp(218px, 13.5vw, 238px);
+  grid-template-columns: var(--backoffice-rail-width) minmax(0, 1fr);
+  min-width: 0;
+  min-height: calc(100vh - 92px);
+  background: var(--craft-paper);
+}
+
+.crafton-backoffice .sidebar {
+  position: sticky;
+  top: 92px;
+  align-self: start;
+  width: 100%;
+  height: calc(100vh - 92px);
+  padding: 1.75rem 1rem;
+  overflow-y: auto;
+  border-right: 1px solid rgba(251, 246, 236, 0.16);
+  box-sizing: border-box;
+  scrollbar-color: rgba(251, 246, 236, 0.24) transparent;
+}
+
+.crafton-backoffice .sidebar-title {
+  margin: 0 0 0.85rem;
+  padding: 0 0.45rem 0.8rem;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.11em;
+  line-height: 1.5;
+}
+
+.crafton-backoffice .admin-progress-menu {
+  gap: 0.35rem;
+}
+
+.crafton-backoffice .admin-progress-button {
+  min-height: 64px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 0.65rem;
+  padding: 0.68rem 0.7rem;
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: 4px;
+  transition:
+    color 300ms cubic-bezier(0.25, 1, 0.5, 1),
+    border-color 300ms cubic-bezier(0.25, 1, 0.5, 1),
+    background-color 300ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.crafton-backoffice .admin-progress-button:hover,
+.crafton-backoffice .admin-progress-button.active {
+  border-color: rgba(251, 246, 236, 0.2);
+  border-left-color: var(--craft-cream);
+  background: rgba(251, 246, 236, 0.09);
+  box-shadow: none;
+  transform: none;
+}
+
+.crafton-backoffice .admin-progress-index {
+  width: 26px;
+  height: 26px;
+  border-color: rgba(251, 246, 236, 0.25);
+  font-size: 0.62rem;
+}
+
+.crafton-backoffice .admin-progress-copy strong {
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.crafton-backoffice .admin-progress-copy small {
+  margin-top: 0.15rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+}
+
+.crafton-backoffice .main-content {
+  min-width: 0;
+  max-height: calc(100vh - 92px);
+  padding: clamp(1.4rem, 2vw, 2rem) clamp(1.25rem, 2.4vw, 2.5rem) 3rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.crafton-backoffice .admin-status-board {
+  width: min(100%, 1600px);
+  margin: 0 auto;
+  gap: 1rem;
+}
+
+.crafton-backoffice .admin-board-heading {
+  align-items: end;
+  gap: 1.25rem;
+  padding: 0 0.15rem 0.95rem;
+  border-bottom: 1px solid var(--craft-line);
+}
+
+.crafton-backoffice .admin-board-heading .logo-badge,
+.crafton-backoffice .admin-panel-kicker,
+.crafton-backoffice .admin-ops-section > header span {
+  color: var(--craft-walnut);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+.crafton-backoffice .admin-board-heading h3 {
+  margin: 0.55rem 0 0.2rem;
+  color: var(--craft-ink);
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 2vw, 2.15rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.12;
+}
+
+.crafton-app[lang="en"] .crafton-backoffice .admin-board-heading h3,
+.crafton-app[lang="en"] .crafton-backoffice :is(.admin-panel-topline h4, .admin-ops-section > header h3) {
+  font-style: italic;
+}
+
+.crafton-backoffice .admin-board-heading p {
+  max-width: 840px;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.crafton-backoffice .admin-stage-chip-row {
+  flex: 0 0 auto;
+  gap: 0.35rem;
+}
+
+.crafton-backoffice .admin-stage-chip {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.45rem 0.6rem;
+  border-color: var(--craft-line);
+  border-radius: 4px;
+  background: rgba(251, 246, 236, 0.82);
+  color: var(--craft-stone);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.03em;
+}
+
+.crafton-backoffice .admin-stage-chip:hover,
+.crafton-backoffice .admin-stage-chip.active {
+  border-color: var(--craft-walnut);
+  background: var(--craft-cream);
+  color: var(--craft-walnut);
+  box-shadow: inset 0 -2px 0 var(--craft-walnut);
+}
+
+.crafton-backoffice :is(
+    .intake-command-header,
+    .intake-client-project-directory,
+    .intake-order-brief-panel,
+    .intake-ai-review-panel,
+    .intake-bom-spec-panel,
+    .intake-approval-panel,
+    .admin-stage-panel,
+    .admin-ops-section,
+    .ai-rfq-document
+  ) {
+  border: 1px solid var(--craft-line);
+  border-radius: 6px;
+  background: rgba(251, 246, 236, 0.97);
+  box-shadow: none;
+}
+
+.crafton-backoffice .glass-card:hover,
+.crafton-backoffice :is(.admin-stage-panel, .admin-ops-section):hover {
+  border-color: var(--craft-line);
+  box-shadow: none;
+  transform: none;
+}
+
+.crafton-backoffice .intake-command-workspace,
+.crafton-backoffice .admin-ops-workspace,
+.crafton-backoffice .admin-flow-grid {
+  gap: 0.85rem;
+}
+
+.crafton-backoffice .intake-command-header {
+  padding: 1.15rem 1.35rem;
+}
+
+.crafton-backoffice .intake-command-header h4 {
+  margin: 0.55rem 0 0.2rem;
+  font-family: var(--font-display);
+  font-size: 1.65rem;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.crafton-backoffice .intake-command-header p {
+  max-width: 900px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.83rem;
+  line-height: 1.55;
+}
+
+.crafton-backoffice .intake-client-project-directory {
+  overflow: hidden;
+}
+
+.crafton-backoffice :is(.intake-directory-heading, .admin-panel-topline, .admin-ops-section > header) {
+  padding: 0.9rem 1rem;
+  border-bottom-color: var(--craft-line);
+  background: rgba(239, 231, 214, 0.34);
+}
+
+.crafton-backoffice :is(.intake-directory-heading h5, .admin-panel-topline h4, .admin-ops-section > header h3) {
+  color: var(--craft-ink);
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.crafton-backoffice .intake-client-tree {
+  padding: 0.75rem 1rem 0.9rem;
+}
+
+.crafton-backoffice .intake-client-toggle {
+  min-height: 58px;
+  padding: 0.65rem 0.8rem;
+  border-radius: 4px;
+}
+
+.crafton-backoffice .intake-project-menu-item {
+  min-height: 54px;
+  padding: 0.65rem 0.75rem 0.65rem 1rem;
+}
+
+.crafton-backoffice .intake-review-grid {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 0.85rem;
+}
+
+.crafton-backoffice :is(.intake-order-brief-panel, .intake-ai-review-panel, .intake-bom-spec-panel, .intake-approval-panel) {
+  padding: 1rem;
+}
+
+.crafton-backoffice .intake-section-heading {
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 0.7rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+.crafton-backoffice .intake-section-heading > span {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--craft-walnut);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.crafton-backoffice .intake-section-heading h5 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.crafton-backoffice .intake-section-heading p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.crafton-backoffice .admin-flow-grid,
+.crafton-backoffice .admin-ops-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.crafton-backoffice .admin-panel-content,
+.crafton-backoffice .admin-ops-body {
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+}
+
+.crafton-backoffice :is(.admin-metric-card, .admin-detail-block, .admin-note-box, .admin-check-row, .admin-ops-form) {
+  border-color: var(--craft-line);
+  border-radius: 4px;
+  background: rgba(251, 246, 236, 0.72);
+}
+
+.crafton-backoffice .admin-mini-table {
+  font-size: 0.76rem;
+}
+
+.crafton-backoffice .admin-mini-table th,
+.crafton-backoffice .admin-mini-table td {
+  padding: 0.65rem 0.7rem;
+  border-bottom-color: var(--craft-line);
+}
+
+.crafton-backoffice .admin-mini-table th {
+  background: rgba(239, 231, 214, 0.42);
+  color: var(--craft-stone);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.crafton-backoffice :is(.admin-ops-form label > span, .ai-rfq-controls > label > span, .ai-data-source) {
+  color: var(--craft-stone);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+.crafton-backoffice :is(
+    .admin-ops-form input,
+    .admin-ops-form select,
+    .admin-ops-form textarea,
+    .ai-rfq-controls input,
+    .ai-rfq-controls select,
+    .ai-rfq-document input,
+    .ai-rfq-document textarea,
+    .admin-review-textarea
+  ) {
+  border-color: var(--craft-line);
+  background: var(--craft-cream);
+}
+
+.crafton-backoffice :is(
+    .admin-ops-toolbar button,
+    .admin-ops-stage-actions button,
+    .admin-mini-table button,
+    .admin-ops-form-actions button,
+    .ai-workflow-commandbar button,
+    .ai-rfq-primary-actions button,
+    .ai-rfq-document-toolbar button,
+    .ai-rfq-history button,
+    .admin-panel-actions button
+  ) {
+  min-height: 44px;
+  border-color: rgba(74, 53, 37, 0.32);
+  border-radius: 999px;
+  background: var(--craft-cream);
+  color: var(--craft-walnut);
+  padding-inline: 1rem;
+}
+
+.crafton-backoffice :is(.ai-rfq-controls, .admin-ops-form, .ai-workflow-commandbar) {
+  border-color: var(--craft-line);
+  border-radius: 5px;
+  background: rgba(239, 231, 214, 0.28);
+}
+
+@media (max-width: 1180px) {
+  .crafton-backoffice.dashboard-grid {
+    --backoffice-rail-width: 204px;
+  }
+
+  .crafton-backoffice .main-content {
+    padding-inline: 1.25rem;
+  }
+
+  .crafton-backoffice .intake-review-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 991px) {
+  .crafton-backoffice.dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+  }
+
+  .crafton-backoffice .sidebar {
+    position: static;
+    height: auto;
+    padding: 0.85rem 1.2rem;
+    overflow: visible;
+  }
+
+  .crafton-backoffice .sidebar-title {
+    margin-bottom: 0.55rem;
+    padding-bottom: 0.55rem;
+  }
+
+  .crafton-backoffice .admin-progress-menu {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .crafton-backoffice .admin-progress-button {
+    min-height: 68px;
+    border-left-width: 1px;
+    border-bottom: 2px solid transparent;
+  }
+
+  .crafton-backoffice .admin-progress-button:hover,
+  .crafton-backoffice .admin-progress-button.active {
+    border-left-color: rgba(251, 246, 236, 0.2);
+    border-bottom-color: var(--craft-cream);
+  }
+
+  .crafton-backoffice .main-content {
+    max-height: none;
+    padding: 1.25rem;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 720px) {
+  .crafton-backoffice .admin-progress-menu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .crafton-backoffice .admin-board-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .crafton-backoffice .admin-stage-chip-row {
+    justify-content: flex-start;
+  }
+
+  .crafton-backoffice .admin-flow-grid,
+  .crafton-backoffice .admin-ops-grid,
+  .crafton-backoffice .review-form-grid,
+  .crafton-backoffice .review-questions-grid,
+  .crafton-backoffice .ai-rfq-controls,
+  .crafton-backoffice .ai-rfq-introduction,
+  .crafton-backoffice .ai-rfq-lower-grid,
+  .crafton-backoffice .ai-delivery-columns,
+  .crafton-backoffice .ai-production-timeline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crafton-backoffice .admin-ops-section.wide,
+  .crafton-backoffice .admin-flow-grid .wide,
+  .crafton-backoffice .ai-rfq-controls > .wide {
+    grid-column: auto;
   }
 }

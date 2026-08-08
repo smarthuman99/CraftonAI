@@ -1,11 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
-
 const copy = (lang, cn, en) => (lang === "Cn" ? cn : en);
 
-const formatDate = (value, lang) => {
-  if (!value) return copy(lang, "日期待确认", "Date pending");
+const formatDate = (value, lang, fallback) => {
+  if (!value) return fallback || copy(lang, "日期待确认", "Date pending");
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat(lang === "Cn" ? "zh-HK" : "en-GB", {
@@ -22,67 +20,84 @@ const parseQuantity = (value) => {
 
 const getItemQuantity = (item) => Number(item?.qty || 0) || parseQuantity(item?.qtyDisplay);
 
-const formatMoney = (value, currency = "USD") =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0
-  }).format(Number(value || 0));
-
 const getJobQuantity = (job) => {
   const itemTotal = (job.items || []).reduce((total, item) => total + getItemQuantity(item), 0);
   return itemTotal || parseQuantity(job.quantityText);
 };
 
+const uniqueRows = (rows = []) => {
+  const seen = new Set();
+  return rows.filter((row, index) => {
+    const key = String(row?.id || row?.file_url || row?.file_path || `${row?.created_at || "row"}-${index}`);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const getProgressRows = (project, key) =>
+  uniqueRows((project.jobs || []).flatMap((job) => job.clientProgress?.[key] || []));
+
 const getOrderStage = (job) => {
   const status = String(job.status || "").toLowerCase();
   const reviewStatus = String(job.reviewStatus || "").toLowerCase();
   const rfqStatus = String(job.rfqStatus || "").toLowerCase();
+  const currentStage = Number(job.currentStage || 0);
+  const progress = job.clientProgress || {};
 
-  if (["delivered", "shipping", "shipped", "dispatch"].includes(status)) return 4;
-  if (["in_production", "production", "manufacturing", "quality_check", "packing"].includes(status)) return 3;
-  if (["ready", "sent", "priced"].includes(rfqStatus) || ["approved", "rfq_ready"].includes(reviewStatus)) return 2;
-  if (reviewStatus === "revision_requested" || reviewStatus === "pending" || status === "needs_review") return 1;
+  if (status === "delivered" || currentStage >= 14 || (progress.shipments || []).length) return 4;
+  if (status === "quality_check" || currentStage >= 11 || (progress.inspections || []).length) return 3;
+  if (
+    ["in_production", "production", "manufacturing", "packing"].includes(status) ||
+    currentStage >= 9 ||
+    (progress.productionUpdates || []).length
+  ) {
+    return 2;
+  }
+  if (
+    currentStage >= 3 ||
+    ["ready", "sent", "priced"].includes(rfqStatus) ||
+    ["approved", "rfq_ready", "revision_requested", "pending"].includes(reviewStatus) ||
+    status === "needs_review"
+  ) {
+    return 1;
+  }
   return 0;
 };
 
 const getOrderStatus = (job, lang) => {
   const status = String(job.status || "").toLowerCase();
+  const stage = getOrderStage(job);
 
-  if (["delivered"].includes(status)) {
+  if (status === "delivered" || Number(job.currentStage || 0) >= 16) {
     return { label: copy(lang, "已交付", "Delivered"), tone: "complete" };
   }
-  if (["shipping", "shipped", "dispatch"].includes(status)) {
-    return { label: copy(lang, "运输中", "In transit"), tone: "progress" };
-  }
-  if (["in_production", "production", "manufacturing", "quality_check", "packing"].includes(status)) {
-    return { label: copy(lang, "制造中", "In production"), tone: "progress" };
-  }
+  if (stage === 4) return { label: copy(lang, "运输与交付", "Shipping & delivery"), tone: "progress" };
+  if (stage === 3) return { label: copy(lang, "质检与合规", "Inspection & compliance"), tone: "progress" };
+  if (stage === 2) return { label: copy(lang, "制造中", "In production"), tone: "progress" };
   if (job.reviewStatus === "revision_requested") {
     return { label: copy(lang, "需要您补充资料", "Your input needed"), tone: "action" };
   }
-  if (["ready", "sent", "priced"].includes(job.rfqStatus) || job.reviewStatus === "rfq_ready") {
-    return { label: copy(lang, "正式报价准备中", "Quotation in progress"), tone: "progress" };
-  }
-  if (job.reviewStatus === "approved") {
+  if (job.reviewStatus === "approved" || job.reviewStatus === "rfq_ready") {
     return { label: copy(lang, "规格已确认", "Specifications confirmed"), tone: "complete" };
   }
-  if (job.reviewStatus === "pending" || job.status === "needs_review") {
-    return { label: copy(lang, "规格审核中", "Specification review"), tone: "progress" };
-  }
+  if (stage === 1) return { label: copy(lang, "规格审核中", "Specification review"), tone: "progress" };
   return { label: copy(lang, "已接收", "Brief received"), tone: "neutral" };
 };
 
 const getStageDetail = (job, lang) => {
-  const stage = getOrderStage(job);
   const details = [
-    copy(lang, "需求与附件已安全接收。", "Your brief and attachments have been received."),
-    copy(lang, "Crafton 正在整理尺寸、材质及合规要求。", "Crafton is reviewing dimensions, materials and compliance."),
-    copy(lang, "规格已确认，客户报价正在准备。", "Specifications are confirmed and your quotation is being prepared."),
-    copy(lang, "订单已进入制造、质检或包装阶段。", "Your order is in manufacturing, quality control or packing."),
-    copy(lang, "订单已进入运输或完成交付。", "Your order is in transit or has been delivered.")
+    copy(lang, "您的需求与附件已安全接收。", "Your brief and attachments have been received."),
+    copy(
+      lang,
+      "Crafton 正在确认尺寸、材质、预算与合规要求。",
+      "Crafton is confirming dimensions, materials, budget and compliance."
+    ),
+    copy(lang, "已进入制造排期或生产阶段。", "The order has entered production planning or manufacturing."),
+    copy(lang, "产品正在进行质检、合规检查或包装确认。", "The furniture is in quality, compliance or packing checks."),
+    copy(lang, "项目已进入运输、到岸或现场交付阶段。", "The project is in shipping, landing or site delivery.")
   ];
-  return details[stage];
+  return details[getOrderStage(job)];
 };
 
 const isActionNeeded = (job) =>
@@ -106,14 +121,469 @@ const getProjectStatus = (project, lang) => {
   return getOrderStatus(latestStageJob || project.jobs[0], lang);
 };
 
+const getProjectItems = (project) =>
+  project.jobs.flatMap((job) => {
+    const fallbackItem = {
+      id: `${job.id}-pending-item`,
+      typeCn: "家具规格整理中",
+      typeEn: "Furniture specification pending",
+      qtyDisplay: job.quantityText,
+      imageUrl: job.previewUrl
+    };
+    return (job.items.length ? job.items : [fallbackItem]).map((item) => ({ job, item }));
+  });
+
+const getProjectDeliveryDate = (project) => {
+  const shipmentDates = getProgressRows(project, "shipments")
+    .map((row) => row.eta)
+    .filter(Boolean);
+  const requestedDates = project.jobs.map((job) => job.desiredDeliveryDate).filter(Boolean);
+  return [...shipmentDates, ...requestedDates].sort()[0] || "";
+};
+
 function ProductImage({ src, alt, className = "" }) {
   if (src) return <img className={className} src={src} alt={alt} loading="lazy" />;
   return (
-    <span className={`cho-client-image-placeholder ${className}`} aria-hidden="true">
-      {String(alt || "F")
-        .slice(0, 1)
-        .toUpperCase()}
-    </span>
+    <span className={`cho-client-image-placeholder ${className}`}>{copy("En", "图片待上传", "Reference pending")}</span>
+  );
+}
+
+function ProjectConfirmations({
+  lang,
+  project,
+  answerDrafts,
+  answerStates,
+  onAnswerChange,
+  onAnswerInput,
+  onSubmitAnswers
+}) {
+  const actionableJobs = project.jobs.filter((job) => isActionNeeded(job));
+  if (!actionableJobs.length) return null;
+
+  return (
+    <section className="cho-project-card cho-project-confirmation-form" id="cho-project-confirmations">
+      <div className="cho-project-card-label">{copy(lang, "项目确认事项", "PROJECT CONFIRMATIONS")}</div>
+      {actionableJobs.map((job, orderIndex) => {
+        const questions =
+          job.reviewStatus === "revision_requested" && !job.questions.length
+            ? [
+                job.reviewNotes ||
+                  copy(lang, "请补充缺少的规格资料。", "Please provide the missing specification details.")
+              ]
+            : job.questions;
+        const answers = answerDrafts[job.id] || job.clientAnswers || {};
+        const submitState = answerStates[job.id] || {};
+        const isSubmitting = submitState.status === "submitting";
+
+        return (
+          <article className="cho-project-confirmation-order" key={job.id}>
+            <div className="cho-project-confirmation-heading">
+              <div>
+                <span className="cho-client-kicker">
+                  {copy(lang, `订单 ${orderIndex + 1}`, `ORDER ${orderIndex + 1}`)} · #{String(job.id).slice(0, 8)}
+                </span>
+                <h2>{copy(lang, "请确认以下资料", "Please confirm these details")}</h2>
+              </div>
+              <span className="cho-project-action-badge">{copy(lang, "等待回复", "Reply needed")}</span>
+            </div>
+            <div className="cho-project-confirmation-fields">
+              {questions.map((question, questionIndex) => (
+                <label key={`${job.id}-question-${questionIndex}`}>
+                  <span>
+                    {String(questionIndex + 1).padStart(2, "0")} · {question}
+                  </span>
+                  <textarea
+                    value={answers[questionIndex] || ""}
+                    onChange={(event) => onAnswerChange(job.id, questionIndex, event.target.value, job.clientAnswers)}
+                    onInput={() => onAnswerInput(job.id)}
+                    placeholder={copy(lang, "输入您的答案…", "Type your answer…")}
+                    disabled={isSubmitting}
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="cho-project-confirmation-actions">
+              {submitState.message && (
+                <div
+                  className={`cho-client-answer-status status-${submitState.status}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {submitState.message}
+                </div>
+              )}
+              <button
+                type="button"
+                className="cho-client-button primary"
+                onClick={() => onSubmitAnswers(job.id)}
+                disabled={isSubmitting}
+              >
+                {isSubmitting
+                  ? copy(lang, "提交中…", "Submitting…")
+                  : submitState.status === "success"
+                    ? copy(lang, "已提交给 Cho", "Submitted to Cho")
+                    : copy(lang, "提交补充资料", "Submit details")}
+              </button>
+            </div>
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
+function ClientProjectDetail({
+  lang,
+  clientName,
+  project,
+  answerDrafts,
+  answerStates,
+  onAnswerChange,
+  onAnswerInput,
+  onSubmitAnswers,
+  onBack,
+  onBrowseFurniture,
+  onMessageProject
+}) {
+  const projectItems = useMemo(() => getProjectItems(project), [project]);
+  const projectStage = getProjectStage(project);
+  const status = getProjectStatus(project, lang);
+  const totalPieces = project.jobs.reduce((total, job) => total + getJobQuantity(job), 0);
+  const actionCount = project.jobs.filter(isActionNeeded).length;
+  const deliveryDate = getProjectDeliveryDate(project);
+  const productionUpdates = getProgressRows(project, "productionUpdates");
+  const inspections = getProgressRows(project, "inspections");
+  const shipments = getProgressRows(project, "shipments");
+  const handovers = getProgressRows(project, "handovers");
+  const projectFiles = getProgressRows(project, "projectFiles");
+  const shipmentDocuments = getProgressRows(project, "shipmentDocuments");
+  const progressSteps =
+    lang === "Cn" ? ["需求", "规格", "制造", "质检", "交付"] : ["Brief", "Specify", "Make", "Inspect", "Deliver"];
+
+  const documents = uniqueRows([
+    ...project.jobs
+      .filter((job) => job.fileName)
+      .map((job) => ({
+        id: `client-${job.id}`,
+        type: "CLIENT",
+        name: job.fileName,
+        url: job.previewUrl,
+        detail: copy(lang, "客户提交附件", "Client submission")
+      })),
+    ...projectFiles.map((file) => ({
+      id: file.id,
+      type: String(file.file_group || file.stage_id || "FILE").slice(0, 8),
+      name: file.file_name || copy(lang, "项目文件", "Project file"),
+      url: file.file_url || "",
+      detail: [file.stage_id, file.file_group].filter(Boolean).join(" · ") || copy(lang, "已共享", "Shared")
+    })),
+    ...shipmentDocuments.map((file) => ({
+      id: file.id,
+      type: String(file.document_type || "DOC").slice(0, 8),
+      name: file.document_name || file.document_type || copy(lang, "交付文件", "Delivery document"),
+      url: file.file_url || "",
+      detail: [file.status, file.version].filter(Boolean).join(" · ") || copy(lang, "已登记", "Recorded")
+    }))
+  ]);
+
+  const firstCreatedAt = [...project.jobs]
+    .map((job) => job.createdAt)
+    .filter(Boolean)
+    .sort()[0];
+  const latestProduction = productionUpdates[0];
+  const latestInspection = inspections[0];
+  const latestShipment = shipments[0];
+  const latestHandover = handovers[0];
+  const timeline = [
+    {
+      title: copy(lang, "需求已接收", "Brief received"),
+      detail: formatDate(firstCreatedAt, lang),
+      stage: 0
+    },
+    {
+      title: copy(lang, "规格与报价确认", "Specification confirmation"),
+      detail:
+        projectStage >= 1
+          ? copy(lang, "已进入审核流程", "Review workflow active")
+          : copy(lang, "尚未开始", "Not started"),
+      stage: 1
+    },
+    {
+      title: latestProduction?.process_name || copy(lang, "制造排期", "Production"),
+      detail: latestProduction
+        ? `${latestProduction.status || copy(lang, "已更新", "Updated")} · ${Number(latestProduction.progress_percent || 0)}%`
+        : projectStage >= 2
+          ? copy(lang, "制造记录已开启", "Production record opened")
+          : copy(lang, "等待规格确认", "Awaiting specification confirmation"),
+      stage: 2
+    },
+    {
+      title: latestInspection?.work_package || copy(lang, "质检与合规", "Inspection & compliance"),
+      detail: latestInspection
+        ? `${latestInspection.status || copy(lang, "已登记", "Recorded")} · ${formatDate(latestInspection.inspected_at || latestInspection.created_at, lang)}`
+        : copy(lang, "等待制造完成", "Awaiting production completion"),
+      stage: 3
+    },
+    {
+      title: latestHandover ? copy(lang, "现场交付", "Site handover") : copy(lang, "运输与交付", "Shipping & delivery"),
+      detail: latestHandover
+        ? `${latestHandover.status || copy(lang, "已登记", "Recorded")} · ${formatDate(latestHandover.signed_at || latestHandover.created_at, lang)}`
+        : latestShipment
+          ? `${latestShipment.status || copy(lang, "运输中", "In transit")} · ${formatDate(latestShipment.eta, lang)}`
+          : deliveryDate
+            ? `${copy(lang, "目标", "Target")} ${formatDate(deliveryDate, lang)}`
+            : copy(lang, "日期待确认", "Date pending"),
+      stage: 4
+    }
+  ];
+
+  const scrollToConfirmations = () =>
+    document.getElementById("cho-project-confirmations")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  return (
+    <main className="cho-project-page" aria-labelledby="cho-project-title">
+      <div className="cho-client-wrap">
+        <nav className="cho-project-breadcrumb" aria-label={copy(lang, "面包屑导航", "Breadcrumb")}>
+          <button type="button" onClick={onBack}>
+            {copy(lang, "项目工作室", "Studio")}
+          </button>
+          <span>/</span>
+          <button type="button" onClick={onBack}>
+            {copy(lang, "项目", "Projects")}
+          </button>
+          <span>/</span>
+          <strong>{project.projectName}</strong>
+        </nav>
+
+        <header className="cho-project-hero">
+          <i className="fa-solid fa-plus cho-project-corner left" aria-hidden="true"></i>
+          <i className="fa-solid fa-plus cho-project-corner right" aria-hidden="true"></i>
+          <div className="cho-project-title-row">
+            <div>
+              <h1 id="cho-project-title">{project.projectName}</h1>
+              <p>
+                {[
+                  project.destination || copy(lang, "交付地点待确认", "Destination pending"),
+                  `${project.jobs.length} ${copy(lang, "个订单", project.jobs.length === 1 ? "order" : "orders")}`,
+                  clientName || copy(lang, "Crafton 客户", "Crafton client"),
+                  project.projectId ? `#${String(project.projectId).slice(0, 8).toUpperCase()}` : ""
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+            <span className={`cho-project-status-pill tone-${status.tone}`}>{status.label}</span>
+          </div>
+          <section className="cho-project-kpis" aria-label={copy(lang, "项目指标", "Project metrics")}>
+            {[
+              [totalPieces, copy(lang, "家具件数", "Pieces")],
+              [project.jobs.length, copy(lang, "订单", "Orders")],
+              [projectItems.length, copy(lang, "家具明细", "Furniture lines")],
+              [actionCount, copy(lang, "待您确认", "Action needed")],
+              [
+                deliveryDate ? formatDate(deliveryDate, lang) : copy(lang, "待确认", "Pending"),
+                copy(lang, "目标交付", "Target delivery")
+              ]
+            ].map(([value, label]) => (
+              <article className="cho-project-kpi" key={label}>
+                <strong>{value}</strong>
+                <span>{label}</span>
+              </article>
+            ))}
+          </section>
+        </header>
+
+        <section className="cho-project-card cho-project-stage-card">
+          <div className="cho-project-card-label">{copy(lang, "项目阶段", "PROJECT STAGE")}</div>
+          <div className="cho-project-stage-bars" aria-label={`${status.label}: ${projectStage + 1} / 5`}>
+            {progressSteps.map((step, index) => (
+              <div className={index < projectStage ? "complete" : index === projectStage ? "current" : ""} key={step}>
+                <span></span>
+                <strong>{step}</strong>
+                <small>{timeline[index].detail}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="cho-project-primary-grid">
+          <section className="cho-project-card cho-project-line-items">
+            <div className="cho-project-card-label">
+              {copy(lang, `家具明细 · ${projectItems.length} 项`, `LINE ITEMS · ${projectItems.length}`)}
+            </div>
+            <div className="cho-project-table" role="table">
+              <div className="cho-project-table-head" role="row">
+                <span role="columnheader">{copy(lang, "产品", "Item")}</span>
+                <span role="columnheader">{copy(lang, "数量", "Qty")}</span>
+                <span role="columnheader">{copy(lang, "阶段", "Stage")}</span>
+                <span role="columnheader">{copy(lang, "目标日期", "ETA")}</span>
+                <span role="columnheader">{copy(lang, "规格", "Specification")}</span>
+                <span role="columnheader">{copy(lang, "状态", "Status")}</span>
+              </div>
+              {projectItems.map(({ job, item }) => {
+                const itemName = lang === "Cn" ? item.typeCn : item.typeEn;
+                const itemStatus = getOrderStatus(job, lang);
+                const material = lang === "Cn" ? item.materialCn : item.materialEn;
+                return (
+                  <div className="cho-project-table-row" role="row" key={`${job.id}-${item.id}`}>
+                    <div className="cho-project-item" role="cell" data-label={copy(lang, "产品", "Item")}>
+                      <ProductImage src={item.imageUrl || job.previewUrl} alt={itemName} />
+                      <span>
+                        <strong>{itemName}</strong>
+                        <small>
+                          {[item.fabricCode, item.color, item.finish].filter(Boolean).join(" · ") ||
+                            copy(lang, "规格整理中", "Specification in review")}
+                        </small>
+                      </span>
+                    </div>
+                    <span className="cho-project-mono" role="cell" data-label={copy(lang, "数量", "Qty")}>
+                      {item.qtyDisplay || item.qty || job.quantityText || "-"}
+                    </span>
+                    <span role="cell" data-label={copy(lang, "阶段", "Stage")}>
+                      <span className={`cho-project-stage-tag stage-${getOrderStage(job)}`}>
+                        {progressSteps[getOrderStage(job)]}
+                      </span>
+                    </span>
+                    <span className="cho-project-mono" role="cell" data-label={copy(lang, "目标日期", "ETA")}>
+                      {job.desiredDeliveryDate
+                        ? formatDate(job.desiredDeliveryDate, lang)
+                        : copy(lang, "待确认", "Pending")}
+                    </span>
+                    <span role="cell" data-label={copy(lang, "规格", "Specification")}>
+                      <strong>{material || copy(lang, "待确认", "To confirm")}</strong>
+                      <small>
+                        {item.dimensionsText || job.dimensions || copy(lang, "尺寸待确认", "Dimensions pending")}
+                      </small>
+                    </span>
+                    <span role="cell" data-label={copy(lang, "状态", "Status")}>
+                      <span className={`cho-project-row-status tone-${itemStatus.tone}`}>{itemStatus.label}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <aside className="cho-project-side-stack">
+            <section className="cho-project-card cho-project-approval-card">
+              <div className="cho-project-card-label">{copy(lang, "需要您的确认", "NEEDS YOUR APPROVAL")}</div>
+              {actionCount ? (
+                project.jobs.filter(isActionNeeded).map((job) => (
+                  <article key={job.id}>
+                    <div>
+                      <strong>{job.projectName}</strong>
+                      <p>
+                        {job.questions[0] ||
+                          job.reviewNotes ||
+                          copy(lang, "请补充项目规格资料。", "Please confirm the requested project details.")}
+                      </p>
+                      <small>#{String(job.id).slice(0, 8).toUpperCase()}</small>
+                    </div>
+                    <button type="button" onClick={scrollToConfirmations}>
+                      {copy(lang, "查看", "Review")}
+                    </button>
+                  </article>
+                ))
+              ) : (
+                <p className="cho-project-empty-note">
+                  {copy(lang, "目前没有等待您确认的事项。", "Nothing is waiting for your approval.")}
+                </p>
+              )}
+            </section>
+
+            <section className="cho-project-card cho-project-documents">
+              <div className="cho-project-card-label">{copy(lang, "项目文件", "DOCUMENTS")}</div>
+              {documents.length ? (
+                documents.map((document) => {
+                  const content = (
+                    <>
+                      <span className="cho-project-document-type">{document.type}</span>
+                      <span>
+                        <strong>{document.name}</strong>
+                        <small>{document.detail}</small>
+                      </span>
+                    </>
+                  );
+                  return document.url ? (
+                    <a href={document.url} target="_blank" rel="noreferrer" key={document.id}>
+                      {content}
+                    </a>
+                  ) : (
+                    <div key={document.id}>{content}</div>
+                  );
+                })
+              ) : (
+                <p className="cho-project-empty-note">
+                  {copy(lang, "尚未共享项目文件。", "No project documents have been shared yet.")}
+                </p>
+              )}
+            </section>
+          </aside>
+        </div>
+
+        <div className="cho-project-secondary-grid">
+          <section className="cho-project-card cho-project-timeline">
+            <div className="cho-project-card-label">
+              {copy(lang, "生产与交付时间线", "PRODUCTION & LANDING TIMELINE")}
+            </div>
+            {timeline.map((entry) => (
+              <article
+                className={
+                  entry.stage < projectStage ? "complete" : entry.stage === projectStage ? "current" : "upcoming"
+                }
+                key={entry.title}
+              >
+                <span aria-hidden="true"></span>
+                <div>
+                  <strong>{entry.title}</strong>
+                  <small>{entry.detail}</small>
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <aside className="cho-project-card cho-project-manager">
+            <div className="cho-project-card-label">{copy(lang, "您的项目联系人", "YOUR PROJECT CONTACT")}</div>
+            <div className="cho-project-manager-person">
+              <span>CP</span>
+              <div>
+                <strong>{copy(lang, "Crafton 项目团队", "Crafton Project Team")}</strong>
+                <small>{copy(lang, "深圳 · 客户项目服务", "Shenzhen · Client projects")}</small>
+              </div>
+            </div>
+            <p>
+              {copy(
+                lang,
+                "交期、样品、合规或运输方面的问题，将由同一项目团队持续跟进。",
+                "Questions about lead time, samples, compliance or shipping stay with one project team from brief to delivery."
+              )}
+            </p>
+            <button type="button" className="cho-client-button secondary" onClick={onMessageProject}>
+              {copy(lang, "联系项目团队", "Message project team")}
+            </button>
+          </aside>
+        </div>
+
+        <ProjectConfirmations
+          lang={lang}
+          project={project}
+          answerDrafts={answerDrafts}
+          answerStates={answerStates}
+          onAnswerChange={onAnswerChange}
+          onAnswerInput={onAnswerInput}
+          onSubmitAnswers={onSubmitAnswers}
+        />
+
+        <div className="cho-project-page-actions">
+          <button type="button" className="cho-client-button primary" onClick={onBrowseFurniture}>
+            {copy(lang, "添加更多家具", "Add more pieces")}
+          </button>
+          <button type="button" className="cho-client-button secondary" onClick={onBack}>
+            {copy(lang, "返回项目工作室", "Back to Studio")}
+          </button>
+        </div>
+      </div>
+    </main>
   );
 }
 
@@ -128,41 +598,28 @@ function ClientOrderDashboard({
   onAnswerInput,
   onSubmitAnswers,
   onNewOrder,
-  onBrowseFurniture
+  onBrowseFurniture,
+  onMessageProject
 }) {
-  const [selectedProjectKey, setSelectedProjectKey] = useState("");
-  const [expandedOrders, setExpandedOrders] = useState({});
+  const [projectPageKey, setProjectPageKey] = useState("");
 
   useEffect(() => {
-    if (!projectGroups.length) {
-      setSelectedProjectKey("");
-      return;
+    if (projectPageKey && !projectGroups.some((project) => String(project.key) === String(projectPageKey))) {
+      setProjectPageKey("");
     }
-    if (!projectGroups.some((project) => String(project.key) === String(selectedProjectKey))) {
-      setSelectedProjectKey(projectGroups[0].key);
-    }
-  }, [projectGroups, selectedProjectKey]);
+  }, [projectGroups, projectPageKey]);
 
   const dashboardData = useMemo(() => {
     const jobs = projectGroups.flatMap((project) => project.jobs);
     const totalOrders = jobs.length;
     const totalPieces = jobs.reduce((total, job) => total + getJobQuantity(job), 0);
     const productionPieces = jobs.reduce(
-      (total, job) => total + (getOrderStage(job) === 3 ? getJobQuantity(job) : 0),
+      (total, job) => total + ([2, 3].includes(getOrderStage(job)) ? getJobQuantity(job) : 0),
       0
     );
     const actionCount = jobs.filter(isActionNeeded).length;
     const furnitureRows = projectGroups.flatMap((project) =>
-      project.jobs.flatMap((job) => {
-        const fallbackItem = {
-          id: `${job.id}-pending-item`,
-          typeCn: "家具规格整理中",
-          typeEn: "Furniture specification pending",
-          qtyDisplay: job.quantityText,
-          imageUrl: job.previewUrl
-        };
-        return (job.items.length ? job.items : [fallbackItem]).map((item) => ({ project, job, item }));
-      })
+      getProjectItems(project).map(({ job, item }) => ({ project, job, item }))
     );
     const updates = jobs
       .flatMap((job) => {
@@ -194,37 +651,42 @@ function ClientOrderDashboard({
         ];
       })
       .slice(0, 8);
-
     return { totalOrders, totalPieces, productionPieces, actionCount, furnitureRows, updates };
   }, [lang, projectGroups]);
 
-  const selectedProject =
-    projectGroups.find((project) => String(project.key) === String(selectedProjectKey)) || projectGroups[0] || null;
+  const projectPage = projectGroups.find((project) => String(project.key) === String(projectPageKey));
   const firstName = String(clientName || "")
     .trim()
     .split(/\s+/)[0];
   const greetingName = firstName || copy(lang, "客户", "there");
   const progressSteps =
-    lang === "Cn"
-      ? ["需求接收", "规格确认", "报价确认", "制造质检", "运输交付"]
-      : ["Brief", "Specify", "Confirm", "Make", "Deliver"];
+    lang === "Cn" ? ["需求", "规格", "制造", "质检", "交付"] : ["Brief", "Specify", "Make", "Inspect", "Deliver"];
 
-  const openOrder = (jobId) => {
-    setExpandedOrders((previous) => ({ ...previous, [jobId]: true }));
-    window.setTimeout(
-      () => document.getElementById(`cho-order-${jobId}`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      0
-    );
+  const openProjectPage = (projectKey) => {
+    setProjectPageKey(projectKey);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const selectProject = (projectKey) => {
-    setSelectedProjectKey(projectKey);
-    window.setTimeout(
-      () =>
-        document.getElementById("cho-client-project-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      0
+  if (projectPage) {
+    return (
+      <ClientProjectDetail
+        lang={lang}
+        clientName={clientName}
+        project={projectPage}
+        answerDrafts={answerDrafts}
+        answerStates={answerStates}
+        onAnswerChange={onAnswerChange}
+        onAnswerInput={onAnswerInput}
+        onSubmitAnswers={onSubmitAnswers}
+        onBack={() => {
+          setProjectPageKey("");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        onBrowseFurniture={onBrowseFurniture}
+        onMessageProject={onMessageProject || onNewOrder}
+      />
     );
-  };
+  }
 
   return (
     <main className="cho-client-studio" aria-labelledby="cho-client-dashboard-title">
@@ -246,8 +708,8 @@ function ClientOrderDashboard({
             <p>
               {copy(
                 lang,
-                "在一个清晰的工作台中查看项目、家具规格、待确认事项与真实制造进度。",
-                "Projects, furniture specifications, decisions and verified production updates in one considered workspace."
+                "在一个清晰的工作台中查看项目、待确认事项与真实制造进度。",
+                "Projects, decisions and verified production updates in one considered workspace."
               )}
             </p>
           </div>
@@ -264,41 +726,34 @@ function ClientOrderDashboard({
 
         <section className="cho-client-kpis" aria-label={copy(lang, "项目概览", "Project overview")}>
           {[
-            {
-              value: projectGroups.length,
-              label: copy(lang, "进行中的项目", "Active projects"),
-              note: copy(lang, "按项目归类", "Grouped by project")
-            },
-            {
-              value: dashboardData.totalOrders,
-              label: copy(lang, "订单", "Orders"),
-              note: copy(lang, "全部订单记录", "All recorded orders")
-            },
-            {
-              value: dashboardData.productionPieces,
-              label: copy(lang, "制造中的家具", "Pieces in production"),
-              note: copy(
-                lang,
-                `共 ${dashboardData.totalPieces} 件已登记`,
-                `${dashboardData.totalPieces} pieces recorded`
-              )
-            },
-            {
-              value: dashboardData.actionCount,
-              label: copy(lang, "需要您处理", "Action needed"),
-              note: dashboardData.actionCount
+            [
+              projectGroups.length,
+              copy(lang, "进行中的项目", "Active projects"),
+              copy(lang, "按项目归类", "Grouped by project")
+            ],
+            [
+              dashboardData.totalOrders,
+              copy(lang, "订单", "Orders"),
+              copy(lang, "全部订单记录", "All recorded orders")
+            ],
+            [
+              dashboardData.productionPieces,
+              copy(lang, "制造中的家具", "Pieces in production"),
+              copy(lang, `共 ${dashboardData.totalPieces} 件已登记`, `${dashboardData.totalPieces} pieces recorded`)
+            ],
+            [
+              dashboardData.actionCount,
+              copy(lang, "需要您处理", "Action needed"),
+              dashboardData.actionCount
                 ? copy(lang, "请查看待确认事项", "Review requested details")
                 : copy(lang, "目前无需操作", "Nothing pending")
-            }
-          ].map((metric, index) => (
-            <article
-              className={`cho-client-kpi ${index === 3 && metric.value > 0 ? "needs-action" : ""}`}
-              key={metric.label}
-            >
+            ]
+          ].map(([value, label, note], index) => (
+            <article className={`cho-client-kpi ${index === 3 && value > 0 ? "needs-action" : ""}`} key={label}>
               <span className="cho-client-kpi-index">0{index + 1}</span>
-              <strong>{loading ? "–" : metric.value}</strong>
-              <h2>{metric.label}</h2>
-              <p>{loading ? copy(lang, "正在读取项目…", "Loading projects…") : metric.note}</p>
+              <strong>{loading ? "–" : value}</strong>
+              <h2>{label}</h2>
+              <p>{loading ? copy(lang, "正在读取项目…", "Loading projects…") : note}</p>
             </article>
           ))}
         </section>
@@ -323,8 +778,8 @@ function ClientOrderDashboard({
               <p>
                 {copy(
                   lang,
-                  "这个看板目前没有演示订单。您可以从 Set Furniture 选择成熟款式，或提交图纸、图片和需求资料开始定制项目。提交后，项目、家具明细与进度会自动出现在这里。",
-                  "This workspace contains no demonstration orders. Choose a proven Set Furniture piece or submit drawings, images and a brief. Your project, furniture schedule and verified progress will then appear here."
+                  "这个看板目前没有演示订单。您可以从 Set Furniture 选择成熟款式，或提交图纸、图片和需求资料开始定制项目。提交后，项目与真实进度会自动出现在这里。",
+                  "This workspace contains no demonstration orders. Choose a proven Set Furniture piece or submit drawings, images and a brief. Your project and verified progress will then appear here."
                 )}
               </p>
               <div className="cho-client-empty-actions">
@@ -390,22 +845,27 @@ function ClientOrderDashboard({
                   <span className="cho-client-kicker">{copy(lang, "项目总览", "PROJECT OVERVIEW")}</span>
                   <h2 id="cho-client-projects-title">{copy(lang, "进行中的项目", "Active projects")}</h2>
                 </div>
-                <p>{copy(lang, "选择项目查看订单和家具明细", "Select a project to view orders and furniture")}</p>
+                <p>
+                  {copy(
+                    lang,
+                    "选择项目打开完整订单与制造进度",
+                    "Open a project for its complete order and production detail"
+                  )}
+                </p>
               </div>
               <div className="cho-client-project-grid">
                 {projectGroups.map((project, projectIndex) => {
                   const image = getProjectImage(project);
-                  const itemCount = project.jobs.reduce((total, job) => total + Math.max(job.items.length, 1), 0);
+                  const itemCount = getProjectItems(project).length;
                   const pieceCount = project.jobs.reduce((total, job) => total + getJobQuantity(job), 0);
-                  const status = getProjectStatus(project, lang);
+                  const projectStatus = getProjectStatus(project, lang);
                   const stage = getProjectStage(project);
-                  const isSelected = String(project.key) === String(selectedProject?.key);
                   return (
                     <button
                       type="button"
-                      className={`cho-client-project-card ${isSelected ? "is-selected" : ""}`}
-                      onClick={() => selectProject(project.key)}
-                      aria-pressed={isSelected}
+                      className="cho-client-project-card"
+                      onClick={() => openProjectPage(project.key)}
+                      aria-label={`${copy(lang, "打开项目", "Open project")} ${project.projectName}`}
                       key={project.key}
                     >
                       <ProductImage src={image} alt={project.projectName} className="cho-client-project-image" />
@@ -416,7 +876,7 @@ function ClientOrderDashboard({
                             <h3>{project.projectName || copy(lang, "项目名称待确认", "Project name pending")}</h3>
                             <p>{project.destination || copy(lang, "交付地点待确认", "Destination pending")}</p>
                           </div>
-                          <span className={`cho-client-status tone-${status.tone}`}>{status.label}</span>
+                          <span className={`cho-client-status tone-${projectStatus.tone}`}>{projectStatus.label}</span>
                         </div>
                         <div className="cho-client-project-meta">
                           <span>
@@ -443,250 +903,16 @@ function ClientOrderDashboard({
                             </span>
                           ))}
                         </div>
+                        <span className="cho-client-project-open">
+                          {copy(lang, "查看项目", "View project")}{" "}
+                          <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                        </span>
                       </div>
                     </button>
                   );
                 })}
               </div>
             </section>
-
-            {selectedProject && (
-              <section
-                className="cho-client-project-detail"
-                id="cho-client-project-detail"
-                aria-labelledby="cho-client-project-detail-title"
-              >
-                <div className="cho-client-section-heading">
-                  <div>
-                    <span className="cho-client-kicker">{copy(lang, "订单与家具明细", "ORDERS & FURNITURE")}</span>
-                    <h2 id="cho-client-project-detail-title">{selectedProject.projectName}</h2>
-                  </div>
-                  <p>{selectedProject.destination || copy(lang, "交付地点待确认", "Destination pending")}</p>
-                </div>
-                <div className="cho-client-order-list">
-                  {selectedProject.jobs.map((job, orderIndex) => {
-                    const orderKey = String(job.id);
-                    const isExpanded = hasOwn(expandedOrders, orderKey) ? expandedOrders[orderKey] : orderIndex === 0;
-                    const status = getOrderStatus(job, lang);
-                    const stage = getOrderStage(job);
-                    const answers = answerDrafts[job.id] || job.clientAnswers || {};
-                    const submitState = answerStates[job.id] || {};
-                    const isSubmitting = submitState.status === "submitting";
-                    const questions =
-                      job.reviewStatus === "revision_requested" && !job.questions.length
-                        ? [
-                            job.reviewNotes ||
-                              copy(lang, "请补充缺少的规格资料。", "Please provide the missing specification details.")
-                          ]
-                        : job.questions;
-                    return (
-                      <article
-                        className={`cho-client-order ${isExpanded ? "is-open" : ""}`}
-                        id={`cho-order-${job.id}`}
-                        key={orderKey}
-                      >
-                        <button
-                          type="button"
-                          className="cho-client-order-toggle"
-                          aria-expanded={isExpanded}
-                          onClick={() => setExpandedOrders((previous) => ({ ...previous, [orderKey]: !isExpanded }))}
-                        >
-                          <span className="cho-client-order-id">
-                            <small>{copy(lang, `订单 ${orderIndex + 1}`, `Order ${orderIndex + 1}`)}</small>
-                            <strong>#{orderKey.slice(0, 8).toUpperCase()}</strong>
-                          </span>
-                          <span className="cho-client-order-summary-line">
-                            {formatDate(job.createdAt, lang)} · {getJobQuantity(job)} {copy(lang, "件", "pieces")}
-                          </span>
-                          <span className={`cho-client-status tone-${status.tone}`}>{status.label}</span>
-                          <span className="cho-client-chevron" aria-hidden="true"></span>
-                        </button>
-                        {isExpanded && (
-                          <div className="cho-client-order-body">
-                            <div className="cho-client-order-progress">
-                              {progressSteps.map((step, stepIndex) => (
-                                <div
-                                  className={stepIndex < stage ? "complete" : stepIndex === stage ? "current" : ""}
-                                  key={step}
-                                >
-                                  <span>{stepIndex < stage ? "✓" : stepIndex + 1}</span>
-                                  <small>{step}</small>
-                                </div>
-                              ))}
-                            </div>
-                            <p className="cho-client-stage-note">{getStageDetail(job, lang)}</p>
-                            {job.summaryEn && <p className="cho-client-order-description">{job.summaryEn}</p>}
-                            <dl className="cho-client-order-facts">
-                              <div>
-                                <dt>{copy(lang, "期望交期", "Requested delivery")}</dt>
-                                <dd>{job.desiredDeliveryDate || copy(lang, "待确认", "To confirm")}</dd>
-                              </div>
-                              <div>
-                                <dt>{copy(lang, "消防 / 安全标准", "Fire / safety standard")}</dt>
-                                <dd>{job.fireStandard || copy(lang, "待确认", "To confirm")}</dd>
-                              </div>
-                              <div>
-                                <dt>{copy(lang, "客户附件", "Client attachment")}</dt>
-                                <dd>{job.fileName || copy(lang, "未上传", "No file uploaded")}</dd>
-                              </div>
-                            </dl>
-
-                            <div className="cho-client-furniture">
-                              <div className="cho-client-furniture-heading">
-                                <div>
-                                  <span className="cho-client-kicker">
-                                    {copy(lang, "家具明细", "FURNITURE SCHEDULE")}
-                                  </span>
-                                  <h3>
-                                    {job.items.length || 1}{" "}
-                                    {copy(lang, "项产品", job.items.length === 1 ? "product" : "products")}
-                                  </h3>
-                                </div>
-                                <p>
-                                  {copy(
-                                    lang,
-                                    "产品照片、数量与已确认规格",
-                                    "Product image, quantity and confirmed specifications"
-                                  )}
-                                </p>
-                              </div>
-                              <div className="cho-client-furniture-table" role="table">
-                                <div className="cho-client-furniture-head" role="row">
-                                  <span role="columnheader">{copy(lang, "产品", "Product")}</span>
-                                  <span role="columnheader">{copy(lang, "数量", "Qty")}</span>
-                                  <span role="columnheader">{copy(lang, "尺寸", "Dimensions")}</span>
-                                  <span role="columnheader">{copy(lang, "材质与饰面", "Material & finish")}</span>
-                                  <span role="columnheader">{copy(lang, "用途 / 标准", "Use / standard")}</span>
-                                </div>
-                                {(job.items.length
-                                  ? job.items
-                                  : [
-                                      {
-                                        id: `${job.id}-pending`,
-                                        typeCn: "家具规格整理中",
-                                        typeEn: "Furniture specification pending",
-                                        qtyDisplay: job.quantityText
-                                      }
-                                    ]
-                                ).map((item) => {
-                                  const itemName = lang === "Cn" ? item.typeCn : item.typeEn;
-                                  return (
-                                    <div className="cho-client-furniture-row" role="row" key={item.id}>
-                                      <div
-                                        className="cho-client-furniture-product"
-                                        role="cell"
-                                        data-label={copy(lang, "产品", "Product")}
-                                      >
-                                        <ProductImage src={item.imageUrl || job.previewUrl} alt={itemName} />
-                                        <span>
-                                          <strong>{itemName}</strong>
-                                          {(item.id || item.fabricCode || item.unitPrice > 0) && (
-                                            <small>
-                                              {[
-                                                item.id,
-                                                item.fabricCode,
-                                                item.unitPrice > 0
-                                                  ? `${formatMoney(item.unitPrice, item.currency)} / ${copy(lang, "件", "unit")}`
-                                                  : ""
-                                              ]
-                                                .filter(Boolean)
-                                                .join(" · ")}
-                                            </small>
-                                          )}
-                                        </span>
-                                      </div>
-                                      <div role="cell" data-label={copy(lang, "数量", "Qty")}>
-                                        {item.qtyDisplay || item.qty || job.quantityText || "-"}
-                                      </div>
-                                      <div role="cell" data-label={copy(lang, "尺寸", "Dimensions")}>
-                                        {item.dimensionsText || job.dimensions || copy(lang, "待确认", "To confirm")}
-                                      </div>
-                                      <div role="cell" data-label={copy(lang, "材质与饰面", "Material & finish")}>
-                                        <strong>{lang === "Cn" ? item.materialCn : item.materialEn}</strong>
-                                        <small>
-                                          {[item.finish, item.color, item.hardware].filter(Boolean).join(" · ") || "-"}
-                                        </small>
-                                      </div>
-                                      <div role="cell" data-label={copy(lang, "用途 / 标准", "Use / standard")}>
-                                        <strong>{item.usageLocation || "-"}</strong>
-                                        <small>
-                                          {item.fireStandard || job.fireStandard || copy(lang, "待确认", "To confirm")}
-                                        </small>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            {questions.length > 0 && job.reviewStatus !== "approved" && (
-                              <div className="cho-client-clarification">
-                                <div className="cho-client-clarification-heading">
-                                  <div>
-                                    <span className="cho-client-kicker">
-                                      {copy(lang, "需要您的确认", "YOUR INPUT IS NEEDED")}
-                                    </span>
-                                    <h3>
-                                      {copy(
-                                        lang,
-                                        `请补充以下 ${questions.length} 项资料`,
-                                        `Please confirm ${questions.length} detail${questions.length === 1 ? "" : "s"}`
-                                      )}
-                                    </h3>
-                                  </div>
-                                  <p>{copy(lang, "您的回答会直接提交给 Cho。", "Your answers go directly to Cho.")}</p>
-                                </div>
-                                <div className="cho-client-clarification-fields">
-                                  {questions.map((question, questionIndex) => (
-                                    <label key={`${job.id}-question-${questionIndex}`}>
-                                      <span>
-                                        {String(questionIndex + 1).padStart(2, "0")} · {question}
-                                      </span>
-                                      <textarea
-                                        value={answers[questionIndex] || ""}
-                                        onChange={(event) =>
-                                          onAnswerChange(job.id, questionIndex, event.target.value, job.clientAnswers)
-                                        }
-                                        onInput={() => onAnswerInput(job.id)}
-                                        placeholder={copy(lang, "输入您的答案…", "Type your answer…")}
-                                        disabled={isSubmitting}
-                                      />
-                                    </label>
-                                  ))}
-                                </div>
-                                <div className="cho-client-clarification-actions">
-                                  {submitState.message && (
-                                    <div
-                                      className={`cho-client-answer-status status-${submitState.status}`}
-                                      role="status"
-                                      aria-live="polite"
-                                    >
-                                      {submitState.message}
-                                    </div>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className="cho-client-button primary"
-                                    onClick={() => onSubmitAnswers(job.id)}
-                                    disabled={isSubmitting}
-                                  >
-                                    {isSubmitting
-                                      ? copy(lang, "提交中…", "Submitting…")
-                                      : submitState.status === "success"
-                                        ? copy(lang, "已提交给 Cho", "Submitted to Cho")
-                                        : copy(lang, "提交补充资料", "Submit details")}
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
 
             <section className="cho-client-operations">
               <div className="cho-client-tracker">
@@ -706,16 +932,13 @@ function ClientOrderDashboard({
                   </div>
                   {dashboardData.furnitureRows.map(({ project, job, item }) => {
                     const itemName = lang === "Cn" ? item.typeCn : item.typeEn;
-                    const status = getOrderStatus(job, lang);
+                    const itemStatus = getOrderStatus(job, lang);
                     return (
                       <button
                         type="button"
                         className="cho-client-tracker-row"
                         role="row"
-                        onClick={() => {
-                          setSelectedProjectKey(project.key);
-                          openOrder(job.id);
-                        }}
+                        onClick={() => openProjectPage(project.key)}
                         key={`${job.id}-${item.id}`}
                       >
                         <span className="cho-client-tracker-product" role="cell">
@@ -729,12 +952,8 @@ function ClientOrderDashboard({
                           {item.qtyDisplay || item.qty || job.quantityText || "-"}
                         </span>
                         <span role="cell" data-label={copy(lang, "当前阶段", "Current stage")}>
-                          <strong>{status.label}</strong>
-                          <small>
-                            {getOrderStage(job) < 3
-                              ? copy(lang, "制造尚未排期", "Manufacturing not scheduled")
-                              : getStageDetail(job, lang)}
-                          </small>
+                          <strong>{itemStatus.label}</strong>
+                          <small>{getStageDetail(job, lang)}</small>
                         </span>
                       </button>
                     );
@@ -749,28 +968,27 @@ function ClientOrderDashboard({
                   </div>
                 </div>
                 <div className="cho-client-update-list">
-                  {dashboardData.updates.map((update) => (
-                    <button
-                      type="button"
-                      className={update.action ? "needs-action" : ""}
-                      onClick={() => {
-                        const project = projectGroups.find((entry) =>
-                          entry.jobs.some((job) => String(job.id) === String(update.job.id))
-                        );
-                        if (project) setSelectedProjectKey(project.key);
-                        openOrder(update.job.id);
-                      }}
-                      key={update.id}
-                    >
-                      <span className="cho-client-update-mark" aria-hidden="true">
-                        {update.action ? "!" : "·"}
-                      </span>
-                      <span>
-                        <strong>{update.title}</strong>
-                        <small>{update.detail}</small>
-                      </span>
-                    </button>
-                  ))}
+                  {dashboardData.updates.map((update) => {
+                    const project = projectGroups.find((entry) =>
+                      entry.jobs.some((job) => String(job.id) === String(update.job.id))
+                    );
+                    return (
+                      <button
+                        type="button"
+                        className={update.action ? "needs-action" : ""}
+                        onClick={() => project && openProjectPage(project.key)}
+                        key={update.id}
+                      >
+                        <span className="cho-client-update-mark" aria-hidden="true">
+                          {update.action ? "!" : "·"}
+                        </span>
+                        <span>
+                          <strong>{update.title}</strong>
+                          <small>{update.detail}</small>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </aside>
             </section>

@@ -298,6 +298,7 @@ const formatDimensionPayload = (dimensions = {}) => {
 const normalizeReviewJob = (job = {}) => {
   const result = safeJsonObject(job.result_json, {});
   const project = result.project || {};
+  const linkedProject = Array.isArray(job.projects) ? job.projects[0] || {} : job.projects || {};
   const items = Array.isArray(result.items) ? result.items : [];
   const firstItem = items[0] || {};
   const payments = Array.isArray(result.payments) ? result.payments : [];
@@ -313,9 +314,9 @@ const normalizeReviewJob = (job = {}) => {
   return {
     id: job.id || "LOCAL-INTAKE-DEMO",
     projectId: job.project_id || null,
-    projectName: job.project_name || project.name || job.projectName || "To confirm",
+    projectName: job.project_name || project.name || linkedProject.name || job.projectName || "To confirm",
     clientName: project.client_name || job.projects?.client_name || "Portal Intake Client",
-    destination: job.destination || project.destination || job.destination || "",
+    destination: job.destination || project.destination || linkedProject.client_contact || "",
     deliveryAddress: project.delivery_address || result.delivery_address || "",
     desiredDeliveryDate: project.desired_delivery_date || result.desired_delivery_date || "",
     deliveryWindow: project.delivery_window || result.delivery_window || "",
@@ -331,6 +332,8 @@ const normalizeReviewJob = (job = {}) => {
     summaryEn: result.summary_en || "Intake draft parsed from client materials.",
     visualAnalysis: safeJsonObject(result.visual_analysis, null),
     createdAt: job.created_at || job.submittedAt || "",
+    currentStage: Number(linkedProject.current_stage || result.current_stage || job.current_stage || 0),
+    clientProgress: safeJsonObject(job.client_progress, {}),
     fileName: intakeFile?.original_name || job.fileName || "",
     previewUrl: job.client_preview_url || job.previewUrl || result.preview_url || "",
     dimensions: dimensionsText,
@@ -4914,7 +4917,59 @@ function App() {
             }
           })
         );
-        setClientProjectJobs(clientRowsWithPreviews);
+        const projectIds = Array.from(
+          new Set(
+            clientRowsWithPreviews
+              .map((row) => row.project_id)
+              .filter(Boolean)
+              .map(String)
+          )
+        );
+        const progressTableSpecs = [
+          { table: "production_updates", key: "productionUpdates" },
+          { table: "inspection_reports", key: "inspections" },
+          { table: "shipments", key: "shipments" },
+          { table: "shipment_documents", key: "shipmentDocuments" },
+          { table: "project_files", key: "projectFiles" },
+          { table: "handover_reports", key: "handovers" }
+        ];
+        const progressRows = {};
+
+        if (projectIds.length) {
+          await Promise.all(
+            progressTableSpecs.map(async ({ table, key }) => {
+              try {
+                const { data: rows, error: rowsError } = await client
+                  .from(table)
+                  .select("*")
+                  .in("project_id", projectIds)
+                  .order("created_at", { ascending: false });
+                if (rowsError) {
+                  console.warn(`Client progress table ${table} was not loaded:`, rowsError.message || rowsError);
+                  progressRows[key] = [];
+                  return;
+                }
+                progressRows[key] = rows || [];
+              } catch (progressError) {
+                console.warn(`Client progress table ${table} was not loaded:`, progressError.message || progressError);
+                progressRows[key] = [];
+              }
+            })
+          );
+        }
+
+        const clientRowsWithProgress = clientRowsWithPreviews.map((row) => ({
+          ...row,
+          client_progress: Object.fromEntries(
+            progressTableSpecs.map(({ key }) => [
+              key,
+              (progressRows[key] || []).filter(
+                (progressRow) => String(progressRow.project_id) === String(row.project_id)
+              )
+            ])
+          )
+        }));
+        setClientProjectJobs(clientRowsWithProgress);
       } else {
         setClientProjectJobs([]);
       }
@@ -6456,6 +6511,7 @@ function App() {
         answerStates={clientAnswerSubmitState}
         loading={clientProjectsLoading}
         onNewOrder={() => setClientPortalTab("Intake")}
+        onMessageProject={() => setClientPortalTab("Intake")}
         onBrowseFurniture={() => {
           setSetFurnitureProduct("");
           setMarketingTab("SetFurniture");
@@ -9024,7 +9080,11 @@ function App() {
 
   console.log("=== APP RENDER STATEMENT REACHED ===");
   return (
-    <div className={`crafton-app view-${currentView.toLowerCase()}`} data-view={currentView}>
+    <div
+      className={`crafton-app view-${currentView.toLowerCase()}`}
+      data-view={currentView}
+      lang={lang === "Cn" ? "zh-CN" : "en"}
+    >
       {/* Supabase Connection Drawer */}
       {showDbConfig && import.meta.env.DEV && (
         <div
