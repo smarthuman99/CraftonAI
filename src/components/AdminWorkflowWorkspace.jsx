@@ -35,6 +35,16 @@ const valueList = (value) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const quoteLinesFromProject = (project) =>
+  (project?.items || []).map((item, index) => ({
+    item_id: item.id || `ITEM-${index + 1}`,
+    item_no: item.sku || item.itemNo || `ITEM-${String(index + 1).padStart(2, "0")}`,
+    item_name: item.typeEn || item.nameEn || item.typeCn || item.nameCn || `Item ${index + 1}`,
+    quantity: Number(item.qty || item.quantity || 0),
+    unit: item.unit || "pcs",
+    unit_price: ""
+  }));
+
 const calculateQuoteScores = (quotes) => {
   const priced = quotes.filter((quote) => Number(quote.unit_price) > 0);
   const fastest = Math.min(...priced.map((quote) => Number(quote.lead_time_days || 999)), 999);
@@ -106,6 +116,7 @@ export default function AdminWorkflowWorkspace({
   onProjectChanged
 }) {
   const projectId = project?.id || null;
+  const t = (en, cn) => (lang === "Cn" ? cn : en);
   const localize = (content) => <AdminLocalized lang={lang}>{content}</AdminLocalized>;
   const [data, setData] = useState(EMPTY_DATA);
   const [suppliers, setSuppliers] = useState([]);
@@ -114,6 +125,9 @@ export default function AdminWorkflowWorkspace({
   const [missingTables, setMissingTables] = useState([]);
   const [activeForm, setActiveForm] = useState("");
   const [authStatus, setAuthStatus] = useState("checking");
+  const [quoteLineItems, setQuoteLineItems] = useState(() => quoteLinesFromProject(project));
+  const [quoteFile, setQuoteFile] = useState(null);
+  const [editingQuoteId, setEditingQuoteId] = useState("");
 
   const [supplierForm, setSupplierForm] = useState({
     name: "",
@@ -250,6 +264,12 @@ export default function AdminWorkflowWorkspace({
     return () => window.removeEventListener("crafton:workflow-refresh", refresh);
   }, [loadData]);
 
+  useEffect(() => {
+    setQuoteLineItems(quoteLinesFromProject(project));
+    setQuoteFile(null);
+    setEditingQuoteId("");
+  }, [projectId]);
+
   const insert = async (table, payload) => {
     if (!supabaseClient || !projectId) throw new Error(adminText("Select a live Supabase project first.", lang));
     const { data: result, error } = await supabaseClient.from(table).insert(payload).select().single();
@@ -326,28 +346,156 @@ export default function AdminWorkflowWorkspace({
     });
   };
 
+  const quoteTotals = useMemo(() => {
+    const quantity = quoteLineItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const total = quoteLineItems.reduce(
+      (sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0),
+      0
+    );
+    return { quantity, total, weightedUnitPrice: quantity ? total / quantity : 0 };
+  }, [quoteLineItems]);
+
+  const openQuoteForm = (rfqBatchId = "", supplierId = "") => {
+    const supplier = suppliers.find((row) => row.id === supplierId);
+    const batch = data.rfq_batches.find((row) => row.id === rfqBatchId);
+    const existingQuote = data.supplier_quotes.find(
+      (quote) => quote.rfq_batch_id === rfqBatchId && quote.supplier_id === supplierId
+    );
+    setQuoteForm((current) => ({
+      ...current,
+      rfq_batch_id: rfqBatchId,
+      supplier_id: supplierId,
+      quote_code:
+        existingQuote?.quote_code ||
+        (batch ? `${batch.rfq_code || "RFQ"}-${supplier?.code || String(supplierId).slice(0, 6).toUpperCase()}` : ""),
+      currency: existingQuote?.currency || batch?.currency || current.currency || "USD",
+      unit_price: "",
+      total_amount: "",
+      moq: existingQuote?.moq ?? current.moq,
+      lead_time_days: existingQuote?.lead_time_days ?? current.lead_time_days,
+      payment_terms: existingQuote?.payment_terms || current.payment_terms,
+      material_confirmation: existingQuote?.material_confirmation || "",
+      validity_until: existingQuote?.validity_until || "",
+      risk_notes: existingQuote?.risk_notes || "",
+      notes: existingQuote?.notes || "",
+      quality_score: supplier?.rating ? Number(supplier.rating) * 20 : current.quality_score,
+      reliability_score: supplier?.reliability_score || current.reliability_score
+    }));
+    const savedLines = existingQuote?.payload?.line_items;
+    setQuoteLineItems(
+      savedLines?.length
+        ? savedLines.map((line) => ({ ...line, unit_price: String(line.unit_price || "") }))
+        : quoteLinesFromProject(project)
+    );
+    setQuoteFile(null);
+    setEditingQuoteId(existingQuote?.id || "");
+    setActiveForm("quote");
+  };
+
   const submitQuote = (event) => {
     event.preventDefault();
     const supplier = suppliers.find((row) => row.id === quoteForm.supplier_id);
+    const existingQuote = data.supplier_quotes.find((row) => row.id === editingQuoteId);
     runAction("Supplier quote recorded and comparison refreshed.", async () => {
-      await insert("supplier_quotes", {
+      if (!quoteLineItems.length || quoteLineItems.some((line) => Number(line.unit_price || 0) <= 0)) {
+        throw new Error(t("Enter a unit price for every BOM item.", "请为每个 BOM 品项填写供应商单价。"));
+      }
+
+      let uploadedQuote = null;
+      if (quoteFile) {
+        if (quoteFile.size > 15 * 1024 * 1024) {
+          throw new Error(t("Supplier quote files must be 15 MB or smaller.", "供应商报价文件不能超过 15 MB。"));
+        }
+        const { data: authData, error: authError } = await supabaseClient.auth.getUser();
+        if (authError || !authData?.user?.id) throw authError || new Error("Staff session unavailable.");
+        const safeName = quoteFile.name.replace(/[^a-zA-Z0-9._-]+/g, "-");
+        const storagePath = `${authData.user.id}/supplier-quotes/${projectId}/${Date.now()}-${safeName}`;
+        const { error: uploadError } = await supabaseClient.storage
+          .from("intake-files")
+          .upload(storagePath, quoteFile, {
+            contentType: quoteFile.type || "application/octet-stream",
+            upsert: false
+          });
+        if (uploadError) throw uploadError;
+        const digest = await window.crypto.subtle.digest("SHA-256", await quoteFile.arrayBuffer());
+        uploadedQuote = {
+          storage_bucket: "intake-files",
+          storage_path: storagePath,
+          file_name: quoteFile.name,
+          mime_type: quoteFile.type,
+          size: quoteFile.size,
+          sha256: Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("")
+        };
+      }
+
+      const quoteValues = {
         project_id: projectId,
         ...quoteForm,
         supplier_name: supplier?.name || "",
-        unit_price: Number(quoteForm.unit_price || 0),
-        total_amount: Number(quoteForm.total_amount || 0),
+        unit_price: quoteTotals.weightedUnitPrice,
+        total_amount: quoteTotals.total,
         moq: Number(quoteForm.moq || 0),
         lead_time_days: Number(quoteForm.lead_time_days || 0),
         quality_score: Number(quoteForm.quality_score || 0),
         reliability_score: Number(quoteForm.reliability_score || 0),
         validity_until: quoteForm.validity_until || null,
         received_at: new Date().toISOString(),
-        status: "quoted"
-      });
-      await writeEvent("S07", "supplier_quote_received", `Quote received from ${supplier?.name || "supplier"}.`, {
-        supplier_id: quoteForm.supplier_id
-      });
+        status: "quoted",
+        payload: {
+          line_items: quoteLineItems.map((line) => ({
+            ...line,
+            unit_price: Number(line.unit_price || 0),
+            line_total: Number(line.quantity || 0) * Number(line.unit_price || 0)
+          })),
+          supplier_quote_file: uploadedQuote || existingQuote?.payload?.supplier_quote_file || null
+        }
+      };
+      let quote;
+      if (editingQuoteId) {
+        const { data: updatedQuote, error: updateError } = await supabaseClient
+          .from("supplier_quotes")
+          .update(quoteValues)
+          .eq("id", editingQuoteId)
+          .select()
+          .single();
+        if (updateError) throw updateError;
+        quote = updatedQuote;
+      } else {
+        quote = await insert("supplier_quotes", quoteValues);
+      }
+      if (uploadedQuote) {
+        await insert("project_files", {
+          project_id: projectId,
+          stage_id: "S07",
+          file_group: "supplier_quote",
+          file_name: uploadedQuote.file_name,
+          file_path: uploadedQuote.storage_path,
+          sha256: uploadedQuote.sha256,
+          audit_hash: uploadedQuote.sha256,
+          payload: {
+            ...uploadedQuote,
+            quote_id: quote.id,
+            supplier_id: quoteForm.supplier_id,
+            rfq_batch_id: quoteForm.rfq_batch_id
+          }
+        });
+      }
+      await writeEvent(
+        "S07",
+        editingQuoteId ? "supplier_quote_revised" : "supplier_quote_received",
+        `Quote received from ${supplier?.name || "supplier"}.`,
+        {
+          supplier_id: quoteForm.supplier_id,
+          quote_id: quote.id,
+          rfq_batch_id: quoteForm.rfq_batch_id,
+          total_amount: quoteTotals.total
+        }
+      );
       await updateProjectStage(7);
+      setQuoteFile(null);
+      setEditingQuoteId("");
     });
   };
 
@@ -356,7 +504,8 @@ export default function AdminWorkflowWorkspace({
       const { error: resetError } = await supabaseClient
         .from("supplier_quotes")
         .update({ status: "not_selected" })
-        .eq("project_id", projectId);
+        .eq("project_id", projectId)
+        .eq("rfq_batch_id", quote.rfq_batch_id);
       if (resetError) throw resetError;
       const { error: selectError } = await supabaseClient
         .from("supplier_quotes")
@@ -573,6 +722,77 @@ export default function AdminWorkflowWorkspace({
       data.supplier_quotes.map((quote) => ({ ...quote, suppliers: supplierMap.get(quote.supplier_id) }))
     );
   }, [data.supplier_quotes, suppliers]);
+  const sourcingBatch = useMemo(
+    () =>
+      data.rfq_batches.find((batch) => batch.status === "sent") ||
+      data.rfq_batches.find((batch) => batch.status === "approved") ||
+      data.rfq_batches.find((batch) => batch.payload?.document) ||
+      data.rfq_batches[0] ||
+      null,
+    [data.rfq_batches]
+  );
+  const sourcingQuotes = useMemo(
+    () => data.supplier_quotes.filter((quote) => !sourcingBatch || quote.rfq_batch_id === sourcingBatch.id),
+    [data.supplier_quotes, sourcingBatch]
+  );
+  const invitedSuppliers = useMemo(() => {
+    const ids = sourcingBatch?.supplier_ids || [];
+    return ids.map((id) => suppliers.find((supplier) => supplier.id === id)).filter(Boolean);
+  }, [sourcingBatch, suppliers]);
+  const sourcingResponseCount = new Set(sourcingQuotes.map((quote) => quote.supplier_id).filter(Boolean)).size;
+  const quoteAnalysisFile = data.project_files.find(
+    (file) =>
+      file.file_group === "quote_analysis" &&
+      (!sourcingBatch || file.payload?.analysis?.rfqBatchId === sourcingBatch.id)
+  );
+  const latestQuoteTime = Math.max(
+    0,
+    ...sourcingQuotes.map((quote) => new Date(quote.updated_at || quote.received_at || quote.created_at || 0).getTime())
+  );
+  const quoteAnalysisReady = Boolean(
+    quoteAnalysisFile && new Date(quoteAnalysisFile.created_at || 0).getTime() >= latestQuoteTime
+  );
+  const sourcingScoredQuotes = sourcingBatch
+    ? scoredQuotes.filter((quote) => quote.rfq_batch_id === sourcingBatch.id)
+    : scoredQuotes;
+  const selectedQuote = sourcingScoredQuotes.find((quote) => quote.status === "selected") || null;
+  const sourcingSteps = [
+    {
+      label: t("Inquiry generated", "询盘已生成"),
+      detail: sourcingBatch?.payload?.document ? sourcingBatch.rfq_code : t("Waiting for RFQ", "等待生成 RFQ"),
+      done: Boolean(sourcingBatch?.payload?.document)
+    },
+    {
+      label: t("Cho approved", "Cho 已批准"),
+      detail: ["approved", "sent"].includes(sourcingBatch?.status)
+        ? t("Approved", "已批准")
+        : t("Review required", "需要审核"),
+      done: ["approved", "sent"].includes(sourcingBatch?.status)
+    },
+    {
+      label: t("Sent to suppliers", "已发送给供应商"),
+      detail:
+        sourcingBatch?.status === "sent"
+          ? t(`${invitedSuppliers.length} invited`, `已邀请 ${invitedSuppliers.length} 家`)
+          : t("Not sent", "尚未发送"),
+      done: sourcingBatch?.status === "sent"
+    },
+    {
+      label: t("Quotes returned", "报价已回传"),
+      detail: t(
+        `${sourcingResponseCount}/${invitedSuppliers.length || 0} received`,
+        `已收到 ${sourcingResponseCount}/${invitedSuppliers.length || 0} 份`
+      ),
+      done: invitedSuppliers.length > 0 && sourcingResponseCount >= invitedSuppliers.length
+    },
+    {
+      label: t("Best quote selected", "最优报价已选定"),
+      detail:
+        selectedQuote?.supplier_name ||
+        (quoteAnalysisReady ? t("AI recommendation ready", "AI 建议已生成") : t("Waiting for comparison", "等待比价")),
+      done: Boolean(selectedQuote)
+    }
+  ];
 
   if (!dbConnected)
     return localize(
@@ -631,6 +851,34 @@ export default function AdminWorkflowWorkspace({
       <div className="admin-ops-workspace">
         {toolbar}
         {statusBanner}
+        <section className="sourcing-flow-overview">
+          <div className="sourcing-flow-heading">
+            <div>
+              <span>{t("RFQ WORKFLOW", "询价工作流")}</span>
+              <h3>{t("Supplier RFQ & Best Quote", "供应商询价与最优报价")}</h3>
+            </div>
+            <p>
+              {t(
+                "Generate → approve → send → collect supplier returns → AI comparison → Cho decision",
+                "生成询盘 → 批准 → 发送 → 收集供应商回传 → AI 比价 → Cho 决策"
+              )}
+            </p>
+          </div>
+          <div className="sourcing-flow-steps">
+            {sourcingSteps.map((step, index) => (
+              <article
+                className={step.done ? "done" : index === sourcingSteps.findIndex((row) => !row.done) ? "current" : ""}
+                key={step.label}
+              >
+                <b>{String(index + 1).padStart(2, "0")}</b>
+                <div>
+                  <strong>{step.label}</strong>
+                  <span>{step.detail}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
         <div className="admin-ops-grid">
           <StageSection
             stage="SUPPLIERS"
@@ -794,8 +1042,96 @@ export default function AdminWorkflowWorkspace({
             status={`${scoredQuotes.length} quotes`}
             description="Record commercial terms and compare price, lead time, quality and supplier reliability."
             wide
-            actions={<button onClick={() => setActiveForm(activeForm === "quote" ? "" : "quote")}>Record quote</button>}
+            actions={
+              <button
+                onClick={() => (activeForm === "quote" ? setActiveForm("") : openQuoteForm(sourcingBatch?.id || ""))}
+              >
+                {t("Record quote", "录入报价")}
+              </button>
+            }
           >
+            <div className="supplier-response-tracker">
+              <div className="supplier-response-heading">
+                <div>
+                  <strong>{t("Supplier response tracker", "供应商回传跟踪")}</strong>
+                  <span>
+                    {sourcingBatch
+                      ? `${sourcingBatch.rfq_code} · ${t("Due", "截止")} ${shortDate(sourcingBatch.due_at)}`
+                      : t("Generate and save an RFQ to start tracking.", "生成并保存 RFQ 后即可开始跟踪。")}
+                  </span>
+                </div>
+                {sourcingBatch?.status === "sent" && (
+                  <b>
+                    {t(
+                      `${sourcingResponseCount} of ${invitedSuppliers.length} returned`,
+                      `已回传 ${sourcingResponseCount}/${invitedSuppliers.length}`
+                    )}
+                  </b>
+                )}
+              </div>
+              {invitedSuppliers.length ? (
+                <div className="admin-table-wrap">
+                  <table className="admin-mini-table supplier-response-table">
+                    <thead>
+                      <tr>
+                        <th>{t("Supplier", "供应商")}</th>
+                        <th>{t("Sent", "发送时间")}</th>
+                        <th>{t("Due", "截止时间")}</th>
+                        <th>{t("Response", "回传状态")}</th>
+                        <th>{t("Quoted total", "报价总额")}</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invitedSuppliers.map((supplier) => {
+                        const quote = sourcingQuotes.find((row) => row.supplier_id === supplier.id);
+                        const overdue =
+                          !quote &&
+                          sourcingBatch?.status === "sent" &&
+                          sourcingBatch?.due_at &&
+                          new Date(sourcingBatch.due_at).getTime() < Date.now();
+                        const responseStatus = quote
+                          ? t("Received", "已回传")
+                          : sourcingBatch?.status !== "sent"
+                            ? t("Not sent", "尚未发送")
+                            : overdue
+                              ? t("Overdue", "已逾期")
+                              : t("Awaiting", "等待回传");
+                        return (
+                          <tr key={supplier.id}>
+                            <td>
+                              <strong>{supplier.name}</strong>
+                              <br />
+                              <small>
+                                {supplier.email || supplier.contact_email || t("Email missing", "缺少邮箱")}
+                              </small>
+                            </td>
+                            <td>{shortDate(sourcingBatch?.sent_at)}</td>
+                            <td>{shortDate(sourcingBatch?.due_at)}</td>
+                            <td>
+                              <b data-state={quote ? "received" : overdue ? "overdue" : "waiting"}>{responseStatus}</b>
+                            </td>
+                            <td>{quote ? money(quote.total_amount, quote.currency) : "-"}</td>
+                            <td>
+                              <button type="button" onClick={() => openQuoteForm(sourcingBatch.id, supplier.id)}>
+                                {quote ? t("Record revision", "记录修订版") : t("Record return", "录入回传报价")}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Empty>
+                  {t(
+                    "Select suppliers in S06 and save the RFQ to create the response list.",
+                    "请在 S06 选择供应商并保存 RFQ，以建立回传名单。"
+                  )}
+                </Empty>
+              )}
+            </div>
             {activeForm === "quote" && (
               <form className="admin-ops-form" onSubmit={submitQuote}>
                 <Field label="RFQ batch">
@@ -851,25 +1187,68 @@ export default function AdminWorkflowWorkspace({
                     <option>EUR</option>
                   </select>
                 </Field>
-                <Field label="Unit price">
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={quoteForm.unit_price}
-                    onChange={(e) => setQuoteForm({ ...quoteForm, unit_price: e.target.value })}
-                  />
-                </Field>
-                <Field label="Total amount">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={quoteForm.total_amount}
-                    onChange={(e) => setQuoteForm({ ...quoteForm, total_amount: e.target.value })}
-                  />
-                </Field>
+                <div className="quote-line-editor wide">
+                  <div>
+                    <strong>{t("BOM item pricing", "BOM 逐项报价")}</strong>
+                    <span>
+                      {t("Enter the supplier's unit price for every requested item.", "请录入供应商对每个品项的单价。")}
+                    </span>
+                  </div>
+                  <div className="admin-table-wrap">
+                    <table className="admin-mini-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>{t("Item", "品项")}</th>
+                          <th>{t("Qty", "数量")}</th>
+                          <th>{t("Unit price", "单价")}</th>
+                          <th>{t("Line total", "小计")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quoteLineItems.map((line, index) => (
+                          <tr key={line.item_id}>
+                            <td>{line.item_no}</td>
+                            <td>
+                              <strong>{line.item_name}</strong>
+                            </td>
+                            <td>
+                              {line.quantity} {line.unit}
+                            </td>
+                            <td>
+                              <input
+                                required
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={line.unit_price}
+                                onChange={(event) =>
+                                  setQuoteLineItems((current) =>
+                                    current.map((item, itemIndex) =>
+                                      itemIndex === index ? { ...item, unit_price: event.target.value } : item
+                                    )
+                                  )
+                                }
+                              />
+                            </td>
+                            <td>
+                              {money(Number(line.quantity || 0) * Number(line.unit_price || 0), quoteForm.currency)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th colSpan="3">{t("Comparable total", "可比总价")}</th>
+                          <th>
+                            {money(quoteTotals.weightedUnitPrice, quoteForm.currency)} / {t("unit", "件")}
+                          </th>
+                          <th>{money(quoteTotals.total, quoteForm.currency)}</th>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
                 <Field label="MOQ">
                   <input
                     type="number"
@@ -912,9 +1291,31 @@ export default function AdminWorkflowWorkspace({
                     onChange={(e) => setQuoteForm({ ...quoteForm, risk_notes: e.target.value })}
                   />
                 </Field>
+                <Field label={t("Supplier quote file", "供应商报价文件")} wide>
+                  <input
+                    type="file"
+                    accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.png,.jpg,.jpeg,.webp"
+                    onChange={(event) => setQuoteFile(event.target.files?.[0] || null)}
+                  />
+                  <small>
+                    {t(
+                      "Optional; PDF, spreadsheet, document or image up to 15 MB.",
+                      "可选；支持 PDF、表格、文档或图片，最大 15 MB。"
+                    )}
+                  </small>
+                </Field>
+                <Field label={t("Internal notes", "内部备注")} wide>
+                  <textarea
+                    value={quoteForm.notes}
+                    onChange={(event) => setQuoteForm({ ...quoteForm, notes: event.target.value })}
+                  />
+                </Field>
                 <div className="admin-ops-form-actions">
-                  <button className="btn-premium" disabled={loading}>
-                    Save quote
+                  <button type="button" onClick={() => setActiveForm("")} disabled={loading}>
+                    {t("Cancel", "取消")}
+                  </button>
+                  <button className="btn-premium" disabled={loading || !quoteLineItems.length}>
+                    {t("Save supplier return", "保存供应商回传")}
                   </button>
                 </div>
               </form>
@@ -933,15 +1334,23 @@ export default function AdminWorkflowWorkspace({
           <StageSection
             stage="S08"
             title="Cho supplier decision"
-            status={scoredQuotes.find((quote) => quote.status === "selected") ? "approved" : "needs review"}
+            status={selectedQuote ? "approved" : "needs review"}
             description="Human gate: review normalized terms and approve the winning supplier."
             wide
           >
-            {scoredQuotes.length ? (
+            {sourcingScoredQuotes.length > 0 && !quoteAnalysisReady && (
+              <Notice tone="error">
+                {t(
+                  "Run the S07 AI quotation comparison before Cho approves the winning supplier.",
+                  "请先在 S07 运行 AI 报价比较，再由 Cho 批准最终供应商。"
+                )}
+              </Notice>
+            )}
+            {sourcingScoredQuotes.length ? (
               <div className="admin-ops-quote-cards">
-                {scoredQuotes.map((quote, index) => (
+                {sourcingScoredQuotes.map((quote, index) => (
                   <article key={quote.id} className={quote.status === "selected" ? "selected" : ""}>
-                    <span>Rank #{index + 1}</span>
+                    <span>{quoteAnalysisReady ? `Rank #${index + 1}` : t("AI rank pending", "等待 AI 排名")}</span>
                     <h4>{quote.supplier_name || quote.suppliers?.name}</h4>
                     <strong>{money(quote.unit_price, quote.currency)} / unit</strong>
                     <p>
@@ -949,7 +1358,7 @@ export default function AdminWorkflowWorkspace({
                     </p>
                     <button
                       className="btn-premium"
-                      disabled={loading || quote.status === "selected"}
+                      disabled={loading || quote.status === "selected" || !quoteAnalysisReady}
                       onClick={() => selectQuote(quote)}
                     >
                       {quote.status === "selected" ? "Selected" : "Approve supplier"}

@@ -2082,6 +2082,194 @@ button.admin-order-card:hover {
   margin-top: 0.55rem;
 }
 
+.sourcing-flow-overview {
+  overflow: hidden;
+  border: 1px solid rgba(76, 62, 54, 0.22);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.sourcing-flow-heading,
+.supplier-response-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sourcing-flow-heading {
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: linear-gradient(110deg, rgba(79, 52, 35, 0.07), rgba(122, 135, 117, 0.05));
+}
+
+.sourcing-flow-heading span,
+.supplier-response-heading span,
+.quote-line-editor > div:first-child span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+}
+
+.sourcing-flow-heading > div > span {
+  margin-bottom: 0.25rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.sourcing-flow-heading h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font: 600 1.15rem var(--font-tech);
+}
+
+.sourcing-flow-heading p {
+  max-width: 540px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.sourcing-flow-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.sourcing-flow-steps article {
+  display: flex;
+  min-width: 0;
+  gap: 0.55rem;
+  padding: 0.85rem;
+  border-right: 1px solid var(--glass-border);
+  color: var(--text-muted);
+}
+
+.sourcing-flow-steps article:last-child {
+  border-right: 0;
+}
+
+.sourcing-flow-steps article > b {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  border: 1px solid rgba(124, 114, 103, 0.28);
+  border-radius: 50%;
+  font-size: 0.58rem;
+}
+
+.sourcing-flow-steps article strong,
+.sourcing-flow-steps article span {
+  display: block;
+}
+
+.sourcing-flow-steps article strong {
+  color: var(--text-primary);
+  font-size: 0.71rem;
+}
+
+.sourcing-flow-steps article span {
+  overflow: hidden;
+  margin-top: 0.16rem;
+  font-size: 0.63rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourcing-flow-steps article.done {
+  background: rgba(83, 99, 79, 0.07);
+}
+
+.sourcing-flow-steps article.done > b {
+  border-color: #53634f;
+  background: #53634f;
+  color: #fff;
+}
+
+.sourcing-flow-steps article.current {
+  box-shadow: inset 0 -3px 0 var(--accent-primary);
+}
+
+.supplier-response-tracker {
+  overflow: hidden;
+  border: 1px solid rgba(124, 114, 103, 0.2);
+  border-radius: 5px;
+}
+
+.supplier-response-heading {
+  padding: 0.75rem 0.85rem;
+  background: #f8f7f4;
+}
+
+.supplier-response-heading strong,
+.quote-line-editor > div:first-child strong {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+}
+
+.supplier-response-heading > b {
+  color: #53634f;
+  font-size: 0.68rem;
+}
+
+.supplier-response-table b[data-state] {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.28rem 0.48rem;
+  background: rgba(124, 114, 103, 0.1);
+  color: var(--text-secondary);
+  font-size: 0.62rem;
+}
+
+.supplier-response-table b[data-state="received"] {
+  background: rgba(83, 99, 79, 0.12);
+  color: #53634f;
+}
+
+.supplier-response-table b[data-state="overdue"] {
+  background: rgba(169, 90, 75, 0.12);
+  color: #8b5148;
+}
+
+.supplier-response-table button {
+  min-height: 32px;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0.35rem 0.55rem;
+  font: 600 0.65rem var(--font-sans);
+}
+
+.quote-line-editor {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  background: #fff;
+}
+
+.quote-line-editor > div:first-child {
+  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: #f8f7f4;
+}
+
+.quote-line-editor .admin-mini-table input {
+  min-width: 110px;
+}
+
+.quote-line-editor tfoot th {
+  border-top: 2px solid rgba(76, 62, 54, 0.2);
+  background: #f3eee7;
+  color: var(--text-primary);
+}
+
 .ai-quote-workspace,
 .ai-operations-panel {
   display: flex;
@@ -5717,6 +5905,29 @@ button.admin-order-card:hover {
 
   .ai-rfq-lower-grid > section {
     border-right: 0;
+  }
+
+  .sourcing-flow-heading,
+  .supplier-response-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sourcing-flow-heading p {
+    text-align: left;
+  }
+
+  .sourcing-flow-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sourcing-flow-steps article {
+    border-right: 0;
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  .sourcing-flow-steps article:last-child {
+    border-bottom: 0;
   }
 
   .intake-directory-heading {

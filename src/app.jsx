@@ -5608,7 +5608,12 @@ function App() {
           invited_count: 0,
           supplier_ids: [],
           currency: "USD",
-          payload: { ...rfqDraft, intake_job_ids: draft.jobIds || projectJobs.map((projectJob) => projectJob.id) }
+          payload: {
+            ...rfqDraft,
+            document_pending: true,
+            schema_version: 2,
+            intake_job_ids: draft.jobIds || projectJobs.map((projectJob) => projectJob.id)
+          }
         };
         const { data: existingRfq, error: lookupError } = await client
           .from("rfq_batches")
@@ -5641,7 +5646,7 @@ function App() {
       setReviewDraft((prev) =>
         prev ? { ...prev, projectId, rfqDraft, reviewStatus: "rfq_ready", rfqStatus: "draft" } : prev
       );
-      setPrequoteNotice("RFQ draft package created with three supplier comparison slots.");
+      setPrequoteNotice("RFQ workspace opened. The bilingual inquiry table will be generated from the approved BOM.");
       setCurrentStageIndex(5);
       addLog("Cho", "RFQ draft package created.", "RFQ draft package created.");
       await loadPrequoteWorkspace();

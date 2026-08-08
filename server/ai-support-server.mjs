@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { createAiSupportReply } from "./lib/aiSupportAgent.mjs";
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { createRfqDraft } from "./lib/rfqGenerator.mjs";
-import { dispatchRfqEmails } from "./lib/rfqDispatch.mjs";
+import { dispatchRfqEmails, getRfqDispatchStatus } from "./lib/rfqDispatch.mjs";
 import { buildEmailAttachmentsFromSupabase, enrichRfqContextFromSupabase } from "./lib/rfqSourceData.mjs";
 import { createQuoteAnalysis } from "./lib/quoteAnalyzer.mjs";
 import { createOperationsPlan } from "./lib/operationsAutomation.mjs";
@@ -50,6 +50,9 @@ const server = http.createServer(async (req, res) => {
         const { supabase } = await requireAuthenticatedUser(req);
         const context = await enrichRfqContextFromSupabase({ supabase, context: body.context });
         result = await createRfqDraft({ context });
+      } else if (body.action === "rfq_dispatch_status") {
+        await requireAuthenticatedUser(req);
+        result = getRfqDispatchStatus();
       } else if (body.action === "dispatch_rfq") {
         const { supabase } = await requireAuthenticatedUser(req);
         const sourceAttachments = await buildEmailAttachmentsFromSupabase({

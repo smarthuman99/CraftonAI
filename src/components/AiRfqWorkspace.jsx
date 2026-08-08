@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 const AI_API_URL = import.meta.env.VITE_AI_SUPPORT_API_URL || "/api/ai-support-chat";
 
@@ -41,8 +41,11 @@ export default function AiRfqWorkspace({
   const [status, setStatus] = useState("draft");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  const [dispatchService, setDispatchService] = useState(null);
   const [attachmentUrls, setAttachmentUrls] = useState({});
   const [form, setForm] = useState({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: [] });
+  const autoUpgradeRef = useRef("");
+  const activeProjectRef = useRef("");
   const projectBatches = useMemo(() => batches.filter((row) => row.project_id === project.id), [batches, project.id]);
   const currentProjectFiles = useMemo(
     () => projectFiles.filter((row) => row.project_id === project.id),
@@ -60,6 +63,30 @@ export default function AiRfqWorkspace({
     () => specifications.filter((row) => row.project_id === project.id),
     [specifications, project.id]
   );
+  const suggestedSupplierIds = useMemo(() => {
+    const requirement = (project.items || [])
+      .flatMap((item) => [item.typeEn, item.typeCn, item.materialEn, item.materialCn, item.finish])
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const ranked = suppliers
+      .filter((supplier) => supplier.is_active !== false && supplier.status !== "inactive")
+      .filter((supplier) => supplier.email || supplier.contact_email)
+      .map((supplier) => {
+        const tags = [supplier.category, ...(supplier.categories || []), ...(supplier.capabilities || [])]
+          .filter(Boolean)
+          .map((tag) => String(tag).toLowerCase());
+        const matchScore = tags.reduce(
+          (score, tag) =>
+            score + (requirement.includes(tag) || (tag.includes("sofa") && requirement.includes("sofa")) ? 1 : 0),
+          0
+        );
+        return { supplier, matchScore, rating: Number(supplier.rating || supplier.quality_score || 0) };
+      })
+      .sort((a, b) => b.matchScore - a.matchScore || b.rating - a.rating);
+    const matched = ranked.filter((row) => row.matchScore > 0);
+    return (matched.length ? matched : ranked).slice(0, 3).map((row) => row.supplier.id);
+  }, [project.items, suppliers]);
 
   const sourceFiles = useMemo(() => {
     const rows = [
@@ -97,21 +124,39 @@ export default function AiRfqWorkspace({
   const highWarnings = (document?.missingInformation || []).filter((warning) => warning.severity === "high").length;
 
   useEffect(() => {
-    if (!document) {
-      const saved = projectBatches.find((batch) => batch.payload?.document);
-      if (saved) loadBatch(saved);
-    }
-  }, [projectBatches, document]);
-
-  useEffect(() => {
+    if (activeProjectRef.current === project.id) return;
+    activeProjectRef.current = project.id;
     setDocument(null);
     setGeneration(null);
     setActiveBatchId(null);
     setStatus("draft");
     setMessage("");
+    setDispatchService(null);
     setAttachmentUrls({});
-    setForm({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: [] });
+    autoUpgradeRef.current = "";
+    setForm({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: suggestedSupplierIds });
   }, [project.id]);
+
+  useEffect(() => {
+    if (!activeBatchId && !form.supplierIds.length && suggestedSupplierIds.length) {
+      setForm((current) => ({ ...current, supplierIds: suggestedSupplierIds }));
+    }
+  }, [activeBatchId, form.supplierIds.length, suggestedSupplierIds]);
+
+  useEffect(() => {
+    if (document || busy === "generate") return;
+    const saved = projectBatches.find((batch) => batch.payload?.document);
+    if (saved) {
+      loadBatch(saved);
+      return;
+    }
+    const legacy = projectBatches.find((batch) => ["draft", "approved"].includes(batch.status));
+    const upgradeKey = legacy ? `${project.id}:${legacy.id}` : "";
+    if (legacy && autoUpgradeRef.current !== upgradeKey) {
+      autoUpgradeRef.current = upgradeKey;
+      generate(legacy);
+    }
+  }, [busy, document, project.id, projectBatches]);
 
   useEffect(() => {
     let active = true;
@@ -159,6 +204,20 @@ export default function AiRfqWorkspace({
     return payload;
   }
 
+  useEffect(() => {
+    let active = true;
+    post(AI_API_URL, { action: "rfq_dispatch_status" })
+      .then((result) => {
+        if (active) setDispatchService(result);
+      })
+      .catch(() => {
+        if (active) setDispatchService({ configured: false, unavailable: true });
+      });
+    return () => {
+      active = false;
+    };
+  }, [project.id]);
+
   function context() {
     return {
       project: {
@@ -181,22 +240,43 @@ export default function AiRfqWorkspace({
     };
   }
 
-  async function generate() {
+  async function generate(targetBatch = null) {
     setBusy("generate");
     setMessage("");
     try {
       const result = await post(AI_API_URL, { action: "generate_rfq", context: context() });
+      const targetSupplierIds = targetBatch?.supplier_ids?.length ? targetBatch.supplier_ids : suggestedSupplierIds;
+      const due = targetBatch?.due_at ? new Date(targetBatch.due_at) : null;
+      if (due) due.setMinutes(due.getMinutes() - due.getTimezoneOffset());
+      const nextForm = {
+        title: targetBatch?.title || (zh ? result.document.titleCn : result.document.titleEn),
+        dueAt: due ? due.toISOString().slice(0, 16) : form.dueAt,
+        currency: targetBatch?.currency || form.currency,
+        notes: targetBatch?.notes || form.notes,
+        supplierIds: targetSupplierIds
+      };
       setDocument(result.document);
       setGeneration(result.generation);
-      setActiveBatchId(null);
+      setActiveBatchId(targetBatch?.id || null);
       setStatus("draft");
-      setForm((current) => ({ ...current, title: zh ? result.document.titleCn : result.document.titleEn }));
-      setMessage(
-        t(
-          "AI RFQ draft generated. Review all warnings before approval.",
-          "AI 询价单草稿已生成，请在批准前检查所有警示。"
-        )
-      );
+      setForm(nextForm);
+      if (targetBatch?.id) {
+        await persist("draft", {
+          document: result.document,
+          generation: result.generation,
+          activeBatchId: targetBatch.id,
+          form: nextForm
+        });
+        setMessage(t("Legacy RFQ upgraded to a complete inquiry document.", "旧版 RFQ 已自动升级为完整询盘文件。"));
+        await onChanged?.();
+      } else {
+        setMessage(
+          t(
+            "AI RFQ draft generated. Review all warnings before approval.",
+            "AI 询价单草稿已生成，请在批准前检查所有警示。"
+          )
+        );
+      }
     } catch (error) {
       setMessage(error.message || String(error));
     } finally {
@@ -228,13 +308,19 @@ export default function AiRfqWorkspace({
     if (error) throw error;
   }
 
-  async function persist(nextStatus) {
-    if (!document) throw new Error(t("Generate an RFQ draft first.", "请先生成 RFQ 询价单草稿。"));
+  async function persist(nextStatus, overrides = {}) {
+    const workingDocument = overrides.document || document;
+    const workingGeneration = overrides.generation || generation;
+    const workingBatchId = Object.prototype.hasOwnProperty.call(overrides, "activeBatchId")
+      ? overrides.activeBatchId
+      : activeBatchId;
+    const workingForm = overrides.form || form;
+    if (!workingDocument) throw new Error(t("Generate an RFQ draft first.", "请先生成 RFQ 询价单草稿。"));
     const code = `RFQ-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${window.crypto.randomUUID().slice(0, 6).toUpperCase()}`;
-    let version = activeBatchId ? nextVersion(activeBatchId) : 1;
+    let version = workingBatchId ? nextVersion(workingBatchId) : 1;
     const basePayload = {
-      document,
-      generation,
+      document: workingDocument,
+      generation: workingGeneration,
       version,
       status: nextStatus,
       source: {
@@ -245,23 +331,23 @@ export default function AiRfqWorkspace({
       }
     };
     const batchValues = {
-      title: form.title || document.titleEn,
+      title: workingForm.title || workingDocument.titleEn,
       status: nextStatus,
-      supplier_ids: form.supplierIds,
-      supplier_count: form.supplierIds.length,
-      invited_count: form.supplierIds.length,
-      due_at: form.dueAt ? new Date(form.dueAt).toISOString() : null,
-      currency: form.currency,
-      notes: form.notes,
+      supplier_ids: workingForm.supplierIds,
+      supplier_count: workingForm.supplierIds.length,
+      invited_count: workingForm.supplierIds.length,
+      due_at: workingForm.dueAt ? new Date(workingForm.dueAt).toISOString() : null,
+      currency: workingForm.currency,
+      notes: workingForm.notes,
       payload: basePayload
     };
 
     let batch;
-    if (activeBatchId) {
+    if (workingBatchId) {
       const { data, error } = await supabaseClient
         .from("rfq_batches")
         .update(batchValues)
-        .eq("id", activeBatchId)
+        .eq("id", workingBatchId)
         .select()
         .single();
       if (error) throw error;
@@ -276,7 +362,7 @@ export default function AiRfqWorkspace({
       batch = data;
     }
 
-    version = activeBatchId ? nextVersion(batch.id) : 1;
+    version = workingBatchId ? nextVersion(batch.id) : 1;
     const record = { ...basePayload, rfq_batch_id: batch.id, rfq_code: batch.rfq_code, version };
     const hash = await sha256(record);
     const { error: fileError } = await supabaseClient.from("project_files").insert({
@@ -294,7 +380,7 @@ export default function AiRfqWorkspace({
       nextStatus === "approved" ? "rfq_document_approved" : "rfq_document_version_saved",
       `${batch.rfq_code} 第 ${version} 版询价单已${nextStatus === "approved" ? "批准" : "保存"}。`,
       `${batch.rfq_code} RFQ version ${version} ${nextStatus === "approved" ? "approved" : "saved"}.`,
-      { rfq_batch_id: batch.id, version, sha256: hash, supplier_ids: form.supplierIds }
+      { rfq_batch_id: batch.id, version, sha256: hash, supplier_ids: workingForm.supplierIds }
     );
     const { error: projectError } = await supabaseClient
       .from("projects")
@@ -360,6 +446,15 @@ export default function AiRfqWorkspace({
       setMessage(t("Approve and save this RFQ before dispatch.", "请先保存并批准这份 RFQ，再发送给供应商。"));
       return;
     }
+    if (!dispatchService?.configured) {
+      setMessage(
+        t(
+          "Email dispatch is unavailable until RESEND_API_KEY and RFQ_FROM_EMAIL are configured on the VPS.",
+          "VPS 尚未配置 RESEND_API_KEY 与 RFQ_FROM_EMAIL，当前不能实际发送邮件。"
+        )
+      );
+      return;
+    }
     const withoutEmail = selectedSuppliers.filter((supplier) => !(supplier.contact_email || supplier.email));
     if (!selectedSuppliers.length || withoutEmail.length) {
       setMessage(
@@ -396,7 +491,7 @@ export default function AiRfqWorkspace({
           supplier_ids: form.supplierIds,
           supplier_count: form.supplierIds.length,
           invited_count: receipt.recipients.length,
-          payload: { document, generation, status: "sent", dispatch: receipt }
+          payload: { ...(batch.payload || {}), document, generation, status: "sent", dispatch: receipt }
         })
         .eq("id", activeBatchId);
       if (error) throw error;
@@ -434,12 +529,7 @@ export default function AiRfqWorkspace({
 
   function loadBatch(batch) {
     if (!batch.payload?.document) {
-      setMessage(
-        t(
-          "This legacy RFQ has no generated document. Generate a new AI version to upgrade it.",
-          "这条旧 RFQ 没有询价文件，请生成新的 AI 版本进行升级。"
-        )
-      );
+      generate(batch);
       return;
     }
     const due = batch.due_at ? new Date(batch.due_at) : null;
@@ -497,6 +587,49 @@ export default function AiRfqWorkspace({
     popup.document.close();
   }
 
+  function downloadResponseTemplate() {
+    if (!document) return;
+    const headings = [
+      "RFQ code",
+      "Item no.",
+      "Item / 品项",
+      "Quantity / 数量",
+      "Unit / 单位",
+      "Dimensions / 尺寸",
+      "Material / 材质",
+      "Supplier unit price / 供应商单价",
+      "Supplier total / 供应商总价",
+      "MOQ",
+      "Lead time days / 交期天数",
+      "Material confirmed / 材质确认",
+      "Deviation / 偏差说明"
+    ];
+    const csvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const batch = projectBatches.find((row) => row.id === activeBatchId);
+    const rows = document.items.map((item) => [
+      batch?.rfq_code || "DRAFT",
+      item.itemNo,
+      [item.nameEn, item.nameCn].filter(Boolean).join(" / "),
+      item.quantity,
+      item.unit,
+      [item.dimensions, item.tolerance].filter(Boolean).join(" / "),
+      [item.materialEn, item.materialCn].filter(Boolean).join(" / "),
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ]);
+    const csv = `\uFEFF${[headings, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+    const url = URL.createObjectURL(new window.Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = `${batch?.rfq_code || "RFQ"}-supplier-response.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const statusCn = { draft: "草稿", approved: "已批准", sent: "已发送" };
 
   return (
@@ -548,7 +681,7 @@ export default function AiRfqWorkspace({
           <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
         </label>
         <div className="ai-rfq-primary-actions wide">
-          <button className="btn-premium" type="button" disabled={Boolean(busy)} onClick={generate}>
+          <button className="btn-premium" type="button" disabled={Boolean(busy)} onClick={() => generate()}>
             {busy === "generate"
               ? t("AI is preparing the RFQ...", "AI 正在生成询价单...")
               : t("Generate standard RFQ with AI", "使用 AI 生成标准询价单")}
@@ -570,6 +703,15 @@ export default function AiRfqWorkspace({
         </div>
       )}
 
+      {dispatchService && !dispatchService.configured && (
+        <div className="admin-ops-notice error">
+          {t(
+            "Email sending is locked: configure RESEND_API_KEY and RFQ_FROM_EMAIL on the VPS. RFQ generation, approval, download and quote comparison remain available.",
+            "邮件发送暂未启用：请在 VPS 配置 RESEND_API_KEY 与 RFQ_FROM_EMAIL。询盘生成、批准、下载和比价功能仍可正常使用。"
+          )}
+        </div>
+      )}
+
       {document && (
         <div className="ai-rfq-document">
           <div className="ai-rfq-document-toolbar">
@@ -586,6 +728,9 @@ export default function AiRfqWorkspace({
               <button type="button" onClick={printRfq}>
                 {t("Print / Save PDF", "打印 / 保存 PDF")}
               </button>
+              <button type="button" onClick={downloadResponseTemplate}>
+                {t("Download supplier template", "下载供应商回填表")}
+              </button>
               <button type="button" disabled={Boolean(busy)} onClick={save}>
                 {busy === "save" ? t("Saving...", "保存中...") : t("Save version", "保存版本")}
               </button>
@@ -595,7 +740,7 @@ export default function AiRfqWorkspace({
               <button
                 className="btn-premium"
                 type="button"
-                disabled={Boolean(busy) || status !== "approved"}
+                disabled={Boolean(busy) || status !== "approved" || dispatchService?.configured !== true}
                 onClick={dispatch}
               >
                 {busy === "send" ? t("Sending...", "发送中...") : t("Send to suppliers", "发送给供应商")}
