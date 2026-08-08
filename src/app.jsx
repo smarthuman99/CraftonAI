@@ -329,6 +329,7 @@ const normalizeReviewJob = (job = {}) => {
     clientAnswers: safeJsonObject(job.client_answers, {}),
     sourceNotes: result.source_notes || job.brief_text || "",
     summaryEn: result.summary_en || "Intake draft parsed from client materials.",
+    visualAnalysis: safeJsonObject(result.visual_analysis, null),
     createdAt: job.created_at || job.submittedAt || "",
     fileName: intakeFile?.original_name || job.fileName || "",
     previewUrl: job.client_preview_url || job.previewUrl || result.preview_url || "",
@@ -346,20 +347,26 @@ const normalizeReviewJob = (job = {}) => {
       qty: Number(item.quantity || item.qty || 0),
       qtyDisplay: item.quantity_text || item.qtyDisplay || String(item.quantity || item.qty || ""),
       dimensions: item.dimensions || {},
-      dimensionsText: item.dimensions_text || formatDimensionPayload(item.dimensions || {}),
+      dimensionsText:
+        item.dimensions_text ||
+        (typeof item.dimensions === "string" ? item.dimensions : formatDimensionPayload(item.dimensions || {})),
       tolerance: item.tolerance || "",
       materialCn: item.material_cn || item.materialCn || "To confirm",
       materialEn: item.material_en || item.materialEn || "To confirm",
+      style: item.style_en || item.style_cn || item.style || "",
       fabricCode: item.fabric_code || item.fabricCode || "",
-      finish: item.finish || "",
-      color: item.color || "",
+      finish: item.finish_en || item.finish_cn || item.finish || "",
+      color: item.color_en || item.color_cn || item.color || "",
       hardware: item.hardware || "",
+      visibleFeatures: item.visible_features_en || item.visible_features_cn || [],
+      visualConfidence: Number(item.confidence || 0),
       usageLocation: item.usage_location || item.usageLocation || "",
       fireStandard: item.fire_standard || item.fireStandard || "",
       originalUnitPrice: Number(
         item.original_unit_price || item.originalUnitPrice || item.unit_price || item.unitPrice || 0
       ),
       unitPrice: Number(item.unit_price || item.unitPrice || item.original_unit_price || item.originalUnitPrice || 0),
+      currency: item.currency || result.currency || project.currency || "USD",
       notesCn: item.notes_cn || item.notesCn || "",
       notesEn: item.notes_en || item.notesEn || item.note || "",
       imageUrl: item.image_url || item.imageUrl || item.preview_url || ""
@@ -776,6 +783,7 @@ function App() {
     message: ""
   });
   const [clientProjectJobs, setClientProjectJobs] = useState([]);
+  const [clientProjectsLoading, setClientProjectsLoading] = useState(true);
   const [clientAnswerDrafts, setClientAnswerDrafts] = useState({});
   const [clientAnswerSubmitState, setClientAnswerSubmitState] = useState({});
   const [adminRfqBatches, setAdminRfqBatches] = useState([]);
@@ -796,6 +804,7 @@ function App() {
   const [supportSelectedFile, setSupportSelectedFile] = useState(null);
   const [supportSelectedFileName, setSupportSelectedFileName] = useState("");
   const [supportUploadedFileId, setSupportUploadedFileId] = useState(null);
+  const [supportSubmittedJobId, setSupportSubmittedJobId] = useState(null);
   const [supportConversationId, setSupportConversationId] = useState(null);
   const [supportIsTyping, setSupportIsTyping] = useState(false);
   const [supportStatus, setSupportStatus] = useState("");
@@ -857,6 +866,7 @@ function App() {
   const [modalFilePreloaded, setModalFilePreloaded] = useState(false);
   const [modalFilePreloadedName, setModalFilePreloadedName] = useState("");
   const [modalSelectedFile, setModalSelectedFile] = useState(null);
+  const [pendingSetFurnitureSelection, setPendingSetFurnitureSelection] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null); // null or project object for detail overlay modal
 
   // V1.3 Marketing Bespoke Simulation States (Now modularly encapsulated in CVQASimulator and ClientPortalTeaser)
@@ -1199,14 +1209,20 @@ function App() {
     setAdminAccessStatus("unauthenticated");
     setUser(null);
     setSupportConversationId(null);
+    setSupportUploadedFileId(null);
+    setSupportSubmittedJobId(null);
     supportConversationIdRef.current = null;
     lastProfileSyncRef.current = "";
     setCurrentStageView("Marketing");
     setMarketingTab("Overview");
     setClientPortalTab("Intake");
+    setClientProjectsLoading(true);
     setSubmittedTrackerProject(null);
     setLatestIntakeJob(null);
     setTrackerPreviewUrl("");
+    setClientProjectJobs([]);
+    setClientAnswerDrafts({});
+    setClientAnswerSubmitState({});
     clearSupabaseAuthStorage();
 
     if (client) {
@@ -1227,6 +1243,7 @@ function App() {
         isStaff: false
       });
       setClientProjectJobs(buildClientDashboardDemoJobs());
+      setClientProjectsLoading(false);
       setClientPortalTab("Tracker");
     } else if (role === "cho") {
       if (getSupabaseBrowserClient()) {
@@ -1262,6 +1279,9 @@ function App() {
     const supabaseUser = authResult?.data?.user || null;
 
     if (requireAuth && !supabaseUser) {
+      // Quick-access demo users intentionally run the complete intake flow locally.
+      // Avoid reopening the production auth gate while they test the customer dashboard.
+      if (user && !supabaseSessionUser) return null;
       setAuthMode("login");
       setShowAuthGate(true);
       setAuthError(
@@ -1432,7 +1452,7 @@ function App() {
     }
   };
 
-  const updateSupportConversationSummary = async ({ status = "open", summaryText = "" } = {}) => {
+  const updateSupportConversationSummary = async ({ status = "open", summaryText = "", latestIntakeFileId } = {}) => {
     try {
       const conversationId = await ensureSupportConversation();
       if (!conversationId) return;
@@ -1448,7 +1468,7 @@ function App() {
           destination: intakeDestination || null,
           quantity_text: intakeQuantity || null,
           summary_text: summaryText || summarizeSupportConversation(),
-          latest_intake_file_id: supportUploadedFileId || null
+          latest_intake_file_id: latestIntakeFileId ?? supportUploadedFileId ?? null
         })
         .eq("id", conversationId);
     } catch (err) {
@@ -1625,23 +1645,68 @@ function App() {
     const file = e.target.files && e.target.files[0];
     setSupportSelectedFile(file || null);
     setSupportSelectedFileName(file?.name || "");
+    setSupportSubmittedJobId(null);
     if (!file) return;
 
+    const isVisualImage =
+      String(file.type || "")
+        .toLowerCase()
+        .startsWith("image/") || /\.(?:png|jpe?g|webp)$/i.test(file.name || "");
     const clientFileMessage = `Uploaded file: ${file.name} (${file.type || "unknown type"})`;
     const nextMessages = [...supportMessages, { sender: "client", text: clientFileMessage }];
     setSupportMessages(nextMessages);
 
     setSupportStatus("正在保存客户文件...");
+    let uploadedFileRow = null;
 
     try {
       const fileRow = await uploadIntakeFileRecord({
         file,
         fileType: "AI_SUPPORT_FILE",
-        notes: summarizeSupportConversation()
+        notes: summarizeSupportConversation(nextMessages)
       });
+      uploadedFileRow = fileRow;
 
       setSupportUploadedFileId(fileRow?.id || null);
       await saveSupportMessage({ sender: "client", text: clientFileMessage, attachmentFileId: fileRow?.id || null });
+
+      if (isVisualImage && fileRow?.id) {
+        setSupportStatus("图片已保存，正在创建视觉解析任务...");
+        setSupportIsTyping(true);
+        const job = await createLiveIntakeJob({
+          projectName: intakeProjectName,
+          destination: intakeDestination,
+          quantity: intakeQuantity,
+          fileType: "AI_SUPPORT_IMAGE",
+          textBrief: [
+            "Source: Crafton customer service image upload",
+            `Client: ${user?.name || "Portal Client"} (${user?.company || "Unknown company"})`,
+            summarizeSupportConversation(nextMessages)
+          ].join("\n\n"),
+          file: null,
+          intakeFileId: fileRow.id
+        });
+        const aiFileReply = job
+          ? "图片已上传并进入视觉解析。系统会识别家具类型、可见材质/颜色、风格与构造特征，生成双语需求草稿；数量、尺寸和防火认证等不能仅凭照片确认的内容会列为问题，交由 Cho 审核。"
+          : "图片已保存，但当前未能创建视觉解析任务。请确认 Supabase 登录与连接后，再点击提交项目需求。";
+        setSupportMessages((prev) => [...prev, { sender: "ai", text: aiFileReply }]);
+        await saveSupportMessage({
+          sender: "ai",
+          text: aiFileReply,
+          attachmentFileId: fileRow.id,
+          aiPayload: job ? { intakeJobId: job.id, visualAnalysis: "queued" } : {}
+        });
+        if (job) {
+          setSupportSubmittedJobId(job.id);
+          setSupportStatus(`图片视觉解析已排队。任务 ID：${job.id}`);
+          updateSupportConversationSummary({ status: "submitted", latestIntakeFileId: fileRow.id }).catch(() => {});
+          loadPrequoteWorkspace().catch((err) => console.warn("Prequote refresh after image intake failed:", err));
+        } else {
+          setSupportStatus("图片已保存，但视觉解析任务尚未创建。");
+        }
+        setSupportIsTyping(false);
+        return;
+      }
 
       setSupportStatus("File saved. Crafton is updating the project overview...");
       setSupportIsTyping(true);
@@ -1649,7 +1714,7 @@ function App() {
       applySupportExtraction(result.extracted);
       const aiFileReply =
         result.reply ||
-        "文件已安全保存。我会把它作为客户原始资料，连同对话摘要一起提交给 Crafton 顾问团队；目前系统会保存文件并读取表单/对话文字，PDF/图片内容解析会在下一步增强。";
+        "文件已安全保存。我会把它作为客户原始资料，连同对话摘要一起提交给 Crafton 顾问团队。图片会自动进入视觉解析；其他文件会结合当前可读取的表单与对话文字整理草稿。";
       setSupportMessages((prev) => [...prev, { sender: "ai", text: aiFileReply }]);
       await saveSupportMessage({
         sender: "ai",
@@ -1663,14 +1728,26 @@ function App() {
     } catch (err) {
       console.error("Support file upload failed:", err);
       setSupportIsTyping(false);
-      const aiFileError =
-        "我已经在当前页面接收了这个文件，但暂时没有成功保存到云端。请稍后重试上传，或检查 Supabase 连接后再提交项目需求。";
+      const aiFileError = uploadedFileRow?.id
+        ? "文件已保存到云端，但视觉解析任务暂时创建失败。请稍后点击提交项目需求重试。"
+        : "我已经在当前页面接收了这个文件，但暂时没有成功保存到云端。请稍后重试上传，或检查 Supabase 连接后再提交项目需求。";
       setSupportMessages((prev) => [...prev, { sender: "ai", text: aiFileError }]);
-      setSupportStatus("文件暂时只保存在当前浏览器，尚未保存到 Supabase。");
+      setSupportStatus(
+        uploadedFileRow?.id
+          ? "文件已保存，但视觉解析任务创建失败。"
+          : "文件暂时只保存在当前浏览器，尚未保存到 Supabase。"
+      );
     }
   };
 
   const handleSupportHandoffToIntake = async () => {
+    if (supportSubmittedJobId) {
+      setSupportStatus(`图片需求已提交，正在等待视觉解析。任务 ID：${supportSubmittedJobId}`);
+      loadPrequoteWorkspace().catch((err) => console.warn("Prequote refresh after image intake failed:", err));
+      setClientPortalTab("Tracker");
+      return;
+    }
+
     const transcript = summarizeSupportConversation();
     const transcriptFile =
       supportSelectedFile ||
@@ -2126,6 +2203,50 @@ function App() {
   };
 
   const handleIntakeFlowSubmit = (projectName, destination, quantity, fileType, textBrief, file) => {
+    const selectedSetFurnitureItems = Array.isArray(pendingSetFurnitureSelection)
+      ? pendingSetFurnitureSelection
+      : pendingSetFurnitureSelection
+        ? [{ ...pendingSetFurnitureSelection, quantity: Number(String(quantity || "").match(/\d+/)?.[0] || 10) }]
+        : [];
+    const quantityNumber = selectedSetFurnitureItems.length
+      ? selectedSetFurnitureItems.reduce((total, selection) => total + Number(selection.quantity || 0), 0)
+      : Number(String(quantity || "").match(/\d+/)?.[0] || 10);
+    const setFurnitureBrief = selectedSetFurnitureItems.length
+      ? {
+          schema_version: "portal_intake_v2",
+          source_mode: "set_furniture",
+          file_name: file?.name || "",
+          project: {
+            name: projectName || "Set Furniture project",
+            client_name: user?.company || user?.name || "Portal Intake Client",
+            contact_name: user?.name || "",
+            destination: destination || ""
+          },
+          items: selectedSetFurnitureItems.map(({ product, category, quantity: itemQuantity }) => ({
+            id: product.code,
+            item_type_en: product.name,
+            item_type_cn: product.nameCn || product.name,
+            quantity: Number(itemQuantity || 0),
+            quantity_text: `${Number(itemQuantity || 0)} pcs`,
+            dimensions_text: product.dimensions,
+            material_en: product.material,
+            material_cn: product.material,
+            finish: product.finish,
+            fire_standard: product.compliance,
+            image_url: product.image || category.image,
+            original_unit_price: Number(product.price || 0),
+            unit_price: Number(product.price || 0),
+            currency: product.currency || "USD",
+            notes_en: product.description,
+            usage_location: category.nameEn
+          })),
+          fire_standard: selectedSetFurnitureItems.map(({ product }) => product.compliance).join(" · "),
+          questions: destination ? [] : ["Please confirm the delivery destination and site address."],
+          summary_en: `${quantityNumber} pieces across ${selectedSetFurnitureItems.length} Set Furniture product${selectedSetFurnitureItems.length === 1 ? "" : "s"} selected from the Crafton catalogue.`,
+          source_notes: textBrief
+        }
+      : null;
+
     setIntakeProjectName(projectName || "");
     setIntakeDestination(destination || "");
     setIntakeQuantity(quantity || "");
@@ -2144,8 +2265,13 @@ function App() {
         quantity: quantity || "",
         fileType,
         textBrief,
-        file
+        file,
+        structuredBrief: setFurnitureBrief || undefined
       });
+      if (selectedSetFurnitureItems.length) {
+        setPendingSetFurnitureSelection(null);
+        safeRemoveItem("crafton_set_furniture_project_cart");
+      }
     }, 100);
   };
 
@@ -2240,7 +2366,10 @@ function App() {
               </div>
             </div>
             <button
-              onClick={() => setActiveIntakeModal(null)}
+              onClick={() => {
+                setActiveIntakeModal(null);
+                setPendingSetFurnitureSelection(null);
+              }}
               style={{
                 background: "none",
                 border: "none",
@@ -2352,6 +2481,7 @@ function App() {
                   className="chat-input"
                   value={modalQuantity}
                   onChange={(e) => setModalQuantity(e.target.value)}
+                  readOnly={activeIntakeModal === "item" && Array.isArray(pendingSetFurnitureSelection)}
                   placeholder="40"
                   style={{
                     width: "100%",
@@ -2393,6 +2523,31 @@ function App() {
                 <span style={{ fontSize: "0.88rem", color: "var(--text-primary)", fontWeight: "bold" }}>
                   {modalProjectName}
                 </span>
+                {Array.isArray(pendingSetFurnitureSelection) && pendingSetFurnitureSelection.length > 0 && (
+                  <div style={{ display: "grid", gap: "0.55rem", marginTop: "0.9rem" }}>
+                    {pendingSetFurnitureSelection.map(({ product, quantity }) => (
+                      <div
+                        key={product.code}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr auto",
+                          gap: "1rem",
+                          paddingTop: "0.55rem",
+                          borderTop: "1px solid rgba(124, 114, 103, 0.14)",
+                          color: "var(--text-secondary)",
+                          fontSize: "0.76rem"
+                        }}
+                      >
+                        <span>
+                          {product.code} · {lang === "Cn" ? product.nameCn : product.name}
+                        </span>
+                        <strong>
+                          {quantity} × {product.currency} {Number(product.price || 0).toLocaleString()}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : activeIntakeModal === "words" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
@@ -2546,7 +2701,10 @@ function App() {
             <button
               className="btn-secondary"
               style={{ padding: "0.5rem 1.5rem", fontSize: "0.82rem" }}
-              onClick={() => setActiveIntakeModal(null)}
+              onClick={() => {
+                setActiveIntakeModal(null);
+                setPendingSetFurnitureSelection(null);
+              }}
             >
               {lang === "Cn" ? "取消 / CANCEL" : "CANCEL"}
             </button>
@@ -4560,16 +4718,27 @@ function App() {
                 client_name: user?.company || "Portal Intake Client",
                 destination: submittedTrackerProject.destination
               },
-              items: buildSubmittedOrderItems(submittedTrackerProject.quantityText).map((item) => ({
+              items: buildSubmittedOrderItems(
+                submittedTrackerProject.quantityText,
+                submittedTrackerProject.structuredBrief
+              ).map((item) => ({
+                id: item.id,
                 item_type_cn: item.typeCn,
                 item_type_en: item.typeEn,
                 quantity: item.qty,
+                quantity_text: item.qtyDisplay,
+                dimensions_text: item.dimensionsText,
                 material_cn: item.materialCn,
                 material_en: item.materialEn,
-                original_unit_price: 0,
-                unit_price: 0,
+                finish: item.finish,
+                usage_location: item.usageLocation,
+                fire_standard: item.fireStandard,
+                original_unit_price: Number(item.originalUnitPrice || 0),
+                unit_price: Number(item.unitPrice || 0),
+                currency: item.currency || "USD",
                 notes_cn: item.note,
-                notes_en: item.note
+                notes_en: item.note,
+                image_url: item.imageUrl || ""
               })),
               questions: [
                 "Confirm exact dimensions for each furniture type.",
@@ -4672,11 +4841,13 @@ function App() {
   };
 
   const loadPrequoteWorkspace = async () => {
+    setClientProjectsLoading(true);
     const localJobs = getLocalReviewJobs();
 
     if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
       setIntakeReviewJobs(localJobs);
       setClientProjectJobs(localJobs);
+      setClientProjectsLoading(false);
       return;
     }
 
@@ -4684,6 +4855,7 @@ function App() {
     if (!context?.client) {
       setIntakeReviewJobs(localJobs);
       setClientProjectJobs(localJobs);
+      setClientProjectsLoading(false);
       return;
     }
 
@@ -4751,6 +4923,8 @@ function App() {
       setAdminAccessStatus("error");
       setIntakeReviewJobs([]);
       setClientProjectJobs([]);
+    } finally {
+      setClientProjectsLoading(false);
     }
   };
 
@@ -5186,6 +5360,8 @@ function App() {
       setSupabaseAuthReady(true);
       if (!supabaseUser) {
         setSupportConversationId(null);
+        setSupportUploadedFileId(null);
+        setSupportSubmittedJobId(null);
         supportConversationIdRef.current = null;
         lastProfileSyncRef.current = "";
         setUser(null);
@@ -5916,11 +6092,11 @@ function App() {
   };
 
   function buildSubmittedOrderItems(quantityText = "", structuredBrief = null) {
-    const structuredItem = structuredBrief?.items?.[0] || null;
-    if (structuredItem) {
-      const quantity = Number(structuredItem.quantity || String(quantityText || "").match(/\d+/)?.[0] || 1);
-      return [
-        {
+    const structuredItems = Array.isArray(structuredBrief?.items) ? structuredBrief.items : [];
+    if (structuredItems.length) {
+      return structuredItems.map((structuredItem) => {
+        const quantity = Number(structuredItem.quantity || String(quantityText || "").match(/\d+/)?.[0] || 1);
+        return {
           id: structuredItem.id || "SUBMITTED-ITEM-01",
           typeCn: structuredItem.item_type_cn || structuredItem.item_type_en || "Customer bespoke item",
           typeEn: structuredItem.item_type_en || "Submitted Bespoke Item",
@@ -5937,13 +6113,15 @@ function App() {
           hardware: structuredItem.hardware || "",
           usageLocation: structuredItem.usage_location || "",
           fireStandard: structuredItem.fire_standard || structuredBrief.fire_standard || "",
-          originalUnitPrice: null,
-          unitPrice: null,
+          imageUrl: structuredItem.image_url || structuredItem.imageUrl || "",
+          originalUnitPrice: Number(structuredItem.original_unit_price || structuredItem.unit_price || 0),
+          unitPrice: Number(structuredItem.unit_price || structuredItem.original_unit_price || 0),
+          currency: structuredItem.currency || "USD",
           status: "Pending Quote",
           quotePending: true,
           note: structuredItem.notes_en || "Client submitted a structured furniture requirement through the portal."
-        }
-      ];
+        };
+      });
     }
 
     const cleanQuantityText = String(quantityText || "").trim();
@@ -6045,10 +6223,10 @@ function App() {
           type="button"
           className="btn-premium"
           onClick={handleSupportHandoffToIntake}
-          disabled={isIntakeUploading}
+          disabled={isIntakeUploading || supportIsTyping}
           style={{ width: "100%", justifyContent: "center" }}
         >
-          Submit brief to Crafton
+          {supportSubmittedJobId ? "View image analysis task" : "Submit brief to Crafton"}
         </button>
 
         {supportStatus && <div className="ai-support-status">{supportStatus}</div>}
@@ -6254,7 +6432,12 @@ function App() {
   };
 
   const renderClientOrderDashboard = () => {
-    const jobs = clientProjectJobs.length > 0 ? clientProjectJobs : getLocalReviewJobs();
+    const forceEmptyDashboard =
+      import.meta.env.DEV && new window.URLSearchParams(window.location.search).has("empty-dashboard");
+    const dashboardJobs = [...getLocalReviewJobs(), ...clientProjectJobs].filter(
+      (job, index, jobs) => jobs.findIndex((item) => String(item.id) === String(job.id)) === index
+    );
+    const jobs = forceEmptyDashboard ? [] : dashboardJobs;
     const projectGroups = buildProjectGroupsFromJobs(jobs).map((project) => ({
       ...project,
       jobs: project.jobs.map((job) =>
@@ -6267,10 +6450,18 @@ function App() {
     return (
       <ClientOrderDashboard
         lang={lang}
+        clientName={user?.name || user?.company || ""}
         projectGroups={projectGroups}
         answerDrafts={clientAnswerDrafts}
         answerStates={clientAnswerSubmitState}
+        loading={clientProjectsLoading}
         onNewOrder={() => setClientPortalTab("Intake")}
+        onBrowseFurniture={() => {
+          setSetFurnitureProduct("");
+          setMarketingTab("SetFurniture");
+          setCurrentStageView("Marketing");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
         onAnswerChange={(jobId, questionIndex, value, savedAnswers) =>
           setClientAnswerDrafts((previous) => ({
             ...previous,
@@ -6525,8 +6716,9 @@ function App() {
         draft?.dimensions ||
         "-",
       item.materialEn || item.materialCn || item.material_en || item.material_cn || "To confirm",
-      [item.finish, item.color, item.fabricCode || item.fabric_code, item.hardware].filter(Boolean).join(" / ") ||
-        "Finish pending",
+      [item.style, item.finish, item.color, item.fabricCode || item.fabric_code, item.hardware]
+        .filter(Boolean)
+        .join(" / ") || "Finish pending",
       item.unitPrice || item.unit_price ? formatAdminMoney(item.unitPrice || item.unit_price) : "Target pending",
       item.notesEn || item.notesCn || item.note || item.notes_en || item.notes_cn || "-"
     ]);
@@ -6593,6 +6785,19 @@ function App() {
         value: hasUploadedEvidence ? `${uploadedAssets.length || 1} uploaded` : "No upload found",
         state: hasUploadedEvidence ? "done" : "pending"
       },
+      ...(String(sourceFile?.mime_type || "").startsWith("image/")
+        ? [
+            {
+              label: "Image understanding",
+              value:
+                draft?.visualAnalysis?.image_summary_en ||
+                (draft?.visualAnalysis?.status === "completed"
+                  ? "Visual evidence extracted"
+                  : "Manual image review required"),
+              state: draft?.visualAnalysis?.status === "completed" ? "done" : "pending"
+            }
+          ]
+        : []),
       {
         label: "Open clarification questions",
         value: hasMissingInfo ? `${missingQuestions.length} missing` : "No missing fields",
@@ -12669,12 +12874,29 @@ function App() {
                 setSetFurnitureProduct("");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
-              onRequestQuote={(product, category) => {
-                setModalProjectName(`${product.name} / ${product.code}`);
+              onRequestQuote={(selections) => {
+                const selectedItems = Array.isArray(selections) ? selections : [];
+                const totalQuantity = selectedItems.reduce(
+                  (total, selection) => total + Number(selection.quantity || 0),
+                  0
+                );
+                setPendingSetFurnitureSelection(selectedItems);
+                setModalProjectName(
+                  selectedItems.length === 1
+                    ? `${selectedItems[0].product.name} Project`
+                    : lang === "Cn"
+                      ? "Set Furniture 家具项目"
+                      : "Set Furniture Project"
+                );
                 setModalDestination("");
-                setModalQuantity(product.minimum);
+                setModalQuantity(`${totalQuantity} pcs / ${selectedItems.length} designs`);
                 setModalTextBrief(
-                  `Set furniture enquiry: ${product.name} (${product.code}). Category: ${category.nameEn}. Material: ${product.material}. Reference dimensions: ${product.dimensions}. Compliance: ${product.compliance}.`
+                  selectedItems
+                    .map(
+                      ({ product, category, quantity }) =>
+                        `${quantity} × ${product.name} (${product.code}). Category: ${category.nameEn}. Unit price: ${product.currency} ${product.price}. Material: ${product.material}. Reference dimensions: ${product.dimensions}. Compliance: ${product.compliance}.`
+                    )
+                    .join("\n")
                 );
                 setActiveIntakeModal("item");
               }}
@@ -13095,8 +13317,12 @@ function App() {
       {/* VIEW 2: Client Portal (Member Center) */}
       {currentView === "ClientPortal" && (
         <div
-          className="crafton-client-view animate-fade-in"
-          style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}
+          className={`crafton-client-view animate-fade-in ${clientPortalTab === "Tracker" ? "client-tracker-mode" : ""}`}
+          style={{
+            padding: clientPortalTab === "Tracker" ? "0" : "2rem",
+            maxWidth: clientPortalTab === "Tracker" ? "none" : "1200px",
+            margin: "0 auto"
+          }}
         >
           {!user ? (
             /* Premium Hard Gated Information Screen if not logged in */
@@ -13178,6 +13404,7 @@ function App() {
             /* Authenticated Client View with Dual Tab */
             <>
               <div
+                className="client-portal-legacy-heading"
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
@@ -13549,7 +13776,7 @@ function App() {
                       type="button"
                       className="btn-premium"
                       onClick={handleSupportHandoffToIntake}
-                      disabled={isIntakeUploading}
+                      disabled={isIntakeUploading || supportIsTyping}
                       style={{
                         width: "100%",
                         padding: "0.85rem",
@@ -13570,7 +13797,15 @@ function App() {
                       >
                         <path d="M5 12h14M13 5l7 7-7 7" />
                       </svg>
-                      <span>{lang === "Cn" ? "提交项目需求" : "Submit Project Brief"}</span>
+                      <span>
+                        {supportSubmittedJobId
+                          ? lang === "Cn"
+                            ? "查看图片解析任务"
+                            : "View Image Analysis Task"
+                          : lang === "Cn"
+                            ? "提交项目需求"
+                            : "Submit Project Brief"}
+                      </span>
                     </button>
 
                     {supportStatus && (
@@ -14862,11 +15097,12 @@ function App() {
                 {lang === "Cn" ? "關閉主控台" : "Close Simulation"}
               </button>
             </div>
-            {/* Shared project intake / quote modal */}
-            {renderIntakeModal()}
           </div>
         </div>
       )}
+
+      {/* Shared project intake / quote modal */}
+      {renderIntakeModal()}
 
       {/* Interactive Case Studies Detail Modal Overlay */}
       {selectedProject && renderProjectDetailModal()}
