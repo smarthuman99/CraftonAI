@@ -8248,7 +8248,7 @@ function App() {
 
     const projects = clientGroups.flatMap((clientGroup) =>
       clientGroup.projects.map((project) => {
-        const latestJob = project.jobs[0];
+        const latestJob = mergeNormalizedProjectJobs(project.jobs, project.jobs[0]?.id, project.key) || project.jobs[0];
         const stage = getAdminPortfolioStage(latestJob);
         const flow = getAdminPortfolioFlow(stage);
         const isDecisionStage = [4, 5, 8, 11, 16].includes(stage);
