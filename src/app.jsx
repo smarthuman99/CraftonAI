@@ -499,6 +499,80 @@ const buildProjectGroupsFromJobs = (jobs = []) => {
   }));
 };
 
+const getReviewItemMergeKey = (item = {}) =>
+  String(item.id || "").trim() ||
+  [item.typeEn || item.typeCn, item.dimensionsText, item.materialEn || item.materialCn, item.finish, item.color]
+    .map(normalizeGroupingText)
+    .filter(Boolean)
+    .join("|");
+
+const mergeNormalizedProjectJobs = (jobs = [], preferredJobId = "", projectKey = "") => {
+  const normalizedJobs = jobs.filter(Boolean);
+  if (!normalizedJobs.length) return null;
+
+  const preferredJob = normalizedJobs.find((job) => String(job.id) === String(preferredJobId));
+  const base = preferredJob || normalizedJobs[0];
+  const itemMap = new Map();
+
+  normalizedJobs.forEach((job) => {
+    (job.items || []).forEach((item, itemIndex) => {
+      const key = getReviewItemMergeKey(item) || `${job.id}-item-${itemIndex}`;
+      const quantity = Number(item.qty || item.quantity || 0);
+      const existing = itemMap.get(key);
+      if (existing) {
+        const mergedQuantity = Number(existing.qty || 0) + quantity;
+        itemMap.set(key, {
+          ...existing,
+          qty: mergedQuantity,
+          qtyDisplay: `${mergedQuantity} pcs`,
+          sourceJobIds: Array.from(new Set([...(existing.sourceJobIds || []), job.id]))
+        });
+        return;
+      }
+
+      itemMap.set(key, {
+        ...item,
+        qty: quantity,
+        qtyDisplay: item.qtyDisplay || `${quantity} pcs`,
+        sourceJobIds: [job.id]
+      });
+    });
+  });
+
+  const items = Array.from(itemMap.values());
+  const totalQuantity = items.reduce((total, item) => total + Number(item.qty || 0), 0);
+  const reviewStatuses = normalizedJobs.map((job) => job.reviewStatus);
+  const reviewStatus = reviewStatuses.includes("revision_requested")
+    ? "revision_requested"
+    : reviewStatuses.every((status) => ["approved", "rfq_ready"].includes(status))
+      ? reviewStatuses.includes("rfq_ready")
+        ? "rfq_ready"
+        : "approved"
+      : reviewStatuses.includes("pending")
+        ? "pending"
+        : base.reviewStatus;
+
+  return {
+    ...base,
+    projectKey:
+      projectKey ||
+      base.projectId ||
+      [normalizeGroupingText(base.projectName), normalizeGroupingText(base.destination)].filter(Boolean).join("|"),
+    projectId: normalizedJobs.find((job) => job.projectId)?.projectId || base.projectId || null,
+    sourceMode: normalizedJobs.every((job) => job.sourceMode === "set_furniture") ? "set_furniture" : base.sourceMode,
+    jobIds: normalizedJobs.map((job) => job.id),
+    orderCount: normalizedJobs.length,
+    items,
+    quantityText: `${totalQuantity} pcs / ${items.length} designs`,
+    reviewStatus,
+    questions: Array.from(new Set(normalizedJobs.flatMap((job) => job.questions || []))),
+    desiredDeliveryDate: normalizedJobs.find((job) => job.desiredDeliveryDate)?.desiredDeliveryDate || "",
+    deliveryWindow: normalizedJobs.find((job) => job.deliveryWindow)?.deliveryWindow || "",
+    targetBudget: normalizedJobs.find((job) => job.targetBudget)?.targetBudget || "",
+    summaryEn: `${normalizedJobs.length} project order${normalizedJobs.length === 1 ? "" : "s"} merged into ${items.length} BOM line${items.length === 1 ? "" : "s"}.`
+  };
+};
+
 const buildClientDashboardDemoJobs = () => [
   {
     id: "DEMO-REGENT-02",
@@ -860,6 +934,7 @@ function App() {
   const [prequoteNotice, setPrequoteNotice] = useState("");
   const [intakeApprovalSaving, setIntakeApprovalSaving] = useState(false);
   const [intakeBomDraftGenerated, setIntakeBomDraftGenerated] = useState(false);
+  const [intakeBomDraftSaving, setIntakeBomDraftSaving] = useState(false);
   const [intakeBomDraftMessage, setIntakeBomDraftMessage] = useState("");
   const [adminIntakePreview, setAdminIntakePreview] = useState({
     jobId: "",
@@ -1425,6 +1500,41 @@ function App() {
     return fileRow;
   };
 
+  const ensurePortalIntakeProject = async ({ client, supabaseUser, projectName, destination, structuredBrief }) => {
+    const normalizedProjectName = String(projectName || structuredBrief?.project?.name || "").trim();
+    if (!normalizedProjectName || structuredBrief?.schema_version !== "portal_intake_v2") return null;
+
+    const findExistingProject = async () => {
+      const { data, error } = await client
+        .from("projects")
+        .select("id,name,current_stage")
+        .eq("user_id", supabaseUser.id)
+        .eq("name", normalizedProjectName)
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    };
+
+    const existingProject = await findExistingProject();
+    if (existingProject?.id) return existingProject;
+
+    const { data: createdProject, error: createError } = await client
+      .from("projects")
+      .insert({
+        user_id: supabaseUser.id,
+        name: normalizedProjectName,
+        client_name: structuredBrief?.project?.client_name || user?.company || user?.name || "Portal Intake Client",
+        client_contact: destination || structuredBrief?.project?.destination || "",
+        current_stage: 1
+      })
+      .select("id,name,current_stage")
+      .single();
+
+    if (!createError) return createdProject;
+    if (createError.code === "23505") return findExistingProject();
+    throw createError;
+  };
+
   const createLiveIntakeJob = async ({
     projectName,
     destination,
@@ -1450,11 +1560,28 @@ function App() {
       intakeFileId = fileRow?.id || null;
     }
 
+    const linkedProject = await ensurePortalIntakeProject({
+      client,
+      supabaseUser,
+      projectName,
+      destination,
+      structuredBrief
+    });
+
+    if (intakeFileId && linkedProject?.id) {
+      const { error: fileLinkError } = await client
+        .from("intake_files")
+        .update({ project_id: linkedProject.id })
+        .eq("id", intakeFileId);
+      if (fileLinkError) throw fileLinkError;
+    }
+
     const { data: job, error: jobError } = await withTimeout(
       client
         .from("intake_jobs")
         .insert({
           intake_file_id: intakeFileId,
+          project_id: linkedProject?.id || null,
           user_id: supabaseUser.id,
           requested_by: supabaseUser.id,
           project_name: projectName || null,
@@ -4193,7 +4320,10 @@ function App() {
     if (selectedJob.id !== selectedReviewJobId) {
       setSelectedReviewJobId(selectedJob.id);
     }
-    syncReviewDraftFromJob(selectedJob);
+    const projectGroups = buildProjectGroupsFromJobs(intakeReviewJobs);
+    const selectedProject =
+      projectGroups.find((project) => project.jobs.some((job) => job.id === selectedJob.id)) || projectGroups[0];
+    syncReviewDraftFromProject(selectedProject, selectedJob.id);
   }, [intakeReviewJobs, selectedReviewJobId]);
 
   useEffect(() => {
@@ -5102,6 +5232,32 @@ function App() {
     return data;
   };
 
+  const persistIntakeJobsUpdate = async (jobs, updates) => {
+    const targetJobs = (jobs || []).filter(Boolean);
+    if (!targetJobs.length) return [];
+
+    targetJobs.forEach((job) => updateLocalReviewJob(job.id, updates));
+    const liveJobs = targetJobs.filter((job) => !String(job.id).startsWith("LOCAL-"));
+    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey() || !liveJobs.length) {
+      return targetJobs.map((job) => ({ ...job, ...updates }));
+    }
+
+    const context = await getPortalSupabaseContext({ requireAuth: false });
+    if (!context?.client) return targetJobs.map((job) => ({ ...job, ...updates }));
+
+    const { data, error } = await context.client
+      .from("intake_jobs")
+      .update(updates)
+      .in(
+        "id",
+        liveJobs.map((job) => job.id)
+      )
+      .select();
+    if (error) throw error;
+    (data || []).forEach((job) => updateLocalReviewJob(job.id, job));
+    return data || [];
+  };
+
   const buildOrderFromReviewDraft = (draft) => ({
     id: draft.projectId || null,
     orderId: draft.projectName || "S01 Intake Draft",
@@ -5152,19 +5308,19 @@ function App() {
           ]
   });
 
-  const syncReviewDraftFromJob = (job) => {
-    const normalized = normalizeReviewJob(job);
-    setReviewDraft(normalized);
-    setReviewNote(normalized.reviewNotes || "");
+  const syncReviewDraftFromProject = (project, preferredJobId = "") => {
+    const merged = mergeNormalizedProjectJobs(project?.jobs || [], preferredJobId, project?.key);
+    if (!merged) return;
+    setReviewDraft(merged);
+    setReviewNote(merged.reviewNotes || "");
     setPrequoteNotice(
-      normalized.reviewStatus === "approved"
-        ? "Intake draft approved. Specs are ready for RFQ package preparation."
-        : ""
+      merged.reviewStatus === "approved" ? "Intake draft approved. Specs are ready for RFQ package preparation." : ""
     );
     setIntakeApprovalSaving(false);
     setIntakeBomDraftGenerated(false);
+    setIntakeBomDraftSaving(false);
     setIntakeBomDraftMessage("");
-    setOrder(buildOrderFromReviewDraft(normalized));
+    setOrder(buildOrderFromReviewDraft(merged));
     setCurrentStageIndex(0);
   };
 
@@ -5176,7 +5332,7 @@ function App() {
     });
   };
 
-  const ensureIntakeProject = async (job, draft, stage = 4) => {
+  const ensureIntakeProject = async (job, draft, stage = 4, relatedJobs = []) => {
     if (!dbConnected) return job?.project_id || draft?.projectId || null;
 
     const context = await getPortalSupabaseContext({ requireAuth: true });
@@ -5184,8 +5340,13 @@ function App() {
 
     const { client } = context;
     const projectName = draft?.projectName || job?.project_name || `INTAKE-${String(job?.id || "").slice(0, 8)}`;
-    const ownerId = job?.user_id || job?.requested_by || null;
-    let projectId = job?.project_id || draft?.projectId || null;
+    const ownerId =
+      job?.user_id || job?.requested_by || relatedJobs[0]?.user_id || relatedJobs[0]?.requested_by || null;
+    let projectId =
+      draft?.projectId ||
+      job?.project_id ||
+      relatedJobs.find((relatedJob) => relatedJob.project_id)?.project_id ||
+      null;
 
     if (!projectId) {
       let lookup = client.from("projects").select("id,current_stage").eq("name", projectName);
@@ -5210,9 +5371,26 @@ function App() {
         if (createError) throw createError;
         projectId = createdProject.id;
       }
+    }
 
-      const { error: linkError } = await client.from("intake_jobs").update({ project_id: projectId }).eq("id", job.id);
+    const relatedJobIds = Array.from(
+      new Set([...(draft?.jobIds || []), ...relatedJobs.map((relatedJob) => relatedJob.id), job?.id].filter(Boolean))
+    );
+    if (relatedJobIds.length) {
+      const { error: linkError } = await client
+        .from("intake_jobs")
+        .update({ project_id: projectId })
+        .in("id", relatedJobIds);
       if (linkError) throw linkError;
+
+      const relatedFileIds = relatedJobs.map((relatedJob) => relatedJob.intake_file_id).filter(Boolean);
+      if (relatedFileIds.length) {
+        const { error: fileLinkError } = await client
+          .from("intake_files")
+          .update({ project_id: projectId })
+          .in("id", relatedFileIds);
+        if (fileLinkError) throw fileLinkError;
+      }
     }
 
     const { error: projectError } = await client
@@ -5226,31 +5404,73 @@ function App() {
       .eq("id", projectId);
     if (projectError) throw projectError;
 
-    updateLocalReviewJob(job.id, { project_id: projectId });
+    relatedJobIds.forEach((jobId) => updateLocalReviewJob(jobId, { project_id: projectId }));
     setReviewDraft((previous) => (previous ? { ...previous, projectId } : previous));
     setOrder((previous) => ({ ...previous, id: projectId }));
     return projectId;
   };
 
-  const handleApproveIntakeReview = async () => {
-    const job = intakeReviewJobs.find((item) => item.id === selectedReviewJobId) || intakeReviewJobs[0];
-    if (!job || !reviewDraft) return;
+  const syncProjectBomSpecifications = async (projectId, draft, ownerId = null) => {
+    if (!dbConnected || !projectId) return;
+    const context = await getPortalSupabaseContext({ requireAuth: true });
+    if (!context?.client) throw new Error("A Supabase staff session is required to save the project BOM.");
 
-    const resultJson = denormalizeReviewDraft(reviewDraft);
+    const { client } = context;
+    const { data: existingRows, error: existingError } = await client
+      .from("specifications")
+      .select("id")
+      .eq("project_id", projectId);
+    if (existingError) throw existingError;
+
+    const rows = (draft?.items || []).map((item) => ({
+      project_id: projectId,
+      user_id: ownerId,
+      item_type_cn: item.typeCn || item.typeEn || "Custom item",
+      item_type_en: item.typeEn || item.typeCn || "Custom item",
+      quantity: Number(item.qty || 0),
+      material_cn: item.materialCn || item.materialEn || "",
+      material_en: item.materialEn || item.materialCn || "",
+      original_unit_price: Number(item.originalUnitPrice || item.unitPrice || 0),
+      unit_price: Number(item.unitPrice || item.originalUnitPrice || 0),
+      notes_cn: [item.notesCn, item.dimensionsText, item.finish, item.color, item.fireStandard]
+        .filter(Boolean)
+        .join(" / "),
+      notes_en: [item.notesEn, item.dimensionsText, item.finish, item.color, item.fireStandard]
+        .filter(Boolean)
+        .join(" / ")
+    }));
+
+    if (rows.length) {
+      const { error: insertError } = await client.from("specifications").insert(rows);
+      if (insertError) throw insertError;
+    }
+
+    const existingIds = (existingRows || []).map((row) => row.id).filter(Boolean);
+    if (existingIds.length) {
+      const { error: deleteError } = await client.from("specifications").delete().in("id", existingIds);
+      if (deleteError) throw deleteError;
+    }
+  };
+
+  const handleApproveIntakeReview = async () => {
+    const { selectedJob: job, draft, projectJobs } = getAdminDraftContext();
+    if (!job || !draft) return;
+
     const updates = {
       status: "completed",
       step: "cho_review_approved",
       review_status: "approved",
       review_notes: reviewNote || "Approved for RFQ preparation.",
-      result_json: resultJson,
       reviewed_at: new Date().toISOString()
     };
 
     setIntakeApprovalSaving(true);
     setPrequoteNotice("Saving approval to Supabase...");
     try {
-      const updated = await persistIntakeJobUpdate(job, updates);
-      const projectId = await ensureIntakeProject(updated, reviewDraft, 4);
+      const projectId = await ensureIntakeProject(job, draft, 4, projectJobs);
+      const updatedJobs = await persistIntakeJobsUpdate(projectJobs, updates);
+      const ownerId = job.user_id || job.requested_by || projectJobs[0]?.user_id || null;
+      await syncProjectBomSpecifications(projectId, { ...draft, projectId }, ownerId);
       if (dbConnected && projectId) {
         const client = getSupabaseBrowserClient();
         const { data: authData } = await client.auth.getUser();
@@ -5260,7 +5480,6 @@ function App() {
           .eq("project_id", projectId)
           .eq("stage_id", "S04")
           .eq("approval_type", "intake_technical_review")
-          .contains("payload", { intake_job_id: updated.id })
           .limit(1);
         if (approvalLookupError) throw approvalLookupError;
 
@@ -5274,7 +5493,11 @@ function App() {
             reviewer_name: user?.name || "Cho",
             notes: updates.review_notes,
             reviewed_at: updates.reviewed_at,
-            payload: { intake_job_id: updated.id, bom_items: resultJson.items?.length || 0 }
+            payload: {
+              intake_job_id: job.id,
+              intake_job_ids: draft.jobIds || updatedJobs.map((updatedJob) => updatedJob.id),
+              bom_items: draft.items?.length || 0
+            }
           });
           if (approvalError) throw approvalError;
         }
@@ -5354,40 +5577,46 @@ function App() {
   };
 
   const handleCreateRfqDraft = async () => {
-    const job = intakeReviewJobs.find((item) => item.id === selectedReviewJobId) || intakeReviewJobs[0];
-    if (!job || !reviewDraft) return;
+    const { selectedJob: job, draft, projectJobs } = getAdminDraftContext();
+    if (!job || !draft) return;
 
-    const rfqDraft = buildRfqDraft(reviewDraft);
+    const rfqDraft = buildRfqDraft(draft);
     try {
-      const updated = await persistIntakeJobUpdate(job, {
+      const updates = {
         status: "completed",
         step: "rfq_draft_ready",
         review_status: "rfq_ready",
         rfq_status: "draft",
         rfq_draft_json: rfqDraft,
         rfq_created_at: rfqDraft.generated_at
-      });
-      const projectId = await ensureIntakeProject(updated, reviewDraft, 6);
+      };
+      const projectId = await ensureIntakeProject(job, draft, 6, projectJobs);
+      await persistIntakeJobsUpdate(projectJobs, updates);
+      const ownerId = job.user_id || job.requested_by || projectJobs[0]?.user_id || null;
+      await syncProjectBomSpecifications(projectId, { ...draft, projectId }, ownerId);
 
       if (dbConnected && projectId) {
         const client = getSupabaseBrowserClient();
-        const rfqCode = `RFQ-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(updated.id).slice(0, 6).toUpperCase()}`;
+        const rfqCode = `RFQ-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(projectId).slice(0, 6).toUpperCase()}`;
         const rfqPayload = {
           project_id: projectId,
-          intake_job_id: updated.id,
+          intake_job_id: job.id,
           rfq_code: rfqCode,
-          title: `${reviewDraft.projectName || "Project"} sourcing package`,
+          title: `${draft.projectName || "Project"} sourcing package`,
           status: "draft",
           supplier_count: 0,
           invited_count: 0,
           supplier_ids: [],
           currency: "USD",
-          payload: rfqDraft
+          payload: { ...rfqDraft, intake_job_ids: draft.jobIds || projectJobs.map((projectJob) => projectJob.id) }
         };
         const { data: existingRfq, error: lookupError } = await client
           .from("rfq_batches")
           .select("id")
-          .eq("intake_job_id", updated.id)
+          .eq("project_id", projectId)
+          .eq("status", "draft")
+          .order("created_at", { ascending: false })
+          .limit(1)
           .maybeSingle();
         if (lookupError) throw lookupError;
         const rfqWrite = existingRfq
@@ -5398,7 +5627,7 @@ function App() {
 
         const { error: eventError } = await client.from("workflow_events").insert({
           project_id: projectId,
-          job_id: updated.id,
+          job_id: job.id,
           stage_id: "S06",
           event_type: "rfq_drafted",
           actor: "Cho",
@@ -5409,7 +5638,9 @@ function App() {
         if (eventError) throw eventError;
       }
 
-      setReviewDraft((prev) => (prev ? { ...prev, rfqDraft, reviewStatus: "rfq_ready", rfqStatus: "draft" } : prev));
+      setReviewDraft((prev) =>
+        prev ? { ...prev, projectId, rfqDraft, reviewStatus: "rfq_ready", rfqStatus: "draft" } : prev
+      );
       setPrequoteNotice("RFQ draft package created with three supplier comparison slots.");
       setCurrentStageIndex(5);
       addLog("Cho", "RFQ draft package created.", "RFQ draft package created.");
@@ -6858,20 +7089,33 @@ function App() {
   const getAdminDraftContext = () => {
     const jobs = getAdminWorkspaceJobs();
     const selectedJob = jobs.find((job) => job.id === selectedReviewJobId) || jobs[0];
+    const projectGroups = buildProjectGroupsFromJobs(jobs);
+    const selectedProject =
+      projectGroups.find((project) => project.jobs.some((job) => job.id === selectedJob?.id)) ||
+      projectGroups[0] ||
+      null;
     const selectedNormalized = selectedJob ? normalizeReviewJob(selectedJob) : null;
-    const draft = reviewDraft || selectedNormalized;
+    const mergedDraft = mergeNormalizedProjectJobs(selectedProject?.jobs || [], selectedJob?.id, selectedProject?.key);
+    const selectedProjectJobIds = selectedProject?.jobs.map((job) => job.id) || [];
+    const isSameDraftProject =
+      reviewDraft &&
+      ((reviewDraft.projectKey && reviewDraft.projectKey === selectedProject?.key) ||
+        (selectedProjectJobIds.length > 0 &&
+          selectedProjectJobIds.every((jobId) => (reviewDraft.jobIds || [reviewDraft.id]).includes(jobId))));
+    const draft = isSameDraftProject ? reviewDraft : mergedDraft || reviewDraft || selectedNormalized;
+    const projectJobIds = new Set(selectedProjectJobIds);
+    const projectJobs = jobs.filter((job) => projectJobIds.has(job.id));
     const bomItems = draft?.items?.length ? draft.items : dbConnected ? [] : order.items;
-    return { jobs, selectedJob, selectedNormalized, draft, bomItems };
+    return { jobs, selectedJob, selectedNormalized, selectedProject, projectJobs, draft, bomItems };
   };
 
   const renderIntakeFlowWorkspace = () => {
-    const { jobs, selectedJob, draft, bomItems } = getAdminDraftContext();
+    const { jobs, selectedJob, projectJobs, draft, bomItems } = getAdminDraftContext();
     const clientGroups = buildClientGroupsFromJobs(jobs);
     const hasActiveIntake = Boolean(draft) || (!dbConnected && Boolean(order.orderId));
     const hasVerifiedAdminAccess = !dbConnected || (supabaseAuthReady && adminAccessStatus === "ready");
     const sourceFile = selectedJob ? getIntakeFileFromJob(selectedJob) : null;
     const isSetFurnitureIntake = draft?.sourceMode === "set_furniture";
-    const primaryBomItem = bomItems[0] || null;
     const cataloguePreviewItem = isSetFurnitureIntake ? bomItems.find((item) => item.imageUrl || item.image_url) : null;
     const cataloguePreviewUrl = cataloguePreviewItem?.imageUrl || cataloguePreviewItem?.image_url || "";
     const orderPreviewUrl = adminIntakePreview.url || trackerPreviewUrl || cataloguePreviewUrl;
@@ -6961,7 +7205,12 @@ function App() {
     );
     const hasMissingInfo = missingQuestions.length > 0;
     const isIntakeApproved = ["approved", "rfq_ready"].includes(draft?.reviewStatus);
-    const liveRfqPackage = adminRfqBatches.find((batch) => batch.intake_job_id === selectedJob?.id);
+    const liveRfqPackage = adminRfqBatches.find(
+      (batch) =>
+        (draft?.projectId && batch.project_id === draft.projectId) ||
+        (draft?.jobIds || []).includes(batch.intake_job_id) ||
+        batch.intake_job_id === selectedJob?.id
+    );
 
     const completenessItems = [
       {
@@ -7020,7 +7269,7 @@ function App() {
       }
     ];
 
-    const handleGenerateBomDraft = () => {
+    const handleGenerateBomDraft = async () => {
       if (!bomRows.length) {
         const message = "BOM/spec draft cannot be generated yet because no order item rows were parsed.";
         setIntakeBomDraftMessage(message);
@@ -7035,11 +7284,26 @@ function App() {
         return;
       }
 
-      setIntakeBomDraftGenerated(true);
-      const message =
-        "BOM and bilingual specification draft generated. Review S03 dimensions, tolerance, material, thumbnail, and BOM rows before approval.";
-      setIntakeBomDraftMessage(message);
-      setPrequoteNotice(message);
+      setIntakeBomDraftSaving(true);
+      setIntakeBomDraftMessage("Linking all project orders and saving the BOM to Supabase...");
+      try {
+        const projectId = await ensureIntakeProject(selectedJob, draft, 3, projectJobs);
+        const ownerId = selectedJob?.user_id || selectedJob?.requested_by || projectJobs[0]?.user_id || null;
+        await syncProjectBomSpecifications(projectId, { ...draft, projectId }, ownerId);
+        setReviewDraft((previous) => (previous ? { ...previous, projectId } : previous));
+        setIntakeBomDraftGenerated(true);
+        const message = `BOM and bilingual specification draft generated from ${draft?.orderCount || projectJobs.length || 1} project order${(draft?.orderCount || projectJobs.length || 1) === 1 ? "" : "s"} and ${bomRows.length} furniture item${bomRows.length === 1 ? "" : "s"}. Review S03 before approval.`;
+        setIntakeBomDraftMessage(message);
+        setPrequoteNotice(message);
+      } catch (err) {
+        console.error("Generate project BOM draft failed:", err);
+        const message = `BOM/spec draft could not be saved: ${err.message || err}`;
+        setIntakeBomDraftGenerated(false);
+        setIntakeBomDraftMessage(message);
+        setPrequoteNotice(message);
+      } finally {
+        setIntakeBomDraftSaving(false);
+      }
     };
 
     return (
@@ -7220,7 +7484,9 @@ function App() {
                         src={orderPreviewUrl}
                         alt={
                           isSetFurnitureIntake
-                            ? primaryBomItem?.typeEn || primaryBomItem?.typeCn || "Set Furniture catalogue product"
+                            ? cataloguePreviewItem?.typeEn ||
+                              cataloguePreviewItem?.typeCn ||
+                              "Set Furniture catalogue product"
                             : "Customer uploaded furniture reference"
                         }
                       />
@@ -7306,8 +7572,16 @@ function App() {
                   <button className="btn-secondary" onClick={handleAskClientForRevision} disabled={!hasMissingInfo}>
                     Ask client to complete missing info
                   </button>
-                  <button className="btn-premium" onClick={handleGenerateBomDraft} disabled={!bomRows.length}>
-                    {intakeBomDraftGenerated ? "BOM/spec draft generated" : "Generate BOM and spec draft"}
+                  <button
+                    className="btn-premium"
+                    onClick={handleGenerateBomDraft}
+                    disabled={!bomRows.length || intakeBomDraftSaving}
+                  >
+                    {intakeBomDraftSaving
+                      ? "Saving project BOM..."
+                      : intakeBomDraftGenerated
+                        ? "BOM/spec draft generated"
+                        : "Generate BOM and spec draft"}
                   </button>
                 </div>
                 {intakeBomDraftMessage && (
@@ -7333,29 +7607,45 @@ function App() {
               {bomRows.length ? (
                 <>
                   <div className="intake-spec-summary-grid">
-                    <div className="intake-spec-thumb">
-                      {orderPreviewUrl ? (
-                        <>
-                          <img
-                            src={orderPreviewUrl}
-                            alt={
-                              isSetFurnitureIntake
-                                ? primaryBomItem?.typeEn || primaryBomItem?.typeCn || "Set Furniture catalogue product"
-                                : "Generated specification thumbnail"
-                            }
-                          />
-                          {isSetFurnitureIntake && primaryBomItem && (
-                            <div className="intake-spec-thumb-caption">
-                              <strong>{primaryBomItem.id || "Set Furniture"}</strong>
-                              <span>{primaryBomItem.typeEn || primaryBomItem.typeCn}</span>
-                              {bomItems.length > 1 && <small>+ {bomItems.length - 1} more catalogue products</small>}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        renderChairSVG(selectedFabric, selectedLeg)
-                      )}
-                    </div>
+                    {isSetFurnitureIntake ? (
+                      <div className="intake-catalogue-preview-grid">
+                        {bomItems.map((item, index) => {
+                          const itemImageUrl = item.imageUrl || item.image_url || "";
+                          return (
+                            <article
+                              className="intake-catalogue-preview-card"
+                              key={item.id || `${item.typeEn}-${index}`}
+                            >
+                              <div className="intake-catalogue-preview-image">
+                                {itemImageUrl ? (
+                                  <img
+                                    src={itemImageUrl}
+                                    alt={item.typeEn || item.typeCn || "Set Furniture catalogue product"}
+                                  />
+                                ) : (
+                                  renderChairSVG(selectedFabric, selectedLeg)
+                                )}
+                              </div>
+                              <div>
+                                <strong>{item.id || `Set Furniture ${index + 1}`}</strong>
+                                <span>{item.typeEn || item.typeCn || "Catalogue product"}</span>
+                                <small>{item.qtyDisplay || `${item.qty || 0} pcs`}</small>
+                                <small>{item.dimensionsText || "Dimensions linked from catalogue"}</small>
+                                <small>{item.materialEn || item.materialCn || "Material linked from catalogue"}</small>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="intake-spec-thumb">
+                        {orderPreviewUrl ? (
+                          <img src={orderPreviewUrl} alt="Generated specification thumbnail" />
+                        ) : (
+                          renderChairSVG(selectedFabric, selectedLeg)
+                        )}
+                      </div>
+                    )}
                     <div className="admin-detail-block">
                       <strong>Draft status</strong>
                       <span>
@@ -8237,13 +8527,7 @@ function App() {
   };
 
   const getActiveAdminProject = () => {
-    const workspaceJobs = getAdminWorkspaceJobs();
-    const selectedJob =
-      workspaceJobs.find((job) => job.id === selectedReviewJobId) ||
-      workspaceJobs.find((job) => job.project_id === order.id) ||
-      workspaceJobs[0];
-    const selectedDraft =
-      reviewDraft?.id === selectedJob?.id ? reviewDraft : selectedJob ? normalizeReviewJob(selectedJob) : reviewDraft;
+    const { draft: selectedDraft } = getAdminDraftContext();
 
     if (selectedDraft?.projectId) {
       return buildOrderFromReviewDraft(selectedDraft);

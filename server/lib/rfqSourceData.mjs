@@ -19,8 +19,21 @@ export async function enrichRfqContextFromSupabase({ supabase, context = {} }) {
     )
   ]);
 
-  const intake = jobs[0]?.result_json || jobs[0] || context.intake || {};
+  const intake = mergeProjectIntakeJobs(jobs) || context.intake || {};
   const intakeProject = intake.project || {};
+  const catalogueFiles = (intake.items || [])
+    .filter((item) => item.image_url || item.imageUrl || item.preview_url)
+    .map((item, index) => ({
+      id: `catalogue-${item.id || index + 1}`,
+      name: [item.id, item.item_type_en || item.typeEn || item.item_type_cn || item.typeCn]
+        .filter(Boolean)
+        .join(" · "),
+      mimeType: "image/catalogue-reference",
+      group: "set_furniture_catalogue",
+      note: "Verified Set Furniture catalogue image and product specification.",
+      url: item.image_url || item.imageUrl || item.preview_url,
+      source: "set_furniture_catalogue"
+    }));
   return {
     ...context,
     project: {
@@ -33,17 +46,91 @@ export async function enrichRfqContextFromSupabase({ supabase, context = {} }) {
       id: projectId
     },
     items: mergeVerifiedIntakeItems(context.items || [], intake.items || []),
-    files: mergeFiles(files, context.files || []),
+    files: mergeFiles(files, context.files || [], catalogueFiles),
     specifications: specifications.length ? specifications : context.specifications || [],
     intake
   };
 }
 
+export function mergeProjectIntakeJobs(jobs = []) {
+  const results = jobs
+    .filter(Boolean)
+    .map((job) => ({
+      job,
+      result: job.result_json && typeof job.result_json === "object" ? job.result_json : job
+    }));
+  if (!results.length) return null;
+
+  const base = results[0].result || {};
+  const itemMap = new Map();
+  results.forEach(({ job, result }) => {
+    (result.items || []).forEach((item, index) => {
+      const key =
+        String(item.id || "").trim() ||
+        [item.item_type_en || item.typeEn, item.dimensions_text, item.material_en, item.finish]
+          .map((value) => String(value || "").trim().toLowerCase())
+          .filter(Boolean)
+          .join("|") ||
+        `${job.id || "job"}-${index}`;
+      const quantity = Number(item.quantity || item.qty || 0);
+      const existing = itemMap.get(key);
+      if (existing) {
+        itemMap.set(key, {
+          ...existing,
+          quantity: Number(existing.quantity || existing.qty || 0) + quantity,
+          source_job_ids: Array.from(new Set([...(existing.source_job_ids || []), job.id].filter(Boolean)))
+        });
+      } else {
+        itemMap.set(key, {
+          ...item,
+          quantity,
+          source_job_ids: job.id ? [job.id] : []
+        });
+      }
+    });
+  });
+
+  const project = results.reduce(
+    (merged, { result }) => ({
+      ...result.project,
+      ...Object.fromEntries(Object.entries(merged).filter(([, value]) => value !== undefined && value !== null && value !== ""))
+    }),
+    base.project || {}
+  );
+  const questions = Array.from(new Set(results.flatMap(({ result }) => result.questions || []).filter(Boolean)));
+  const sourceModes = results.map(({ result }) => result.source_mode).filter(Boolean);
+
+  return {
+    ...base,
+    project,
+    source_mode:
+      sourceModes.length && sourceModes.every((sourceMode) => sourceMode === "set_furniture")
+        ? "set_furniture"
+        : base.source_mode,
+    items: Array.from(itemMap.values()),
+    questions,
+    intake_job_ids: results.map(({ job }) => job.id).filter(Boolean),
+    order_count: results.length
+  };
+}
+
 export function mergeVerifiedIntakeItems(contextItems = [], intakeItems = []) {
-  const count = Math.max(contextItems.length, intakeItems.length);
-  return Array.from({ length: count }, (_, index) => {
-    const current = contextItems[index] || {};
-    const verified = intakeItems[index] || {};
+  const verifiedByKey = new Map();
+  intakeItems.forEach((item, index) => {
+    [item.id, item.itemNo, item.item_type_en, item.typeEn, item.item_type_cn, item.typeCn, index]
+      .filter((value) => value !== undefined && value !== null && String(value).trim())
+      .forEach((value) => verifiedByKey.set(String(value).trim().toLowerCase(), item));
+  });
+  const usedVerifiedItems = new Set();
+  const baseItems = contextItems.length ? contextItems : intakeItems;
+  const mergedItems = baseItems.map((current, index) => {
+    const currentKey = String(
+      current.id || current.itemNo || current.typeEn || current.nameEn || current.typeCn || current.nameCn || index
+    )
+      .trim()
+      .toLowerCase();
+    const verified = verifiedByKey.get(currentKey) || intakeItems[index] || {};
+    if (verified && Object.keys(verified).length) usedVerifiedItems.add(verified);
     const dimensions = verified.dimensions || {};
     const assembledDimensions = [
       dimensions.length && `L ${dimensions.length}`,
@@ -58,7 +145,8 @@ export function mergeVerifiedIntakeItems(contextItems = [], intakeItems = []) {
 
     return {
       ...current,
-      itemNo: current.itemNo || current.id || `ITEM-${index + 1}`,
+      id: current.id || verified.id,
+      itemNo: current.itemNo || current.id || verified.id || `ITEM-${index + 1}`,
       typeCn: verified.item_type_cn || current.typeCn || current.nameCn,
       typeEn: verified.item_type_en || current.typeEn || current.nameEn,
       quantity: Number(verified.quantity || current.quantity || current.qty || 1),
@@ -72,9 +160,25 @@ export function mergeVerifiedIntakeItems(contextItems = [], intakeItems = []) {
       hardware: verified.hardware || current.hardware || current.base,
       compliance: verified.fire_standard || current.compliance || current.fireSafetyStandard,
       usage: verified.usage_location || current.usage || current.useLocation,
-      notes: verified.notes_en || verified.notes_cn || current.notes || current.note
+      notes: verified.notes_en || verified.notes_cn || current.notes || current.note,
+      imageUrl: verified.image_url || verified.imageUrl || verified.preview_url || current.imageUrl,
+      unitPrice: Number(
+        verified.unit_price || verified.original_unit_price || current.unitPrice || current.originalUnitPrice || 0
+      ),
+      currency: verified.currency || current.currency
     };
   });
+
+  intakeItems.forEach((verified, index) => {
+    if (usedVerifiedItems.has(verified)) return;
+    mergedItems.push(
+      mergeVerifiedIntakeItems([], [verified])[0] || {
+        ...verified,
+        itemNo: verified.id || `ITEM-${baseItems.length + index + 1}`
+      }
+    );
+  });
+  return mergedItems;
 }
 
 export async function buildEmailAttachmentsFromSupabase({ supabase, projectId, document = {} }) {
