@@ -2,7 +2,7 @@ export const WORKFLOW_AI_URL = import.meta.env.VITE_AI_SUPPORT_API_URL || "/api/
 
 export async function callWorkflowAi(supabaseClient, body) {
   const { data, error } = await supabaseClient.auth.getSession();
-  if (error || !data?.session?.access_token) throw new Error("Staff login expired. Please sign in again.");
+  if (error || !data?.session?.access_token) throw new Error("Login expired. Please sign in again.");
   const response = await fetch(WORKFLOW_AI_URL, {
     method: "POST",
     headers: {

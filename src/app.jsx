@@ -21,6 +21,7 @@ import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurni
 import AdminWorkflowWorkspace from "./components/AdminWorkflowWorkspace";
 import ClientOrderDashboard from "./components/ClientOrderDashboard";
 import CraftonHomepage from "./components/CraftonHomepage";
+import SupplierProductionPortal from "./components/SupplierProductionPortal";
 import { AdminLocalized, adminText } from "./adminI18n";
 
 const IMAGES = {
@@ -191,6 +192,8 @@ const mapSupabaseUserToAppUser = (supabaseUser, fallback = {}) => {
     avatarUrl: metadata.avatar_url || fallback.avatarUrl || "",
     authProvider: appMetadata.provider || fallback.authProvider || "email",
     role,
+    supplierId: appMetadata.supplier_id || fallback.supplierId || "",
+    isSupplier: role === "supplier" && Boolean(appMetadata.supplier_id || fallback.supplierId),
     isStaff: role === "staff" || role === "admin" || isCraftonStaffEmail(email) || Boolean(fallback.isStaff)
   };
 };
@@ -862,7 +865,7 @@ const buildRfqDraft = (draft) => {
 
 function App() {
   console.log("=== APP COMPONENT EXECUTING ===");
-  const [currentView, setCurrentStageView] = useState("Marketing"); // Views: "Marketing", "Backoffice", "ClientPortal"
+  const [currentView, setCurrentStageView] = useState("Marketing"); // Views: "Marketing", "Backoffice", "ClientPortal", "SupplierPortal"
   const [setFurnitureCategory, setSetFurnitureCategory] = useState("sofa");
   const [setFurnitureProduct, setSetFurnitureProduct] = useState("");
   const [lang, setLang] = useState("Cn"); // Language: "Cn" or "En"
@@ -883,6 +886,7 @@ function App() {
   const [supabaseAuthReady, setSupabaseAuthReady] = useState(false);
   const [adminAccessStatus, setAdminAccessStatus] = useState("checking");
   const isStaffUser = Boolean(user?.isStaff);
+  const isSupplierUser = Boolean(user?.isSupplier);
 
   // Custom Registration Input States
   const [signupName, setSignupName] = useState("");
@@ -1260,7 +1264,9 @@ function App() {
 
       setSupabaseSessionUser(data.user);
       setSupabaseAuthReady(true);
-      setUser(mapSupabaseUserToAppUser(data.user));
+      const appUser = mapSupabaseUserToAppUser(data.user);
+      setUser(appUser);
+      if (appUser.isSupplier) setCurrentStageView("SupplierPortal");
       setShowAuthGate(false);
     } catch (err) {
       setAuthError(err.message || "Sign in failed.");
@@ -5745,10 +5751,15 @@ function App() {
       if (cancelled) return;
       setSupabaseSessionUser(supabaseUser || null);
       setSupabaseAuthReady(true);
-      setUser(supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null);
+      const appUser = supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null;
+      setUser(appUser);
       if (supabaseUser) {
         await syncAuthenticatedUserProfile(supabaseUser);
         if (cancelled) return;
+        if (appUser?.isSupplier) {
+          setCurrentStageView("SupplierPortal");
+          return;
+        }
         await fetchSupabaseData();
         if (cancelled) return;
         await loadLatestSubmittedTrackerProject();
@@ -5773,7 +5784,9 @@ function App() {
         return;
       }
 
-      setUser(mapSupabaseUserToAppUser(supabaseUser));
+      const appUser = mapSupabaseUserToAppUser(supabaseUser);
+      setUser(appUser);
+      if (appUser.isSupplier) setCurrentStageView("SupplierPortal");
 
       if (!["INITIAL_SESSION", "SIGNED_IN", "USER_UPDATED"].includes(event)) {
         return;
@@ -10251,13 +10264,23 @@ function App() {
                   ? `歡迎，${String(user.name || "").replace(/\(Manager\)$/i, "(管理员)")}`
                   : `Welcome, ${user.name}`}
               </span>
-              <span
-                className={`nav-link ${currentView === "ClientPortal" ? "active" : ""}`}
-                onClick={() => setCurrentStageView("ClientPortal")}
-                style={{ fontSize: "0.85rem", cursor: "pointer" }}
-              >
-                {lang === "Cn" ? "客戶中心" : "Client Portal"}
-              </span>
+              {isSupplierUser ? (
+                <span
+                  className={`nav-link ${currentView === "SupplierPortal" ? "active" : ""}`}
+                  onClick={() => setCurrentStageView("SupplierPortal")}
+                  style={{ fontSize: "0.85rem", cursor: "pointer" }}
+                >
+                  {lang === "Cn" ? "工厂生产工作台" : "Factory Workspace"}
+                </span>
+              ) : (
+                <span
+                  className={`nav-link ${currentView === "ClientPortal" ? "active" : ""}`}
+                  onClick={() => setCurrentStageView("ClientPortal")}
+                  style={{ fontSize: "0.85rem", cursor: "pointer" }}
+                >
+                  {lang === "Cn" ? "客戶中心" : "Client Portal"}
+                </span>
+              )}
               {isStaffUser && (
                 <span
                   className={`nav-link ${currentView === "Backoffice" ? "active" : ""}`}
@@ -14244,7 +14267,12 @@ function App() {
         </div>
       )}
 
-      {/* VIEW 2: Client Portal (Member Center) */}
+      {/* VIEW 2: Supplier production portal */}
+      {currentView === "SupplierPortal" && isSupplierUser && (
+        <SupplierProductionPortal lang={lang} user={user} supabaseClient={getSupabaseBrowserClient()} />
+      )}
+
+      {/* VIEW 3: Client Portal (Member Center) */}
       {currentView === "ClientPortal" && (
         <div
           className={`crafton-client-view animate-fade-in ${clientPortalTab === "Tracker" ? "client-tracker-mode" : ""}`}
@@ -15805,7 +15833,7 @@ function App() {
         </div>
       )}
 
-      {/* VIEW 3: Internal Backoffice (Cho / Client View) */}
+      {/* VIEW 4: Internal Backoffice (Cho / Client View) */}
       {currentView === "Backoffice" && !isStaffUser && (
         <div
           className="crafton-backoffice-gate glass-card"

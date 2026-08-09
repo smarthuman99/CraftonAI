@@ -3,6 +3,7 @@ import { AdminLocalized, adminText } from "../adminI18n";
 import AiRfqWorkspace from "./AiRfqWorkspace";
 import AiQuoteComparison from "./AiQuoteComparison";
 import AiOperationsAutomation from "./AiOperationsAutomation";
+import ProductionControlTower from "./ProductionControlTower";
 import { parseSupplierRfqWorkbook } from "./rfqExcel";
 import { matchSupplierReturn, mergeImportedQuoteLines, quoteLinesForBatch, quoteTotalsFromLines } from "./quoteIntake";
 
@@ -1896,14 +1897,29 @@ export default function AdminWorkflowWorkspace({
         <div className="admin-ops-grid">
           <StageSection
             stage="S09"
-            title="Production progress"
+            title="AI production controller"
             status={data.production_updates[0]?.status || "pending"}
-            description="Record work package progress, expected dates, risks and supplier evidence."
+            description="AI follows the factory through its private portal, validates evidence coverage and sends only exceptions or release gates to Cho."
             wide
             actions={
-              <button onClick={() => setActiveForm(activeForm === "production" ? "" : "production")}>Add update</button>
+              <button onClick={() => setActiveForm(activeForm === "production" ? "" : "production")}>
+                Manual override
+              </button>
             }
           >
+            <ProductionControlTower
+              lang={lang}
+              project={project}
+              supabaseClient={supabaseClient}
+              suppliers={suppliers}
+              quotes={data.supplier_quotes}
+              productionUpdates={data.production_updates}
+              onChanged={loadData}
+            />
+            <div className="production-plan-divider">
+              <span>AI PLAN &amp; RELEASE</span>
+              <p>Cho sets the initial production baseline once; Crafton AI then owns routine follow-up against it.</p>
+            </div>
             <AiOperationsAutomation
               scope="production"
               lang={lang}
@@ -1982,53 +1998,17 @@ export default function AdminWorkflowWorkspace({
                 </Field>
                 <div className="admin-ops-form-actions">
                   <button className="btn-premium" disabled={loading}>
-                    Save update
+                    Save manual override
                   </button>
                 </div>
               </form>
-            )}
-            {data.production_updates.length ? (
-              <div className="admin-table-wrap">
-                <table className="admin-mini-table">
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th>Process</th>
-                      <th>Progress</th>
-                      <th>Risk</th>
-                      <th>Expected</th>
-                      <th>Reported</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.production_updates.map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.item_name || "-"}</td>
-                        <td>
-                          {row.process_name}
-                          <br />
-                          <small>{row.status}</small>
-                        </td>
-                        <td>
-                          <progress max="100" value={row.progress_percent || 0} /> {row.progress_percent || 0}%
-                        </td>
-                        <td>{row.risk_level}</td>
-                        <td>{shortDate(row.expected_at)}</td>
-                        <td>{shortDate(row.reported_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty>No production records for this project.</Empty>
             )}
           </StageSection>
           <StageSection
             stage="S10"
             title="Delay risk control"
             status={riskUpdates.length ? `${riskUpdates.length} risks` : "clear"}
-            description="Escalation view generated from real production risk records."
+            description="AI exception queue generated from supplier deadlines, missing evidence, duplicate files and reporting gaps."
           >
             {riskUpdates.length ? (
               riskUpdates.map((row) => (

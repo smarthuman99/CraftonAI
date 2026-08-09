@@ -9,6 +9,13 @@ import { dispatchRfqEmails, getRfqDispatchStatus } from "./lib/rfqDispatch.mjs";
 import { buildEmailAttachmentsFromSupabase, enrichRfqContextFromSupabase } from "./lib/rfqSourceData.mjs";
 import { createQuoteAnalysis } from "./lib/quoteAnalyzer.mjs";
 import { createOperationsPlan } from "./lib/operationsAutomation.mjs";
+import {
+  analyzeProductionProject,
+  createSupplierPortalAccount,
+  loadSupplierProductionWorkspace,
+  monitorActiveProduction,
+  submitSupplierProductionEvidence
+} from "./lib/supplierProductionPortal.mjs";
 import { loadOperationsContext, loadQuoteAnalysisContext } from "./lib/workflowContext.mjs";
 
 const port = Number(process.env.AI_SUPPORT_PORT || 8787);
@@ -47,14 +54,14 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url === "/api/ai-support-chat") {
       if (body.action === "generate_rfq") {
-        const { supabase } = await requireAuthenticatedUser(req);
+        const { supabase } = await requireCraftonStaff(req);
         const context = await enrichRfqContextFromSupabase({ supabase, context: body.context });
         result = await createRfqDraft({ context });
       } else if (body.action === "rfq_dispatch_status") {
-        await requireAuthenticatedUser(req);
+        await requireCraftonStaff(req);
         result = getRfqDispatchStatus();
       } else if (body.action === "dispatch_rfq") {
-        const { supabase } = await requireAuthenticatedUser(req);
+        const { supabase } = await requireCraftonStaff(req);
         const sourceAttachments = await buildEmailAttachmentsFromSupabase({
           supabase,
           projectId: body.projectId,
@@ -68,7 +75,7 @@ const server = http.createServer(async (req, res) => {
           omittedAttachments: sourceAttachments.omitted
         });
       } else if (body.action === "analyze_quotes") {
-        const { supabase } = await requireAuthenticatedUser(req);
+        const { supabase } = await requireCraftonStaff(req);
         const context = await loadQuoteAnalysisContext({
           supabase,
           projectId: body.projectId,
@@ -76,18 +83,34 @@ const server = http.createServer(async (req, res) => {
         });
         result = await createQuoteAnalysis(context);
       } else if (body.action === "generate_operations_plan") {
-        const { supabase } = await requireAuthenticatedUser(req);
+        const { supabase } = await requireCraftonStaff(req);
         const context = await loadOperationsContext({ supabase, projectId: body.projectId });
         result = await createOperationsPlan(context, body.scope || "all");
+      } else if (body.action === "create_supplier_portal_account") {
+        const { supabase } = await requireCraftonStaff(req);
+        result = await createSupplierPortalAccount({
+          supabase,
+          supplierId: body.supplierId,
+          projectId: body.projectId
+        });
+      } else if (body.action === "supplier_production_workspace") {
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        result = await loadSupplierProductionWorkspace({ supabase, user });
+      } else if (body.action === "submit_supplier_production_evidence") {
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        result = await submitSupplierProductionEvidence({ supabase, user, body });
+      } else if (body.action === "analyze_production_progress") {
+        const { supabase } = await requireCraftonStaff(req);
+        result = await analyzeProductionProject({ supabase, projectId: body.projectId });
       } else {
         result = await createAiSupportReply({ messages: body.messages, context: body.context });
       }
     } else if (req.url === "/api/ai-rfq-generate") {
-      const { supabase } = await requireAuthenticatedUser(req);
+      const { supabase } = await requireCraftonStaff(req);
       const context = await enrichRfqContextFromSupabase({ supabase, context: body.context });
       result = await createRfqDraft({ context });
     } else if (req.url === "/api/rfq-dispatch") {
-      const { supabase } = await requireAuthenticatedUser(req);
+      const { supabase } = await requireCraftonStaff(req);
       const sourceAttachments = await buildEmailAttachmentsFromSupabase({
         supabase,
         projectId: body.projectId,
@@ -118,7 +141,25 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(port, "127.0.0.1", () => {
   console.log(`Crafton AI Support server listening on http://127.0.0.1:${port}`);
+  scheduleProductionMonitor();
 });
+
+function scheduleProductionMonitor() {
+  const intervalMs = Math.max(60_000, Number(process.env.PRODUCTION_MONITOR_INTERVAL_MS || 15 * 60_000));
+  const run = async () => {
+    try {
+      const result = await monitorActiveProduction({ supabase: createSupabaseAdmin() });
+      if (result.riskChanges) console.log("AI production monitor updated risk states:", result);
+    } catch (error) {
+      logSupportError("production-monitor", error);
+      console.error("AI production monitor failed:", error.message || error);
+    }
+  };
+  const initial = setTimeout(run, Math.min(30_000, intervalMs));
+  const recurring = setInterval(run, intervalMs);
+  initial.unref?.();
+  recurring.unref?.();
+}
 
 function setCorsHeaders(res, origin) {
   const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0] || "http://127.0.0.1:8000";
@@ -159,7 +200,7 @@ async function requireAuthenticatedUser(req) {
     .replace(/^Bearer\s+/i, "")
     .trim();
   if (!token) {
-    const error = new Error("A Supabase staff login is required.");
+    const error = new Error("A Supabase login is required.");
     error.statusCode = 401;
     throw error;
   }
@@ -172,6 +213,18 @@ async function requireAuthenticatedUser(req) {
     throw error;
   }
   return { user: data.user, supabase };
+}
+
+async function requireCraftonStaff(req) {
+  const context = await requireAuthenticatedUser(req);
+  const role = String(context.user?.app_metadata?.role || "").toLowerCase();
+  const email = String(context.user?.email || "").toLowerCase();
+  if (!["staff", "admin"].includes(role) && !email.endsWith("@crafton.com")) {
+    const error = new Error("A Crafton staff login is required for this action.");
+    error.statusCode = 403;
+    throw error;
+  }
+  return context;
 }
 
 function logSupportError(requestId, err) {
