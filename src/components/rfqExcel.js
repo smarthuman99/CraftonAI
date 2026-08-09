@@ -30,6 +30,141 @@ const numberOf = (cell) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const headerText = (cell) => textOf(cell).normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+
+const HEADER_PATTERNS = {
+  itemNo: /(?:item\s*(?:no|number|#)|sku|model|product\s*code|品项编号|品項編號|货号|貨號|型号|型號)/i,
+  itemName:
+    /^(?!.*(?:code|no\.?|number|#))(?:product(?:\s*(?:name|description))?|description|item\s*name|品名|产品|產品|描述|家具名称|傢俬名稱)$/i,
+  quantity: /(?:^|\b)(?:qty|quantity)(?:\b|$)|数量|數量/i,
+  unit: /(?:^|\b)unit(?:\b|$)|单位|單位/i,
+  unitPrice: /(?:unit\s*price|price\s*\/\s*unit|quoted\s*price|报价单价|報價單價|供应商单价|供應商單價|单价|單價)/i,
+  lineTotal: /(?:line\s*total|amount|extended\s*price|小计|小計|金额|金額)/i,
+  moq: /(?:moq|minimum\s*order|起订量|起訂量)/i,
+  leadTime: /(?:lead\s*(?:time|days)|delivery\s*(?:time|days)|交期|生产周期|生產週期)/i,
+  material: /(?:material\s*(?:confirmed|confirmation)|材质确认|材質確認)/i,
+  deviation: /(?:deviation|exception|偏差|差异|差異)/i,
+  notes: /(?:supplier\s*notes|remarks|remark|notes|备注|備註)/i
+};
+
+function rowHeaderMap(row, maxColumns) {
+  const result = {};
+  for (let column = 1; column <= maxColumns; column += 1) {
+    const value = headerText(row.getCell(column));
+    if (!value) continue;
+    Object.entries(HEADER_PATTERNS).forEach(([key, pattern]) => {
+      if (!result[key] && pattern.test(value)) result[key] = column;
+    });
+  }
+  return result;
+}
+
+function findLabelValue(workbook, pattern) {
+  for (const sheet of workbook.worksheets) {
+    const maxRows = Math.min(sheet.rowCount, 120);
+    const maxColumns = Math.min(Math.max(sheet.columnCount, 1), 40);
+    for (let rowNumber = 1; rowNumber <= maxRows; rowNumber += 1) {
+      const row = sheet.getRow(rowNumber);
+      for (let column = 1; column <= maxColumns; column += 1) {
+        if (!pattern.test(headerText(row.getCell(column)))) continue;
+        for (let offset = 1; offset <= 4 && column + offset <= maxColumns; offset += 1) {
+          const adjacent = textOf(row.getCell(column + offset));
+          if (adjacent && !pattern.test(adjacent)) return adjacent;
+        }
+        const below = textOf(sheet.getCell(rowNumber + 1, column));
+        if (below && !pattern.test(below)) return below;
+      }
+    }
+  }
+  return "";
+}
+
+function parseGenericSupplierWorkbook(workbook) {
+  const candidates = [];
+  for (const sheet of workbook.worksheets) {
+    if (sheet.name === "_CraftonMeta") continue;
+    const maxRows = Math.min(sheet.rowCount, 300);
+    const maxColumns = Math.min(Math.max(sheet.columnCount, 1), 40);
+    for (let headerRow = 1; headerRow <= Math.min(maxRows, 80); headerRow += 1) {
+      const columns = rowHeaderMap(sheet.getRow(headerRow), maxColumns);
+      if (!columns.unitPrice || (!columns.itemName && !columns.itemNo)) continue;
+      const items = [];
+      let blankRows = 0;
+      for (let rowNumber = headerRow + 1; rowNumber <= maxRows; rowNumber += 1) {
+        const row = sheet.getRow(rowNumber);
+        const itemNo = columns.itemNo ? textOf(row.getCell(columns.itemNo)) : "";
+        const itemNameValue = columns.itemName ? textOf(row.getCell(columns.itemName)) : "";
+        const unitPrice = numberOf(row.getCell(columns.unitPrice));
+        const combined = `${itemNo} ${itemNameValue}`.trim();
+        if (/^(?:total|subtotal|grand total|合计|合計|总计|總計)/i.test(combined)) break;
+        if (!combined && !unitPrice) {
+          blankRows += 1;
+          if (blankRows >= 4 && items.length) break;
+          continue;
+        }
+        blankRows = 0;
+        if (!combined || unitPrice <= 0) continue;
+        const quantity = columns.quantity ? numberOf(row.getCell(columns.quantity)) : 0;
+        items.push({
+          itemNo,
+          itemName: itemNameValue,
+          quantity,
+          unit: columns.unit ? textOf(row.getCell(columns.unit)) || "pcs" : "pcs",
+          unitPrice,
+          lineTotal: columns.lineTotal
+            ? numberOf(row.getCell(columns.lineTotal)) || quantity * unitPrice
+            : quantity * unitPrice,
+          moq: columns.moq ? numberOf(row.getCell(columns.moq)) : 0,
+          leadTimeDays: columns.leadTime ? numberOf(row.getCell(columns.leadTime)) : 0,
+          materialConfirmation: columns.material ? textOf(row.getCell(columns.material)) : "",
+          deviation: columns.deviation ? textOf(row.getCell(columns.deviation)) : "",
+          supplierNotes: columns.notes ? textOf(row.getCell(columns.notes)) : "",
+          sourceSheet: sheet.name,
+          sourceRow: rowNumber
+        });
+      }
+      if (items.length) candidates.push({ items, headerRow, sheet: sheet.name });
+    }
+  }
+  const best = candidates.sort((a, b) => b.items.length - a.items.length)[0];
+  if (!best) throw new Error("No recognizable item and unit-price table was found in this Excel quotation.");
+  const currencyText = findLabelValue(workbook, /^(?:currency|币种|幣種)$/i);
+  const detectedCurrency = String(currencyText).match(/\b(?:USD|CNY|RMB|GBP|EUR|HKD)\b/i)?.[0] || "USD";
+  const items = best.items;
+  return {
+    metadata: {
+      template_version: "generic-supplier-quote-v1",
+      source_sheet: best.sheet,
+      header_row: best.headerRow
+    },
+    supplierCompany: findLabelValue(workbook, /^(?:supplier|vendor|company|供应商|供應商|公司名称|公司名稱)$/i),
+    quoteCode: findLabelValue(workbook, /^(?:(?:quote|quotation)(?:\s*(?:no|number|#))?\.?|报价编号|報價編號)$/i),
+    currency: detectedCurrency.toUpperCase() === "RMB" ? "CNY" : detectedCurrency.toUpperCase(),
+    contactPerson: findLabelValue(workbook, /^(?:contact|contact person|联系人|聯絡人)$/i),
+    contactEmail: findLabelValue(workbook, /^(?:email|e-mail|邮箱|電郵)$/i),
+    validityUntil: findLabelValue(workbook, /^(?:valid until|validity|有效期)$/i),
+    moq:
+      Number(findLabelValue(workbook, /^(?:overall moq|moq|minimum order|起订量|起訂量)$/i).replace(/[^0-9.-]/g, "")) ||
+      0,
+    leadTimeDays:
+      Number(
+        findLabelValue(workbook, /^(?:lead time|production lead|delivery time|交期|生产周期|生產週期)$/i).replace(
+          /[^0-9.-]/g,
+          ""
+        )
+      ) || Math.max(0, ...items.map((item) => item.leadTimeDays)),
+    paymentTerms: findLabelValue(workbook, /^(?:payment terms|payment|付款条件|付款條件)$/i),
+    materialConfirmation: findLabelValue(workbook, /^(?:material confirmation|material|材质确认|材質確認)$/i),
+    deliveryTerms: findLabelValue(workbook, /^(?:delivery terms|incoterm|交货条款|交貨條款)$/i),
+    packing: findLabelValue(workbook, /^(?:packing|packaging|包装|包裝)$/i),
+    notes: findLabelValue(workbook, /^(?:notes|remarks|备注|備註)$/i),
+    items,
+    quotedItemCount: items.length,
+    totalAmount: items.reduce((sum, item) => sum + item.lineTotal, 0),
+    genericFormat: true
+  };
+}
+
 const safeFilePart = (value) =>
   String(value || "RFQ")
     .replace(/[\\/:*?"<>|]+/g, "-")
@@ -391,20 +526,20 @@ export async function buildRfqWorkbook({ project, batch, document, form, referen
 
 export async function parseSupplierRfqWorkbook(file) {
   if (!file) throw new Error("Choose a supplier .xlsx file first.");
-  if (!/\.xlsx$/i.test(file.name)) throw new Error("Only the generated .xlsx RFQ template can be imported.");
+  if (!/\.xlsx$/i.test(file.name)) throw new Error("Only .xlsx supplier quotation files can be imported.");
   const ExcelJS = await excelJs();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(await file.arrayBuffer());
 
   const metadataSheet = workbook.getWorksheet("_CraftonMeta");
-  if (!metadataSheet) throw new Error("This file is missing the Crafton RFQ identification sheet.");
+  if (!metadataSheet) return parseGenericSupplierWorkbook(workbook);
   const metadata = {};
   metadataSheet.eachRow((row) => {
     const key = textOf(row.getCell(1));
     if (key) metadata[key] = valueOf(row.getCell(2));
   });
   if (metadata.template_version !== "crafton-rfq-xlsx-v1") {
-    throw new Error("This Excel file is not a supported Crafton RFQ template.");
+    return parseGenericSupplierWorkbook(workbook);
   }
 
   const sheet = workbook.getWorksheet("RFQ");

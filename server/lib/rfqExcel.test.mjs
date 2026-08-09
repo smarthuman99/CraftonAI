@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import ExcelJS from "exceljs";
 import { buildRfqWorkbook, parseSupplierRfqWorkbook } from "../../src/components/rfqExcel.js";
+import { matchSupplierReturn, mergeImportedQuoteLines, quoteLinesForBatch } from "../../src/components/quoteIntake.js";
 
 const project = {
   id: "project-terra",
@@ -100,9 +101,36 @@ test("RFQ workbook keeps identity metadata and imports supplier prices", async (
   assert.equal(parsed.leadTimeDays, 35);
 });
 
-test("RFQ importer rejects workbooks without Crafton identity metadata", async () => {
+test("RFQ importer reads a generic supplier quotation table", async () => {
   const workbook = new ExcelJS.Workbook();
-  workbook.addWorksheet("RFQ").getCell("A1").value = "Unrelated quotation";
+  const sheet = workbook.addWorksheet("Supplier Quote");
+  sheet.addRows([
+    ["Supplier", "Hansen Furniture Co."],
+    ["Quotation No.", "HANSEN-02"],
+    ["Currency", "USD"],
+    [],
+    ["Product code", "Description", "Quantity", "Unit price", "Amount"],
+    ["SF-101", "Arden Modular Sofa", 10, 2480, 24800],
+    ["SF-103", "Mercer Three-Seat Sofa", 20, 3250, 65000]
+  ]);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const parsed = await parseSupplierRfqWorkbook({
+    name: "hansen-quotation.xlsx",
+    arrayBuffer: async () => buffer
+  });
+
+  assert.equal(parsed.genericFormat, true);
+  assert.equal(parsed.supplierCompany, "Hansen Furniture Co.");
+  assert.equal(parsed.quoteCode, "HANSEN-02");
+  assert.equal(parsed.items.length, 2);
+  assert.equal(parsed.items[0].itemName, "Arden Modular Sofa");
+  assert.equal(parsed.items[1].unitPrice, 3250);
+  assert.equal(parsed.totalAmount, 89800);
+});
+
+test("RFQ importer rejects spreadsheets without a recognizable price table", async () => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.addWorksheet("RFQ").getCell("A1").value = "Unrelated notes";
   const buffer = await workbook.xlsx.writeBuffer();
   await assert.rejects(
     () =>
@@ -110,7 +138,32 @@ test("RFQ importer rejects workbooks without Crafton identity metadata", async (
         name: "unrelated.xlsx",
         arrayBuffer: async () => buffer
       }),
-    /identification sheet/
+    /recognizable item and unit-price table/
   );
 });
 
+test("returned RFQ items map to the approved batch BOM instead of ITEM placeholders", () => {
+  const batchWithDocument = { ...batch, supplier_ids: ["supplier-hansen"], payload: { document } };
+  const lines = quoteLinesForBatch(batchWithDocument, { items: [{ nameEn: "Wrong fallback item", qty: 1 }] });
+  const merged = mergeImportedQuoteLines(lines, [
+    { itemNo: "SF-101", itemName: "Arden Modular Sofa", unitPrice: 2480 },
+    { itemNo: "SF-103", itemName: "Mercer Three-Seat Sofa", unitPrice: 3250 }
+  ]);
+  const supplierMatch = matchSupplierReturn({
+    imported: { supplierCompany: "Hansen Furniture Co." },
+    suppliers: [
+      { id: "supplier-hansen", name: "震森家具制造有限公司 (Hansen Furniture Co.)" },
+      { id: "supplier-other", name: "Elite Leather Tech" }
+    ],
+    batch: batchWithDocument,
+    fileName: "hansen-return.xlsx"
+  });
+
+  assert.deepEqual(
+    lines.map((line) => line.item_no),
+    ["SF-101", "SF-103"]
+  );
+  assert.equal(merged.matchedCount, 2);
+  assert.equal(merged.lines[0].unit_price, "2480");
+  assert.equal(supplierMatch.supplier.id, "supplier-hansen");
+});

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { callWorkflowAi, sha256Payload } from "./workflowAiClient";
 
 const money = (value, currency = "USD") =>
@@ -31,6 +31,7 @@ export default function AiQuoteComparison({
   batches = [],
   quotes = [],
   projectFiles = [],
+  autoAnalyzeToken = "",
   onChanged
 }) {
   const zh = lang === "Cn";
@@ -41,6 +42,7 @@ export default function AiQuoteComparison({
   const [analysis, setAnalysis] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const lastAutoAnalyzeRef = useRef("");
 
   const batchQuotes = useMemo(
     () => latestPerSupplier(quotes.filter((quote) => quote.rfq_batch_id === batchId)),
@@ -77,6 +79,25 @@ export default function AiQuoteComparison({
     setBatchId(defaultBatchId);
     setAnalysis(null);
   }, [defaultBatchId, project.id]);
+
+  useEffect(() => {
+    const requestedBatchId = String(autoAnalyzeToken || "").split(":")[0];
+    if (requestedBatchId && requestedBatchId !== batchId) {
+      setBatchId(requestedBatchId);
+      return;
+    }
+    if (
+      !autoAnalyzeToken ||
+      lastAutoAnalyzeRef.current === autoAnalyzeToken ||
+      !autoAnalyzeToken.startsWith(`${batchId}:`) ||
+      batchQuotes.length < minimumQuoteCount ||
+      busy
+    ) {
+      return;
+    }
+    lastAutoAnalyzeRef.current = autoAnalyzeToken;
+    analyze();
+  }, [autoAnalyzeToken, batchId, batchQuotes.length]);
 
   async function analyze() {
     if (!batchId) return setMessage(t("Select an RFQ first.", "请先选择一份询价单。"));
