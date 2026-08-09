@@ -7780,6 +7780,144 @@ select:focus,
   background: #fff;
 }
 
+.production-schedule-approval {
+  border: 1px solid rgba(76, 62, 54, 0.22);
+  background: #fff;
+}
+
+.production-schedule-approval > header,
+.production-schedule-approval > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem;
+}
+
+.production-schedule-approval > header {
+  border-bottom: 1px solid var(--glass-border);
+  background: #f6f1e7;
+}
+
+.production-schedule-approval > header span,
+.production-schedule-version span,
+.production-schedule-dates span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.production-schedule-approval h4 {
+  margin: 0.2rem 0 0;
+  color: var(--text-primary);
+  font-size: 0.86rem;
+}
+
+.production-schedule-approval header p,
+.production-schedule-approval footer p {
+  max-width: 760px;
+  margin: 0.3rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.production-schedule-version {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.production-schedule-version strong,
+.production-schedule-version small {
+  display: block;
+}
+
+.production-schedule-version strong {
+  margin: 0.15rem 0;
+  color: var(--accent-primary);
+  font: 700 1.05rem var(--font-tech);
+}
+
+.production-schedule-version small {
+  color: var(--text-muted);
+  font-size: 0.58rem;
+}
+
+.production-schedule-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  border-bottom: 1px solid var(--glass-border);
+  background: var(--glass-border);
+}
+
+.production-schedule-dates > div {
+  padding: 0.7rem 0.9rem;
+  background: #fff;
+}
+
+.production-schedule-dates strong {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-primary);
+  font-size: 0.7rem;
+}
+
+.production-schedule-issues,
+.supplier-plan-issues {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.production-schedule-issues > div,
+.supplier-plan-issues > div {
+  display: flex;
+  gap: 0.55rem;
+  padding: 0.45rem 0.55rem;
+  border-left: 3px solid #a47f47;
+  background: rgba(164, 127, 71, 0.08);
+  color: #775b32;
+  font-size: 0.64rem;
+  line-height: 1.45;
+}
+
+.production-schedule-issues > div.high,
+.supplier-plan-issues > div.high {
+  border-left-color: #8b5a51;
+  background: rgba(139, 90, 81, 0.08);
+  color: #744b45;
+}
+
+.production-schedule-issues strong,
+.supplier-plan-issues strong {
+  flex: 0 0 auto;
+}
+
+.production-schedule-approval > footer {
+  align-items: center;
+}
+
+.production-schedule-approval > footer button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--accent-primary);
+  border-radius: 3px;
+  background: var(--accent-primary);
+  color: #fff;
+  font: 700 0.66rem var(--font-sans);
+}
+
+.production-schedule-approval > footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .production-controller-empty {
   padding: 1rem;
   border: 1px dashed var(--glass-border);
@@ -7974,12 +8112,15 @@ select:focus,
   .production-controller-command,
   .supplier-access-control,
   .supplier-credentials-once,
+  .production-schedule-approval > header,
+  .production-schedule-approval > footer,
   .production-plan-divider {
     align-items: stretch;
     flex-direction: column;
   }
 
   .production-controller-metrics,
+  .production-schedule-dates,
   .production-work-package-grid {
     grid-template-columns: 1fr;
   }
@@ -7992,7 +8133,8 @@ select:focus,
   min-height: calc(100vh - 86px);
   padding: 3.2rem clamp(1rem, 5vw, 5rem) 5rem;
   background-color: #efe7d6;
-  background-image: linear-gradient(rgba(74, 53, 37, 0.045) 1px, transparent 1px),
+  background-image:
+    linear-gradient(rgba(74, 53, 37, 0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(74, 53, 37, 0.045) 1px, transparent 1px);
   background-size: 46px 46px;
   color: var(--supplier-ink);
@@ -8021,7 +8163,9 @@ select:focus,
 .supplier-task-heading span,
 .supplier-evidence-modal header span {
   color: #806e56;
-  font: 700 0.66rem/1.4 "JetBrains Mono", monospace;
+  font:
+    700 0.66rem/1.4 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -8029,7 +8173,10 @@ select:focus,
 .supplier-portal-hero h1 {
   margin: 0.55rem 0 0.65rem;
   color: var(--supplier-ink);
-  font: italic 400 clamp(2.2rem, 4vw, 4rem)/1.05 "Fraunces", Georgia, serif;
+  font:
+    italic 400 clamp(2.2rem, 4vw, 4rem)/1.05 "Fraunces",
+    Georgia,
+    serif;
 }
 
 .supplier-portal-hero p {
@@ -8156,14 +8303,19 @@ select:focus,
 .supplier-portal-metric span {
   margin-bottom: 0.35rem;
   color: #806e56;
-  font: 700 0.62rem "JetBrains Mono", monospace;
+  font:
+    700 0.62rem "JetBrains Mono",
+    monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .supplier-portal-metric strong {
   color: var(--supplier-ink);
-  font: 500 1.05rem "Fraunces", Georgia, serif;
+  font:
+    500 1.05rem "Fraunces",
+    Georgia,
+    serif;
 }
 
 .supplier-portal-metric.danger {
@@ -8221,7 +8373,10 @@ select:focus,
 .supplier-order-card > header h2 {
   margin: 0.2rem 0 0;
   color: var(--supplier-ink);
-  font: 500 1.3rem "Fraunces", Georgia, serif;
+  font:
+    500 1.3rem "Fraunces",
+    Georgia,
+    serif;
 }
 
 .supplier-order-card > header > div:last-child {
@@ -8230,7 +8385,9 @@ select:focus,
 
 .supplier-order-card > header strong {
   display: block;
-  font: 500 1.1rem "JetBrains Mono", monospace;
+  font:
+    500 1.1rem "JetBrains Mono",
+    monospace;
 }
 
 .supplier-order-specs {
@@ -8243,6 +8400,173 @@ select:focus,
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 700;
+}
+
+.supplier-production-plan {
+  border-bottom: 1px solid var(--supplier-line);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.supplier-production-plan > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid var(--supplier-line);
+}
+
+.supplier-production-plan > header > div:first-child > span,
+.supplier-plan-version > span {
+  color: #806e56;
+  font:
+    700 0.62rem "JetBrains Mono",
+    monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.supplier-production-plan > header h3 {
+  margin: 0.2rem 0 0;
+  color: var(--supplier-ink);
+  font-size: 0.9rem;
+}
+
+.supplier-production-plan > header p,
+.supplier-production-plan > form footer p {
+  max-width: 900px;
+  margin: 0.3rem 0 0;
+  color: #64594d;
+  font-size: 0.68rem;
+  line-height: 1.55;
+}
+
+.supplier-plan-version {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.supplier-plan-version strong {
+  display: block;
+  margin: 0.15rem 0 0.4rem;
+  color: #4a3525;
+  font:
+    700 1rem "JetBrains Mono",
+    monospace;
+}
+
+.supplier-plan-version button,
+.supplier-production-plan form footer button {
+  min-height: 36px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #4a3525;
+  border-radius: 3px;
+  background: #4a3525;
+  color: #fbf7ee;
+  cursor: pointer;
+  font: 700 0.66rem var(--font-sans);
+}
+
+.supplier-plan-message {
+  margin: 0.75rem 1.15rem 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(74, 53, 37, 0.2);
+  background: #fbf7ee;
+  color: #4a3525;
+  font-size: 0.68rem;
+}
+
+.supplier-plan-reason {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1.15rem 0;
+  color: #806e56;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.supplier-plan-reason textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 0.6rem;
+  border: 1px solid var(--supplier-line);
+  background: #fff;
+  color: var(--supplier-ink);
+  resize: vertical;
+  font: 0.72rem var(--font-sans);
+}
+
+.supplier-plan-table-wrap {
+  overflow-x: auto;
+  padding: 0.9rem 1.15rem;
+}
+
+.supplier-plan-table-wrap table {
+  width: 100%;
+  min-width: 1240px;
+  border-collapse: collapse;
+}
+
+.supplier-plan-table-wrap th,
+.supplier-plan-table-wrap td {
+  min-width: 150px;
+  padding: 0.55rem;
+  border: 1px solid var(--supplier-line);
+  color: #64594d;
+  font-size: 0.64rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.supplier-plan-table-wrap th {
+  background: #f4edde;
+  color: #806e56;
+  font:
+    700 0.57rem "JetBrains Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.supplier-plan-table-wrap td:first-child {
+  min-width: 190px;
+}
+
+.supplier-plan-table-wrap td strong,
+.supplier-plan-table-wrap td small {
+  display: block;
+}
+
+.supplier-plan-table-wrap td small {
+  margin-top: 0.35rem;
+  color: #806e56;
+  line-height: 1.4;
+}
+
+.supplier-plan-table-wrap :is(input, select) {
+  width: 100%;
+  min-height: 36px;
+  padding: 0.45rem;
+  border: 1px solid var(--supplier-line);
+  background: #fff;
+  color: var(--supplier-ink);
+  font: 0.64rem var(--font-sans);
+}
+
+.supplier-plan-table-wrap td:last-child input + input {
+  margin-top: 0.35rem;
+}
+
+.supplier-production-plan > form footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1.15rem 1rem;
+}
+
+.supplier-production-plan > form footer button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .supplier-spec-table-wrap {
@@ -8270,7 +8594,9 @@ select:focus,
 .supplier-spec-table-wrap th {
   background: #f4edde;
   color: #806e56;
-  font: 700 0.6rem "JetBrains Mono", monospace;
+  font:
+    700 0.6rem "JetBrains Mono",
+    monospace;
   text-transform: uppercase;
 }
 
@@ -8307,7 +8633,9 @@ select:focus,
   border: 1px solid var(--supplier-line);
   border-radius: 50%;
   color: #806e56;
-  font: 700 0.68rem "JetBrains Mono", monospace;
+  font:
+    700 0.68rem "JetBrains Mono",
+    monospace;
   place-items: center;
 }
 
@@ -8359,7 +8687,9 @@ select:focus,
 
 .supplier-task-progress strong {
   color: #4a3525;
-  font: 700 0.68rem "JetBrains Mono", monospace;
+  font:
+    700 0.68rem "JetBrains Mono",
+    monospace;
   text-align: right;
 }
 
@@ -8428,6 +8758,16 @@ select:focus,
   color: #fbf7ee;
 }
 
+.supplier-task-upload:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.supplier-task-upload:disabled:hover {
+  background: transparent;
+  color: #4a3525;
+}
+
 .supplier-evidence-modal {
   position: fixed;
   inset: 0;
@@ -8459,7 +8799,10 @@ select:focus,
 
 .supplier-evidence-modal h2 {
   margin: 0.2rem 0 0;
-  font: 500 1.35rem "Fraunces", Georgia, serif;
+  font:
+    500 1.35rem "Fraunces",
+    Georgia,
+    serif;
 }
 
 .supplier-evidence-modal header button {
@@ -8524,6 +8867,16 @@ select:focus,
   .supplier-portal-hero {
     grid-template-columns: 1fr;
     gap: 1.2rem;
+  }
+
+  .supplier-production-plan > header,
+  .supplier-production-plan > form footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .supplier-plan-version {
+    text-align: left;
   }
 
   .supplier-portal-metrics {

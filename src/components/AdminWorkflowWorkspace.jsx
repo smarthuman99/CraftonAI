@@ -164,6 +164,7 @@ export default function AdminWorkflowWorkspace({
     notes: ""
   });
   const [productionForm, setProductionForm] = useState({
+    production_update_id: "",
     item_name: "",
     process_name: "Frame production",
     status: "in_progress",
@@ -948,21 +949,38 @@ export default function AdminWorkflowWorkspace({
 
   const submitProduction = (event) => {
     event.preventDefault();
-    runAction("Production update saved.", async () => {
-      await insert("production_updates", {
-        project_id: projectId,
-        ...productionForm,
+    runAction("Emergency production override saved.", async () => {
+      const productionUpdate = data.production_updates.find((row) => row.id === productionForm.production_update_id);
+      if (!productionUpdate) throw new Error("Select an existing production work package.");
+      const { error } = await supabaseClient
+        .from("production_updates")
+        .update({
+          status: productionForm.status,
+          risk_level: productionForm.risk_level,
+          notes: productionForm.notes,
+          reported_at: new Date().toISOString(),
+          progress_percent: Number(productionForm.progress_percent || 0)
+        })
+        .eq("id", productionUpdate.id)
+        .eq("project_id", projectId);
+      if (error) throw error;
+      const auditPayload = {
+        production_update_id: productionUpdate.id,
+        process_name: productionUpdate.process_name,
+        status: productionForm.status,
+        risk_level: productionForm.risk_level,
         progress_percent: Number(productionForm.progress_percent || 0),
-        expected_at: productionForm.expected_at || null
-      });
+        notes: productionForm.notes,
+        schedule_date_changed: false
+      };
       await writeEvent(
         "S09",
-        "production_update",
-        `${productionForm.process_name}: ${productionForm.progress_percent}%`,
-        productionForm
+        "production_manual_override",
+        `${productionUpdate.process_name}: Cho emergency override saved without changing the approved schedule.`,
+        auditPayload
       );
       if (productionForm.risk_level !== "low") {
-        await writeEvent("S10", "delay_risk", `${productionForm.process_name} risk: ${productionForm.risk_level}.`, {
+        await writeEvent("S10", "delay_risk", `${productionUpdate.process_name} risk: ${productionForm.risk_level}.`, {
           risk_level: productionForm.risk_level,
           risk_score: productionForm.risk_level === "high" ? 85 : 55,
           next_action: productionForm.notes
@@ -1963,7 +1981,12 @@ export default function AdminWorkflowWorkspace({
   }
 
   if (flow === "production") {
-    const riskUpdates = data.production_updates.filter((row) => row.risk_level && row.risk_level !== "low");
+    const riskUpdates = data.production_updates.filter(
+      (row) =>
+        row.risk_level &&
+        row.risk_level !== "low" &&
+        (Array.isArray(row.evidence) ? row.evidence : []).some((entry) => entry?.type === "cho_plan_approval")
+    );
     return localize(
       <div className="admin-ops-workspace">
         {toolbar}
@@ -1976,8 +1999,11 @@ export default function AdminWorkflowWorkspace({
             description="AI follows the factory through its private portal, validates evidence coverage and sends only exceptions or release gates to Cho."
             wide
             actions={
-              <button onClick={() => setActiveForm(activeForm === "production" ? "" : "production")}>
-                Manual override
+              <button
+                disabled={!data.production_updates.length}
+                onClick={() => setActiveForm(activeForm === "production" ? "" : "production")}
+              >
+                Emergency override
               </button>
             }
           >
@@ -1991,8 +2017,11 @@ export default function AdminWorkflowWorkspace({
               onChanged={loadData}
             />
             <div className="production-plan-divider">
-              <span>AI PLAN &amp; RELEASE</span>
-              <p>Cho sets the initial production baseline once; Crafton AI then owns routine follow-up against it.</p>
+              <span>AI FRAMEWORK &amp; FACTORY COMMITMENT</span>
+              <p>
+                AI defines the work packages; the supplier submits real factory dates; AI validates them and Cho
+                approves the active baseline.
+              </p>
             </div>
             <AiOperationsAutomation
               scope="production"
@@ -2007,24 +2036,34 @@ export default function AdminWorkflowWorkspace({
             />
             {activeForm === "production" && (
               <form className="admin-ops-form" onSubmit={submitProduction}>
-                <Field label="Item / package">
-                  <input
-                    required
-                    value={productionForm.item_name}
-                    onChange={(e) => setProductionForm({ ...productionForm, item_name: e.target.value })}
-                  />
-                </Field>
-                <Field label="Process">
+                <Notice>
+                  This emergency override can update progress, status, risk and notes only. Schedule changes must be
+                  submitted by the supplier and approved as a new version by Cho.
+                </Notice>
+                <Field label="Existing work package" wide>
                   <select
-                    value={productionForm.process_name}
-                    onChange={(e) => setProductionForm({ ...productionForm, process_name: e.target.value })}
+                    required
+                    value={productionForm.production_update_id}
+                    onChange={(e) => {
+                      const row = data.production_updates.find((entry) => entry.id === e.target.value);
+                      setProductionForm({
+                        ...productionForm,
+                        production_update_id: e.target.value,
+                        item_name: row?.item_name || "",
+                        process_name: row?.process_name || "",
+                        status: row?.status || "in_progress",
+                        progress_percent: String(row?.progress_percent || 0),
+                        risk_level: row?.risk_level || "low",
+                        notes: row?.notes || ""
+                      });
+                    }}
                   >
-                    <option>Material procurement</option>
-                    <option>Frame production</option>
-                    <option>Upholstery</option>
-                    <option>Finishing</option>
-                    <option>Assembly</option>
-                    <option>Pre-shipment QC</option>
+                    <option value="">Select work package</option>
+                    {data.production_updates.map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.process_name} · {row.item_name}
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 <Field label="Status">
@@ -2057,22 +2096,16 @@ export default function AdminWorkflowWorkspace({
                     <option>high</option>
                   </select>
                 </Field>
-                <Field label="Expected completion">
-                  <input
-                    type="datetime-local"
-                    value={productionForm.expected_at}
-                    onChange={(e) => setProductionForm({ ...productionForm, expected_at: e.target.value })}
-                  />
-                </Field>
-                <Field label="Notes / evidence" wide>
+                <Field label="Emergency override reason / note" wide>
                   <textarea
+                    required
                     value={productionForm.notes}
                     onChange={(e) => setProductionForm({ ...productionForm, notes: e.target.value })}
                   />
                 </Field>
                 <div className="admin-ops-form-actions">
                   <button className="btn-premium" disabled={loading}>
-                    Save manual override
+                    Save emergency override
                   </button>
                 </div>
               </form>

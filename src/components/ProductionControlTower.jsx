@@ -11,7 +11,14 @@ const label = (value, zh) => {
     high: ["Intervention", "需要介入"],
     not_started: ["Not started", "未开始"],
     in_progress: ["In progress", "生产中"],
-    pending_review: ["Cho review", "等待 Cho 审核"]
+    pending_review: ["Cho review", "等待 Cho 审核"],
+    awaiting_framework: ["Awaiting framework", "等待工序框架"],
+    awaiting_supplier_plan: ["Awaiting factory schedule", "等待工厂排产"],
+    changes_required: ["AI requires changes", "AI 要求修改"],
+    ai_review: ["AI validation", "AI 校验中"],
+    awaiting_cho_approval: ["Awaiting Cho approval", "等待 Cho 批准"],
+    revision_pending_cho: ["Revision awaiting Cho", "改期版本等待 Cho"],
+    approved: ["Approved baseline", "正式基准已批准"]
   };
   return labels[value]?.[zh ? 1 : 0] || String(value || "-").replaceAll("_", " ");
 };
@@ -29,6 +36,70 @@ function taskEvidence(task) {
     uploads,
     missing: required.filter((item) => !submitted.has(String(item).toLowerCase())),
     coverage: required.length ? Math.round((complete.length / required.length) * 100) : uploads.length ? 100 : 0
+  };
+}
+
+function latestEntry(task, type) {
+  return (
+    (Array.isArray(task?.evidence) ? task.evidence : [])
+      .filter((entry) => entry?.type === type)
+      .sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0] || null
+  );
+}
+
+function scheduleDashboard(tasks) {
+  if (!tasks.length) {
+    return { status: "awaiting_framework", version: 0, approvedVersion: 0, issues: [], canApprove: false };
+  }
+  const plans = tasks.map((task) => latestEntry(task, "supplier_plan"));
+  if (plans.some((entry) => !entry)) {
+    return { status: "awaiting_supplier_plan", version: 0, approvedVersion: 0, issues: [], canApprove: false };
+  }
+  const version = Math.max(...plans.map((entry) => Number(entry.version || 0)));
+  const reviews = tasks.map((task) => latestEntry(task, "ai_plan_review"));
+  const approvals = tasks.map((task) => latestEntry(task, "cho_plan_approval"));
+  const approvedVersion = Math.min(...approvals.map((entry) => Number(entry?.version || 0)));
+  const issues = reviews
+    .filter((entry) => Number(entry?.version || 0) === version)
+    .flatMap((entry) => entry.issues || [])
+    .filter(
+      (issue, index, list) =>
+        list.findIndex((entry) => entry.code === issue.code && entry.taskId === issue.taskId) === index
+    );
+  const changesRequired = reviews.some(
+    (entry) => Number(entry?.version || 0) === version && entry.status === "changes_required"
+  );
+  const approved = approvals.every((entry) => Number(entry?.version || 0) === version);
+  const ready = reviews.every(
+    (entry) => Number(entry?.version || 0) === version && entry.status === "ready_for_cho_review"
+  );
+  const status = changesRequired
+    ? "changes_required"
+    : approved
+      ? "approved"
+      : ready && approvedVersion > 0
+        ? "revision_pending_cho"
+        : ready
+          ? "awaiting_cho_approval"
+          : "ai_review";
+  const proposedCompletion = plans
+    .map((entry) => entry.expected_at)
+    .filter(Boolean)
+    .sort()
+    .reverse()[0];
+  const approvedCompletion = tasks
+    .map((task) => task.expected_at)
+    .filter(Boolean)
+    .sort()
+    .reverse()[0];
+  return {
+    status,
+    version,
+    approvedVersion,
+    issues,
+    proposedCompletion,
+    approvedCompletion,
+    canApprove: ["awaiting_cho_approval", "revision_pending_cho"].includes(status)
   };
 }
 
@@ -55,7 +126,16 @@ export default function ProductionControlTower({
   const [credentials, setCredentials] = useState(null);
 
   const dashboard = useMemo(() => {
-    const tasks = productionUpdates.map((task) => ({ ...task, evidenceSummary: taskEvidence(task) }));
+    const tasks = productionUpdates.map((task) => {
+      const hasApprovedBaseline = Boolean(latestEntry(task, "cho_plan_approval"));
+      return {
+        ...task,
+        evidenceSummary: taskEvidence(task),
+        hasApprovedBaseline,
+        activeRiskLevel: hasApprovedBaseline ? task.risk_level || "low" : "low"
+      };
+    });
+    const schedule = scheduleDashboard(tasks);
     const progress = tasks.length
       ? Math.round(tasks.reduce((sum, task) => sum + Number(task.progress_percent || 0), 0) / tasks.length)
       : 0;
@@ -72,11 +152,12 @@ export default function ProductionControlTower({
       progress,
       evidenceCoverage,
       latestReport,
-      highRisks: tasks.filter((task) => task.risk_level === "high").length,
-      mediumRisks: tasks.filter((task) => task.risk_level === "medium").length,
+      highRisks: tasks.filter((task) => task.activeRiskLevel === "high").length,
+      mediumRisks: tasks.filter((task) => task.activeRiskLevel === "medium").length,
       readyForReview: tasks.filter(
         (task) => Number(task.progress_percent || 0) >= 100 && task.evidenceSummary.missing.length === 0
-      ).length
+      ).length,
+      schedule
     };
   }, [productionUpdates]);
 
@@ -120,6 +201,28 @@ export default function ProductionControlTower({
         t(
           `AI checked ${result.summary.taskCount} work packages: ${result.summary.highRiskCount} high risks, ${result.summary.mediumRiskCount} medium risks and ${result.summary.evidenceCoveragePercent}% evidence coverage.`,
           `AI 已检查 ${result.summary.taskCount} 个生产工序：${result.summary.highRiskCount} 个高风险、${result.summary.mediumRiskCount} 个中风险，证据完整度 ${result.summary.evidenceCoveragePercent}%。`
+        )
+      );
+      onChanged?.();
+    } catch (error) {
+      setMessage(error.message || String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function approveSchedule() {
+    setBusy("schedule");
+    setMessage("");
+    try {
+      const result = await callWorkflowAi(supabaseClient, {
+        action: "approve_supplier_production_plan",
+        projectId: project.id
+      });
+      setMessage(
+        t(
+          `Factory schedule v${result.summary.planVersion} approved. It is now the active production baseline.`,
+          `供应商第 ${result.summary.planVersion} 版排产已批准，现已成为正式生产跟单基准。`
         )
       );
       onChanged?.();
@@ -227,27 +330,90 @@ export default function ProductionControlTower({
         </div>
       )}
 
+      <section className={`production-schedule-approval schedule-${dashboard.schedule.status}`}>
+        <header>
+          <div>
+            <span>{t("FACTORY PRODUCTION SCHEDULE", "供应商真实生产排期")}</span>
+            <h4>{label(dashboard.schedule.status, zh)}</h4>
+            <p>
+              {t(
+                "AI validates the supplier's dates, capacity, process sequence, quoted lead time and shipping buffer. Only Cho approval activates a new baseline.",
+                "AI 会校验供应商日期、产能、工序顺序、报价交期和运输缓冲期；只有 Cho 批准后，新版本才会成为正式基准。"
+              )}
+            </p>
+          </div>
+          <div className="production-schedule-version">
+            <span>{t("Supplier version", "供应商版本")}</span>
+            <strong>V{dashboard.schedule.version || "—"}</strong>
+            <small>
+              {t("Approved baseline", "已批准基准")} V{dashboard.schedule.approvedVersion || "—"}
+            </small>
+          </div>
+        </header>
+        <div className="production-schedule-dates">
+          <div>
+            <span>{t("Supplier proposed completion", "供应商建议完工")}</span>
+            <strong>{formatDate(dashboard.schedule.proposedCompletion, zh)}</strong>
+          </div>
+          <div>
+            <span>{t("Active approved completion", "当前批准完工")}</span>
+            <strong>{formatDate(dashboard.schedule.approvedCompletion, zh)}</strong>
+          </div>
+        </div>
+        {dashboard.schedule.issues.length > 0 && (
+          <div className="production-schedule-issues">
+            {dashboard.schedule.issues.map((issue, index) => (
+              <div className={issue.severity === "high" ? "high" : "warning"} key={`${issue.code}-${index}`}>
+                <strong>{issue.severity === "high" ? t("Must fix", "必须修正") : t("AI warning", "AI 提醒")}</strong>
+                <span>
+                  {issue.taskName ? `${issue.taskName}: ` : ""}
+                  {zh ? issue.messageCn || issue.message : issue.message}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <footer>
+          <p>
+            {dashboard.schedule.status === "revision_pending_cho"
+              ? t(
+                  "The previous approved schedule remains active until this revision is approved.",
+                  "在本次改期获批之前，原已批准排产仍然是有效跟单基准。"
+                )
+              : t(
+                  "Production overdue alerts stay disabled until the first supplier schedule is approved.",
+                  "首版供应商排产获批之前，系统不会按 AI 预测日期产生逾期警报。"
+                )}
+          </p>
+          <button type="button" disabled={Boolean(busy) || !dashboard.schedule.canApprove} onClick={approveSchedule}>
+            {busy === "schedule"
+              ? t("Approving baseline...", "正在批准基准……")
+              : t("Cho approves production baseline", "Cho 批准为正式生产基准")}
+          </button>
+        </footer>
+      </section>
+
       {!dashboard.tasks.length ? (
         <div className="production-controller-empty">
           <strong>{t("No released production work packages yet.", "目前尚未下达生产工序。")}</strong>
           <p>
             {t(
-              "Generate and apply the AI production plan below after S08 supplier approval.",
-              "请在 S08 批准供应商后，于下方生成并应用 AI 生产计划。"
+              "Generate and release the AI work-package framework below after S08 supplier approval.",
+              "请在 S08 批准供应商后，于下方生成并下达 AI 生产工序框架。"
             )}
           </p>
         </div>
       ) : (
         <div className="production-work-package-grid">
           {dashboard.tasks.map((task, index) => (
-            <article className={`risk-${task.risk_level || "low"}`} key={task.id}>
+            <article className={`risk-${task.activeRiskLevel}`} key={task.id}>
               <header>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <div>
                   <small>{task.item_name || t("Production package", "生产工序")}</small>
                   <h5>{task.process_name}</h5>
                 </div>
-                <b>{label(task.risk_level, zh)}</b>
+                <b>{label(task.activeRiskLevel, zh)}</b>
               </header>
               <div className="production-package-progress">
                 <div>
@@ -257,8 +423,15 @@ export default function ProductionControlTower({
               </div>
               <dl>
                 <div>
-                  <dt>{t("Due", "截止")}</dt>
-                  <dd>{formatDate(task.expected_at, zh)}</dd>
+                  <dt>
+                    {task.hasApprovedBaseline ? t("Approved due", "已批准截止") : t("Supplier proposed", "供应商建议")}
+                  </dt>
+                  <dd>
+                    {formatDate(
+                      task.hasApprovedBaseline ? task.expected_at : latestEntry(task, "supplier_plan")?.expected_at,
+                      zh
+                    )}
+                  </dd>
                 </div>
                 <div>
                   <dt>{t("Evidence", "证据")}</dt>

@@ -124,8 +124,12 @@ export default function AiOperationsAutomation({
       else await applyDelivery(current);
       setMessage(
         t(
-          "Cho applied the AI control plan. Operational records are now active.",
-          "Cho 已应用 AI 控制计划，营运记录现已生效。"
+          scope === "production"
+            ? "Cho released the AI work-package framework. The supplier must now submit the real factory schedule."
+            : "Cho applied the AI control plan. Operational records are now active.",
+          scope === "production"
+            ? "Cho 已下达 AI 工序框架，下一步由供应商提交真实工厂排产。"
+            : "Cho 已应用 AI 控制计划，营运记录现已生效。"
         )
       );
       onChanged?.();
@@ -153,12 +157,20 @@ export default function AiOperationsAutomation({
         stage_id: "S09",
         item_name: item.itemNames.join(", "),
         process_name: item.code,
-        status: "not_started",
+        status: "awaiting_supplier_plan",
         progress_percent: 0,
         risk_level: item.riskLevel === "blocked" ? "high" : item.riskLevel,
-        expected_at: item.expectedAt,
+        expected_at: null,
         notes: `${zh ? item.nameCn : item.nameEn}. ${item.evidenceRequired.join("; ")}`,
-        evidence: [{ type: "ai_plan", required: item.evidenceRequired }]
+        evidence: [
+          {
+            type: "ai_plan",
+            required: item.evidenceRequired,
+            schedule_authority: "framework_only",
+            forecast_starts_at: item.startsAt,
+            forecast_expected_at: item.expectedAt
+          }
+        ]
       }));
     if (rows.length) {
       const { error } = await supabaseClient.from("production_updates").insert(rows);
@@ -167,11 +179,11 @@ export default function AiOperationsAutomation({
     const { error: eventError } = await supabaseClient.from("workflow_events").insert({
       project_id: project.id,
       stage_id: "S09",
-      event_type: "production_plan_released",
+      event_type: "production_work_package_framework_released",
       actor: "Cho",
-      message_cn: `Cho 已下达 ${rows.length} 个 AI 生产工序。`,
-      message_en: `Cho released ${rows.length} AI-planned production work packages.`,
-      payload: { supplier_id: next.selectedSupplier.supplierId }
+      message_cn: `Cho 已下达 ${rows.length} 个 AI 生产工序框架；日期仅供预测，等待供应商提交真实排产。`,
+      message_en: `Cho released ${rows.length} AI work-package frameworks; dates remain forecasts until the supplier schedule is approved.`,
+      payload: { supplier_id: next.selectedSupplier.supplierId, schedule_authority: "supplier_commitment_required" }
     });
     if (eventError) throw eventError;
   }
@@ -215,7 +227,7 @@ export default function AiOperationsAutomation({
           <span className="ai-data-source">CRAFTON AI CONTROL</span>
           <strong>
             {scope === "production"
-              ? t("Production automation", "生产自动化")
+              ? t("Production work-package framework", "生产工序框架")
               : t("Delivery automation", "出货与交付自动化")}
           </strong>
         </div>
@@ -223,10 +235,16 @@ export default function AiOperationsAutomation({
           <button type="button" disabled={Boolean(busy)} onClick={generate}>
             {busy === "generate"
               ? t("Generating...", "正在生成...")
-              : t("Generate / refresh AI plan", "生成 / 刷新 AI 计划")}
+              : scope === "production"
+                ? t("Generate / refresh framework", "生成 / 刷新 AI 工序框架")
+                : t("Generate / refresh AI plan", "生成 / 刷新 AI 计划")}
           </button>
           <button type="button" className="btn-premium" disabled={Boolean(busy) || !current} onClick={applyPlan}>
-            {busy === "apply" ? t("Applying...", "正在应用...") : t("Cho applies plan", "Cho 应用计划")}
+            {busy === "apply"
+              ? t("Applying...", "正在应用...")
+              : scope === "production"
+                ? t("Release framework", "下达工序框架")
+                : t("Cho applies plan", "Cho 应用计划")}
           </button>
         </div>
       </div>
@@ -249,13 +267,19 @@ export default function AiOperationsAutomation({
               <strong>{production.supplierName}</strong>
             </div>
             <div>
-              <span>{t("Planned completion", "计划完工")}</span>
+              <span>{t("AI forecast completion", "AI 预测完工")}</span>
               <strong>{date(production.plannedCompletion, zh)}</strong>
             </div>
             <div>
               <span>{t("Schedule risk", "工期风险")}</span>
               <strong className={`risk-${production.scheduleRisk}`}>{statusText(production.scheduleRisk, zh)}</strong>
             </div>
+          </div>
+          <div className="admin-ops-notice">
+            {t(
+              "Forecast only — these dates are not factory commitments. The supplier submits the real schedule in its portal, AI validates it, and Cho approves the active baseline.",
+              "仅供预测——这些日期不是工厂承诺。供应商会在门户提交真实排产，经 AI 校验和 Cho 批准后才成为正式跟单基准。"
+            )}
           </div>
           {production.scheduleReasons.map((reason) => (
             <div className="admin-ops-notice error" key={reason}>
@@ -269,7 +293,7 @@ export default function AiOperationsAutomation({
                 <div>
                   <strong>{zh ? item.nameCn : item.nameEn}</strong>
                   <small>
-                    {date(item.startsAt, zh)} - {date(item.expectedAt, zh)}
+                    {t("AI forecast", "AI 预测")} · {date(item.startsAt, zh)} - {date(item.expectedAt, zh)}
                   </small>
                 </div>
                 <b className={`risk-${item.riskLevel}`}>{statusText(item.riskLevel, zh)}</b>

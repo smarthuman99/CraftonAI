@@ -3,12 +3,240 @@ import { randomBytes } from "node:crypto";
 const DAY = 86_400_000;
 const SUPPLIER_ROLE = "supplier";
 const EVIDENCE_BUCKET = "intake-files";
+const SHIPPING_BUFFER_DAYS = 10;
+const UPDATE_FREQUENCIES = new Set(["daily", "every_2_days", "twice_weekly", "weekly"]);
+const PROCESS_ORDER = [
+  "material_procurement",
+  "frame_production",
+  "upholstery",
+  "finishing",
+  "assembly",
+  "pre_shipment_qc"
+];
 
 export function supplierIdentity(user) {
   const role = clean(user?.app_metadata?.role).toLowerCase();
   const supplierId = clean(user?.app_metadata?.supplier_id);
   if (role !== SUPPLIER_ROLE || !supplierId) return null;
   return { supplierId, userId: user.id, email: clean(user.email) };
+}
+
+export function latestEvidenceEntry(task = {}, type) {
+  return (
+    (Array.isArray(task.evidence) ? task.evidence : [])
+      .filter((entry) => entry?.type === type)
+      .sort(
+        (a, b) =>
+          Number(b.version || 0) - Number(a.version || 0) ||
+          String(b.created_at || b.submitted_at || "").localeCompare(String(a.created_at || a.submitted_at || ""))
+      )[0] || null
+  );
+}
+
+export function productionPlanState(tasks = []) {
+  if (!tasks.length) return { status: "awaiting_framework", version: 0, approvedVersion: 0 };
+  const latestPlans = tasks.map((task) => latestEvidenceEntry(task, "supplier_plan"));
+  if (latestPlans.some((plan) => !plan)) return { status: "awaiting_supplier_plan", version: 0, approvedVersion: 0 };
+  const version = Math.max(...latestPlans.map((plan) => Number(plan.version || 1)));
+  const reviews = tasks.map((task) => latestEvidenceEntry(task, "ai_plan_review"));
+  const approvals = tasks.map((task) => latestEvidenceEntry(task, "cho_plan_approval"));
+  const approvedVersion = Math.min(...approvals.map((approval) => Number(approval?.version || 0)));
+  if (reviews.some((review) => Number(review?.version || 0) === version && review.status === "changes_required")) {
+    return { status: "changes_required", version, approvedVersion };
+  }
+  const latestVersionApproved = approvals.every((approval) => Number(approval?.version || 0) === version);
+  if (latestVersionApproved) return { status: "approved", version, approvedVersion: version };
+  const readyForCho = reviews.every(
+    (review) => Number(review?.version || 0) === version && review.status === "ready_for_cho_review"
+  );
+  if (readyForCho && approvedVersion > 0) return { status: "revision_pending_cho", version, approvedVersion };
+  if (readyForCho) return { status: "awaiting_cho_approval", version, approvedVersion: 0 };
+  return { status: "ai_review", version, approvedVersion };
+}
+
+export function validateSupplierProductionPlan({
+  tasks = [],
+  planTasks = [],
+  project = {},
+  quote = {},
+  version = 1,
+  changeReason = ""
+}) {
+  const rows = new Map(planTasks.map((row) => [clean(row.productionUpdateId), row]));
+  const issues = [];
+  const normalizedTasks = sortProductionTasks(tasks).map((task, index) => {
+    const row = rows.get(clean(task.id)) || {};
+    const startsAt = validDate(row.startsAt);
+    const expectedAt = validDate(row.expectedAt);
+    const materialReadyAt = validDate(row.materialReadyAt);
+    const capacitySlot = clean(row.capacitySlot);
+    const dependencies = clean(row.dependencies);
+    const updateFrequency = clean(row.updateFrequency).toLowerCase();
+    const constraints = clean(row.constraints);
+    const taskLabel = clean(task.process_name) || `Work package ${index + 1}`;
+    const addIssue = (severity, code, message, messageCn) =>
+      issues.push({ severity, code, taskId: task.id, taskName: taskLabel, message, messageCn });
+
+    if (!rows.has(clean(task.id))) {
+      addIssue(
+        "high",
+        "missing_work_package",
+        "The factory plan is missing this work package.",
+        "工厂排产缺少这项生产工序。"
+      );
+    }
+    if (!startsAt)
+      addIssue(
+        "high",
+        "missing_start",
+        "Enter a valid factory start date and time.",
+        "请填写有效的工厂开始日期和时间。"
+      );
+    if (!expectedAt) {
+      addIssue(
+        "high",
+        "missing_completion",
+        "Enter a valid factory completion date and time.",
+        "请填写有效的工厂完成日期和时间。"
+      );
+    }
+    if (startsAt && expectedAt && startsAt >= expectedAt) {
+      addIssue(
+        "high",
+        "invalid_date_range",
+        "Completion must be later than the start date.",
+        "完成时间必须晚于开始时间。"
+      );
+    }
+    if (!capacitySlot) {
+      addIssue(
+        "high",
+        "missing_capacity_slot",
+        "Confirm the factory capacity slot or production line.",
+        "请确认工厂产能档期或生产线。"
+      );
+    }
+    if (!UPDATE_FREQUENCIES.has(updateFrequency)) {
+      addIssue(
+        "high",
+        "missing_update_frequency",
+        "Select a valid factory reporting frequency.",
+        "请选择有效的工厂进度上报频率。"
+      );
+    }
+    if (clean(task.process_name) === "material_procurement" && !materialReadyAt) {
+      addIssue(
+        "high",
+        "missing_material_readiness",
+        "Confirm when the order materials will be ready.",
+        "请确认本订单物料到齐时间。"
+      );
+    }
+    if (materialReadyAt && startsAt && materialReadyAt > startsAt) {
+      addIssue(
+        "warning",
+        "materials_after_start",
+        "Material readiness is later than the planned start date.",
+        "物料到齐时间晚于计划开工时间，请确认是否可行。"
+      );
+    }
+
+    return {
+      productionUpdateId: task.id,
+      processName: task.process_name,
+      startsAt: startsAt?.toISOString() || null,
+      expectedAt: expectedAt?.toISOString() || null,
+      materialReadyAt: materialReadyAt?.toISOString() || null,
+      capacitySlot,
+      dependencies,
+      updateFrequency,
+      constraints
+    };
+  });
+
+  for (let index = 1; index < normalizedTasks.length; index += 1) {
+    const previous = normalizedTasks[index - 1];
+    const current = normalizedTasks[index];
+    const previousEnd = validDate(previous.expectedAt);
+    const currentStart = validDate(current.startsAt);
+    if (previousEnd && currentStart && currentStart < previousEnd) {
+      issues.push({
+        severity: "warning",
+        code: "process_overlap",
+        taskId: current.productionUpdateId,
+        taskName: current.processName,
+        message: `This work package overlaps ${previous.processName}; Cho should confirm the factory can run them in parallel.`,
+        messageCn: `本工序与 ${previous.processName} 时间重叠；Cho 需要确认工厂可以并行生产。`
+      });
+    }
+  }
+
+  const finalCompletion = normalizedTasks
+    .map((row) => validDate(row.expectedAt))
+    .filter(Boolean)
+    .sort((a, b) => b - a)[0];
+  const targetDelivery = validDate(project.desired_delivery_date || project.delivery_date);
+  const latestProductionCompletion = targetDelivery
+    ? new Date(targetDelivery.getTime() - SHIPPING_BUFFER_DAYS * DAY)
+    : null;
+  if (finalCompletion && latestProductionCompletion && finalCompletion > latestProductionCompletion) {
+    issues.push({
+      severity: "high",
+      code: "shipping_buffer_missed",
+      taskId: null,
+      taskName: "Order",
+      message: `Factory completion misses the required ${SHIPPING_BUFFER_DAYS}-day shipping buffer before target delivery.`,
+      messageCn: `工厂完工时间未能在目标交付日前预留 ${SHIPPING_BUFFER_DAYS} 天运输缓冲期。`
+    });
+  }
+  if (!targetDelivery) {
+    issues.push({
+      severity: "warning",
+      code: "target_delivery_missing",
+      taskId: null,
+      taskName: "Order",
+      message: "The project target delivery date is missing, so AI cannot verify the shipping buffer.",
+      messageCn: "项目缺少目标交付日期，AI 暂时无法校验运输缓冲期。"
+    });
+  }
+
+  const starts = normalizedTasks
+    .map((row) => validDate(row.startsAt))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  const quotedLeadDays = Number(quote.lead_time_days || quote.payload?.lead_time_days || 0);
+  if (quotedLeadDays > 0 && starts[0] && finalCompletion) {
+    const factoryLeadDays = Math.ceil((finalCompletion.getTime() - starts[0].getTime()) / DAY);
+    if (factoryLeadDays > quotedLeadDays + 3) {
+      issues.push({
+        severity: "warning",
+        code: "quote_lead_time_mismatch",
+        taskId: null,
+        taskName: "Order",
+        message: `The factory plan is ${factoryLeadDays} days, longer than the quoted ${quotedLeadDays}-day lead time.`,
+        messageCn: `工厂排产为 ${factoryLeadDays} 天，长于报价承诺的 ${quotedLeadDays} 天交期。`
+      });
+    }
+  }
+  if (version > 1 && !clean(changeReason)) {
+    issues.push({
+      severity: "high",
+      code: "revision_reason_missing",
+      taskId: null,
+      taskName: "Order",
+      message: "Explain why the factory is revising the previously submitted schedule.",
+      messageCn: "请说明工厂修改上一版排产的原因。"
+    });
+  }
+
+  return {
+    status: issues.some((issue) => issue.severity === "high") ? "changes_required" : "ready_for_cho_review",
+    issues,
+    normalizedTasks,
+    finalCompletion: finalCompletion?.toISOString() || null,
+    latestProductionCompletion: latestProductionCompletion?.toISOString() || null,
+    quotedLeadDays: quotedLeadDays || null
+  };
 }
 
 export function analyzeProductionTask(task = {}, options = {}) {
@@ -22,6 +250,13 @@ export function analyzeProductionTask(task = {}, options = {}) {
       .filter(Boolean)
   );
   const uploads = evidence.filter((entry) => entry?.type === "supplier_upload");
+  const supplierPlan = latestEvidenceEntry(task, "supplier_plan");
+  const planReview = latestEvidenceEntry(task, "ai_plan_review");
+  const planApproval = latestEvidenceEntry(task, "cho_plan_approval");
+  const supplierPlanVersion = Number(supplierPlan?.version || 0);
+  const approvedPlanVersion = Number(planApproval?.version || 0);
+  const latestPlanApproved = supplierPlanVersion > 0 && supplierPlanVersion === approvedPlanVersion;
+  const hasApprovedBaseline = approvedPlanVersion > 0;
   const submittedRequirements = unique(uploads.map((entry) => clean(entry.requirement)).filter(Boolean));
   const completeRequirements = required.filter((item) =>
     submittedRequirements.some((submitted) => normalize(submitted) === normalize(item))
@@ -37,7 +272,7 @@ export function analyzeProductionTask(task = {}, options = {}) {
     (item) => !completeRequirements.some((complete) => normalize(complete) === normalize(item))
   );
   const reportedProgressPercent = clamp(task.progress_percent, 0, 100);
-  const expectedAt = validDate(task.expected_at);
+  const expectedAt = hasApprovedBaseline ? validDate(task.expected_at) : null;
   const latestUploadAt = uploads
     .map((entry) => validDate(entry.uploaded_at))
     .filter(Boolean)
@@ -65,6 +300,7 @@ export function analyzeProductionTask(task = {}, options = {}) {
   }
   if (
     riskLevel === "low" &&
+    hasApprovedBaseline &&
     latestReportAt &&
     now.getTime() - latestReportAt.getTime() > 3 * DAY &&
     reportedProgressPercent < 100
@@ -74,6 +310,15 @@ export function analyzeProductionTask(task = {}, options = {}) {
   }
 
   const readyForReview = reportedProgressPercent >= 100 && missingEvidence.length === 0 && !hasDuplicate;
+  const planStatus = !supplierPlan
+    ? "awaiting_supplier_plan"
+    : planReview?.status === "changes_required"
+      ? "plan_revision_required"
+      : latestPlanApproved
+        ? "plan_approved"
+        : hasApprovedBaseline
+          ? "plan_revision_pending_cho"
+          : "awaiting_cho_plan_approval";
   return {
     riskLevel,
     reasons,
@@ -84,14 +329,25 @@ export function analyzeProductionTask(task = {}, options = {}) {
     supplierReportedProgressPercent: reportedProgressPercent,
     uploadCount: uploads.length,
     latestSupplierReportAt: latestUploadAt?.toISOString() || null,
+    productionPlan: {
+      status: planStatus,
+      latest: supplierPlan,
+      review: planReview,
+      latestVersion: supplierPlanVersion,
+      approvedVersion: approvedPlanVersion,
+      latestVersionApproved: latestPlanApproved,
+      hasApprovedBaseline
+    },
     readyForReview,
-    controllerStatus: readyForReview
-      ? "ready_for_cho_review"
-      : riskLevel === "high"
-        ? "intervention_required"
-        : missingEvidence.length
-          ? "awaiting_supplier_evidence"
-          : "monitoring"
+    controllerStatus: !hasApprovedBaseline
+      ? planStatus
+      : readyForReview
+        ? "ready_for_cho_review"
+        : riskLevel === "high"
+          ? "intervention_required"
+          : missingEvidence.length
+            ? "awaiting_supplier_evidence"
+            : "monitoring"
   };
 }
 
@@ -103,12 +359,15 @@ export function buildProjectProductionAnalysis(tasks = [], options = {}) {
     });
   });
   const duplicateHashes = [...hashCounts.entries()].filter(([, count]) => count > 1).map(([hash]) => hash);
-  const analyzedTasks = tasks.map((task) => ({
+  const orderedTasks = sortProductionTasks(tasks);
+  const analyzedTasks = orderedTasks.map((task) => ({
     ...task,
     analysis: analyzeProductionTask(task, { ...options, duplicateHashes })
   }));
   const coverage = analyzedTasks.length
-    ? Math.round(analyzedTasks.reduce((sum, task) => sum + task.analysis.evidenceCoveragePercent, 0) / analyzedTasks.length)
+    ? Math.round(
+        analyzedTasks.reduce((sum, task) => sum + task.analysis.evidenceCoveragePercent, 0) / analyzedTasks.length
+      )
     : 0;
   const progress = analyzedTasks.length
     ? Math.round(
@@ -116,6 +375,7 @@ export function buildProjectProductionAnalysis(tasks = [], options = {}) {
           analyzedTasks.length
       )
     : 0;
+  const plan = productionPlanState(analyzedTasks);
   return {
     tasks: analyzedTasks,
     summary: {
@@ -126,13 +386,19 @@ export function buildProjectProductionAnalysis(tasks = [], options = {}) {
       mediumRiskCount: analyzedTasks.filter((task) => task.analysis.riskLevel === "medium").length,
       readyForReviewCount: analyzedTasks.filter((task) => task.analysis.readyForReview).length,
       duplicateEvidenceCount: duplicateHashes.length,
-      controllerStatus: analyzedTasks.some((task) => task.analysis.riskLevel === "high")
-        ? "intervention_required"
-        : analyzedTasks.some((task) => task.analysis.riskLevel === "medium")
-          ? "attention_required"
-          : analyzedTasks.length
-            ? "monitoring"
-            : "awaiting_production_plan"
+      planStatus: plan.status,
+      planVersion: plan.version,
+      approvedPlanVersion: plan.approvedVersion,
+      controllerStatus:
+        plan.status !== "approved" && plan.approvedVersion === 0
+          ? plan.status
+          : analyzedTasks.some((task) => task.analysis.riskLevel === "high")
+            ? "intervention_required"
+            : analyzedTasks.some((task) => task.analysis.riskLevel === "medium")
+              ? "attention_required"
+              : analyzedTasks.length
+                ? "monitoring"
+                : "awaiting_production_plan"
     }
   };
 }
@@ -311,6 +577,186 @@ export async function loadSupplierProductionWorkspace({ supabase, user }) {
   };
 }
 
+export async function submitSupplierProductionPlan({ supabase, user, body = {} }) {
+  const identity = supplierIdentity(user);
+  if (!identity) throw httpError(403, "This account is not linked to a supplier factory.");
+  const projectId = clean(body.projectId);
+  if (!projectId) throw httpError(400, "A project ID is required.");
+  const [project, selectedQuote, tasks, supplier] = await Promise.all([
+    single(supabase.from("projects").select("*").eq("id", projectId).maybeSingle(), "project"),
+    single(
+      supabase
+        .from("supplier_quotes")
+        .select("*")
+        .eq("project_id", projectId)
+        .eq("supplier_id", identity.supplierId)
+        .eq("status", "selected")
+        .maybeSingle(),
+      "active supplier assignment"
+    ),
+    many(
+      supabase
+        .from("production_updates")
+        .select("*")
+        .eq("project_id", projectId)
+        .eq("supplier_id", identity.supplierId),
+      "production work packages"
+    ),
+    single(supabase.from("suppliers").select("id,name").eq("id", identity.supplierId).maybeSingle(), "supplier")
+  ]);
+  if (!project) throw httpError(404, "Project not found.");
+  if (!selectedQuote) throw httpError(403, "This supplier is no longer assigned to the order.");
+  if (!tasks.length) throw httpError(409, "Crafton has not released the production work-package framework yet.");
+
+  const currentVersion = Math.max(
+    0,
+    ...tasks.map((task) => Number(latestEvidenceEntry(task, "supplier_plan")?.version || 0))
+  );
+  const version = currentVersion + 1;
+  const changeReason = clean(body.changeReason) || (version === 1 ? "Initial factory production commitment" : "");
+  const review = validateSupplierProductionPlan({
+    tasks,
+    planTasks: Array.isArray(body.planTasks) ? body.planTasks : [],
+    project,
+    quote: selectedQuote,
+    version,
+    changeReason
+  });
+  const submittedAt = new Date().toISOString();
+
+  for (const task of tasks) {
+    const planTask = review.normalizedTasks.find((row) => row.productionUpdateId === task.id);
+    const relatedIssues = review.issues.filter((issue) => !issue.taskId || issue.taskId === task.id);
+    const currentEvidence = Array.isArray(task.evidence) ? task.evidence : [];
+    const planEntry = {
+      type: "supplier_plan",
+      version,
+      starts_at: planTask?.startsAt || null,
+      expected_at: planTask?.expectedAt || null,
+      material_ready_at: planTask?.materialReadyAt || null,
+      capacity_slot: planTask?.capacitySlot || "",
+      dependencies: planTask?.dependencies || "",
+      update_frequency: planTask?.updateFrequency || "",
+      constraints: planTask?.constraints || "",
+      change_reason: changeReason,
+      submitted_by: identity.userId,
+      submitted_at: submittedAt
+    };
+    const reviewEntry = {
+      type: "ai_plan_review",
+      version,
+      status: review.status,
+      issues: relatedIssues,
+      final_completion: review.finalCompletion,
+      latest_production_completion: review.latestProductionCompletion,
+      quoted_lead_days: review.quotedLeadDays,
+      reviewed_at: submittedAt
+    };
+    const hasApprovedBaseline = Number(latestEvidenceEntry(task, "cho_plan_approval")?.version || 0) > 0;
+    const update = {
+      evidence: [...currentEvidence, planEntry, reviewEntry],
+      reported_at: submittedAt
+    };
+    if (!hasApprovedBaseline) {
+      update.status = review.status === "changes_required" ? "plan_revision_required" : "plan_submitted";
+      update.risk_level = "low";
+    }
+    const { error } = await supabase
+      .from("production_updates")
+      .update(update)
+      .eq("id", task.id)
+      .eq("supplier_id", identity.supplierId);
+    if (error) throw new Error(`Unable to save factory production plan: ${error.message}`);
+  }
+
+  await insertEvent(supabase, {
+    project_id: projectId,
+    stage_id: "S09",
+    event_type:
+      review.status === "changes_required"
+        ? "supplier_production_plan_changes_required"
+        : "supplier_production_plan_submitted",
+    actor: supplier?.name || user.email || "Supplier",
+    message_cn:
+      review.status === "changes_required"
+        ? `${supplier?.name || "供应商"} 已提交第 ${version} 版真实排产；AI 发现需要修正的问题。`
+        : `${supplier?.name || "供应商"} 已提交第 ${version} 版真实排产；AI 校验通过，等待 Cho 批准。`,
+    message_en:
+      review.status === "changes_required"
+        ? `${supplier?.name || "Supplier"} submitted factory schedule v${version}; AI requires changes.`
+        : `${supplier?.name || "Supplier"} submitted factory schedule v${version}; AI validation passed for Cho approval.`,
+    payload: { supplier_id: identity.supplierId, version, change_reason: changeReason, review }
+  });
+  return { ok: true, version, review };
+}
+
+export async function approveSupplierProductionPlan({ supabase, user, body = {} }) {
+  const projectId = clean(body.projectId);
+  if (!projectId) throw httpError(400, "A project ID is required.");
+  const tasks = await many(
+    supabase.from("production_updates").select("*").eq("project_id", projectId),
+    "production work packages"
+  );
+  if (!tasks.length) throw httpError(409, "No production work-package framework has been released.");
+  const state = productionPlanState(tasks);
+  if (!["awaiting_cho_approval", "revision_pending_cho"].includes(state.status)) {
+    throw httpError(409, "The latest factory schedule is not ready for Cho approval.");
+  }
+  const approvedAt = new Date().toISOString();
+  for (const task of tasks) {
+    const plan = latestEvidenceEntry(task, "supplier_plan");
+    const review = latestEvidenceEntry(task, "ai_plan_review");
+    if (!plan || Number(plan.version || 0) !== state.version || review?.status !== "ready_for_cho_review") {
+      throw httpError(409, "The latest factory schedule is incomplete or still requires changes.");
+    }
+    const approval = {
+      type: "cho_plan_approval",
+      version: state.version,
+      approved_by: user?.id || null,
+      approved_by_name: clean(user?.user_metadata?.full_name) || clean(user?.email) || "Cho",
+      approved_at: approvedAt
+    };
+    const { error } = await supabase
+      .from("production_updates")
+      .update({
+        evidence: [...(Array.isArray(task.evidence) ? task.evidence : []), approval],
+        expected_at: plan.expected_at,
+        status: Number(task.progress_percent || 0) > 0 ? "in_progress" : "not_started",
+        risk_level: "low"
+      })
+      .eq("id", task.id);
+    if (error) throw new Error(`Unable to approve factory production plan: ${error.message}`);
+  }
+  const supplierId = tasks[0]?.supplier_id || null;
+  const { error: approvalError } = await supabase.from("approvals").insert({
+    project_id: projectId,
+    stage_id: "S09",
+    approval_type: "supplier_production_schedule",
+    status: "approved",
+    reviewer_id: user?.id || null,
+    reviewer_name: clean(user?.user_metadata?.full_name) || clean(user?.email) || "Cho",
+    notes: clean(body.notes) || `Approved supplier factory schedule v${state.version}.`,
+    reviewed_at: approvedAt,
+    payload: { supplier_id: supplierId, version: state.version, previous_approved_version: state.approvedVersion }
+  });
+  if (approvalError)
+    throw new Error(`The schedule was approved, but the approval record failed: ${approvalError.message}`);
+  await insertEvent(supabase, {
+    project_id: projectId,
+    stage_id: "S09",
+    event_type: "supplier_production_plan_approved",
+    actor: clean(user?.user_metadata?.full_name) || clean(user?.email) || "Cho",
+    message_cn: `Cho 已批准供应商第 ${state.version} 版真实生产排期；该版本现为正式跟单基准。`,
+    message_en: `Cho approved supplier factory schedule v${state.version}; it is now the active production baseline.`,
+    payload: { supplier_id: supplierId, version: state.version, previous_approved_version: state.approvedVersion }
+  });
+  const refreshed = await many(
+    supabase.from("production_updates").select("*").eq("project_id", projectId),
+    "approved production work packages"
+  );
+  return { ok: true, ...buildProjectProductionAnalysis(refreshed), approvedAt };
+}
+
 export async function submitSupplierProductionEvidence({ supabase, user, body = {} }) {
   const identity = supplierIdentity(user);
   if (!identity) throw httpError(403, "This account is not linked to a supplier factory.");
@@ -337,6 +783,9 @@ export async function submitSupplierProductionEvidence({ supabase, user, body = 
     "active supplier assignment"
   );
   if (!selectedQuote) throw httpError(403, "This supplier is no longer assigned to the order.");
+  if (!analyzeProductionTask(task).productionPlan.hasApprovedBaseline) {
+    throw httpError(409, "Cho must approve the factory production plan before progress evidence can be reported.");
+  }
 
   const file = body.file || {};
   const bucket = clean(file.bucket);
@@ -605,8 +1054,23 @@ function emptySummary() {
     mediumRiskCount: 0,
     readyForReviewCount: 0,
     duplicateEvidenceCount: 0,
-    controllerStatus: "awaiting_production_plan"
+    planStatus: "awaiting_framework",
+    planVersion: 0,
+    approvedPlanVersion: 0,
+    controllerStatus: "awaiting_framework"
   };
+}
+
+function sortProductionTasks(tasks = []) {
+  return [...tasks].sort((a, b) => {
+    const aIndex = PROCESS_ORDER.indexOf(clean(a.process_name));
+    const bIndex = PROCESS_ORDER.indexOf(clean(b.process_name));
+    const normalizedA = aIndex < 0 ? PROCESS_ORDER.length : aIndex;
+    const normalizedB = bIndex < 0 ? PROCESS_ORDER.length : bIndex;
+    return (
+      normalizedA - normalizedB || String(a.created_at || a.id || "").localeCompare(String(b.created_at || b.id || ""))
+    );
+  });
 }
 
 async function single(query, label) {

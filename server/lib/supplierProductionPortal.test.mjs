@@ -1,15 +1,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeProductionTask, buildProjectProductionAnalysis, supplierIdentity } from "./supplierProductionPortal.mjs";
+import {
+  analyzeProductionTask,
+  buildProjectProductionAnalysis,
+  productionPlanState,
+  supplierIdentity,
+  validateSupplierProductionPlan
+} from "./supplierProductionPortal.mjs";
 
 const plannedEvidence = {
   type: "ai_plan",
   required: ["Dated frame photos", "Key dimension measurements"]
 };
 
+const approvedPlanEvidence = [
+  {
+    type: "supplier_plan",
+    version: 1,
+    starts_at: "2026-08-01T00:00:00.000Z",
+    expected_at: "2026-08-20T00:00:00.000Z"
+  },
+  { type: "ai_plan_review", version: 1, status: "ready_for_cho_review" },
+  { type: "cho_plan_approval", version: 1, approved_at: "2026-08-02T00:00:00.000Z" }
+];
+
 test("accepts only users with an explicit supplier role and supplier binding", () => {
   assert.deepEqual(
-    supplierIdentity({ id: "user-1", email: "factory@example.com", app_metadata: { role: "supplier", supplier_id: "s-1" } }),
+    supplierIdentity({
+      id: "user-1",
+      email: "factory@example.com",
+      app_metadata: { role: "supplier", supplier_id: "s-1" }
+    }),
     { userId: "user-1", email: "factory@example.com", supplierId: "s-1" }
   );
   assert.equal(supplierIdentity({ id: "user-2", app_metadata: { role: "supplier" } }), null);
@@ -24,6 +45,7 @@ test("caps production confidence at evidence completeness and exposes missing pr
       reported_at: "2026-08-09T00:00:00.000Z",
       evidence: [
         plannedEvidence,
+        ...approvedPlanEvidence,
         {
           type: "supplier_upload",
           requirement: "Dated frame photos",
@@ -46,7 +68,7 @@ test("raises overdue missing evidence as a high production risk", () => {
       progress_percent: 70,
       expected_at: "2026-08-08T00:00:00.000Z",
       reported_at: "2026-08-07T00:00:00.000Z",
-      evidence: [plannedEvidence]
+      evidence: [plannedEvidence, ...approvedPlanEvidence]
     },
     { now: "2026-08-10T00:00:00.000Z" }
   );
@@ -62,6 +84,7 @@ test("marks a complete evidence set ready for Cho rather than auto-approving it"
       expected_at: "2026-08-20T00:00:00.000Z",
       evidence: [
         plannedEvidence,
+        ...approvedPlanEvidence,
         { type: "supplier_upload", requirement: "Dated frame photos", sha256: "hash-a" },
         { type: "supplier_upload", requirement: "Key dimension measurements", sha256: "hash-b" }
       ]
@@ -91,4 +114,93 @@ test("detects evidence reused across work packages", () => {
   );
   assert.equal(analysis.summary.duplicateEvidenceCount, 1);
   assert.equal(analysis.summary.highRiskCount, 2);
+});
+
+test("does not raise overdue risk from an AI forecast before Cho approves the supplier baseline", () => {
+  const result = analyzeProductionTask(
+    {
+      progress_percent: 0,
+      expected_at: "2026-08-01T00:00:00.000Z",
+      evidence: [
+        plannedEvidence,
+        {
+          type: "supplier_plan",
+          version: 1,
+          starts_at: "2026-08-01T00:00:00.000Z",
+          expected_at: "2026-08-08T00:00:00.000Z"
+        },
+        { type: "ai_plan_review", version: 1, status: "ready_for_cho_review" }
+      ]
+    },
+    { now: "2026-08-10T00:00:00.000Z" }
+  );
+  assert.equal(result.riskLevel, "low");
+  assert.equal(result.productionPlan.hasApprovedBaseline, false);
+  assert.equal(result.controllerStatus, "awaiting_cho_plan_approval");
+});
+
+test("validates a complete supplier factory schedule for Cho review", () => {
+  const tasks = [
+    { id: "task-material", process_name: "material_procurement" },
+    { id: "task-frame", process_name: "frame_production" }
+  ];
+  const review = validateSupplierProductionPlan({
+    tasks,
+    planTasks: [
+      {
+        productionUpdateId: "task-material",
+        startsAt: "2026-08-11T00:00:00.000Z",
+        expectedAt: "2026-08-14T00:00:00.000Z",
+        materialReadyAt: "2026-08-10T00:00:00.000Z",
+        capacitySlot: "Line A",
+        updateFrequency: "daily"
+      },
+      {
+        productionUpdateId: "task-frame",
+        startsAt: "2026-08-14T00:00:00.000Z",
+        expectedAt: "2026-08-20T00:00:00.000Z",
+        capacitySlot: "Line B",
+        updateFrequency: "twice_weekly"
+      }
+    ],
+    project: { desired_delivery_date: "2026-09-10T00:00:00.000Z" },
+    quote: { lead_time_days: 20 },
+    version: 1
+  });
+  assert.equal(review.status, "ready_for_cho_review");
+  assert.equal(review.finalCompletion, "2026-08-20T00:00:00.000Z");
+  assert.equal(review.issues.length, 0);
+});
+
+test("requires missing dates and a reason for revised supplier schedules", () => {
+  const review = validateSupplierProductionPlan({
+    tasks: [{ id: "task-material", process_name: "material_procurement" }],
+    planTasks: [{ productionUpdateId: "task-material", capacitySlot: "Line A", updateFrequency: "daily" }],
+    project: { desired_delivery_date: "2026-09-10T00:00:00.000Z" },
+    version: 2
+  });
+  assert.equal(review.status, "changes_required");
+  assert.ok(review.issues.some((issue) => issue.code === "missing_start"));
+  assert.ok(review.issues.some((issue) => issue.code === "revision_reason_missing"));
+});
+
+test("keeps a prior approved baseline active while a validated revision awaits Cho", () => {
+  const tasks = ["task-1", "task-2"].map((id) => ({
+    id,
+    evidence: [
+      ...approvedPlanEvidence,
+      {
+        type: "supplier_plan",
+        version: 2,
+        starts_at: "2026-08-15T00:00:00.000Z",
+        expected_at: "2026-08-25T00:00:00.000Z"
+      },
+      { type: "ai_plan_review", version: 2, status: "ready_for_cho_review" }
+    ]
+  }));
+  assert.deepEqual(productionPlanState(tasks), {
+    status: "revision_pending_cho",
+    version: 2,
+    approvedVersion: 1
+  });
 });

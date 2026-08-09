@@ -139,6 +139,9 @@ function buildProduction({ items, selectedQuote, controlQuote, supplier, leadDay
   return {
     controlQuoteId: controlQuote?.id || null,
     supplierName: controlQuote?.supplier_name || supplier?.name || "Awaiting Cho selection",
+    scheduleAuthority: "supplier_commitment_required",
+    forecastDisclaimer:
+      "AI dates are planning forecasts only. The supplier must submit the real factory schedule and Cho must approve it before any date becomes an active production baseline.",
     leadTimeDays: leadDays,
     plannedStart: startDate.toISOString(),
     plannedCompletion: plannedCompletion.toISOString(),

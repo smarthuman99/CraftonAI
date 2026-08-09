@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { callWorkflowAi } from "./workflowAiClient";
+import SupplierProductionPlanForm from "./SupplierProductionPlanForm";
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const ACCEPTED_FILES = ".jpg,.jpeg,.png,.webp,.pdf,.xlsx,.xls,.csv,.docx";
@@ -16,6 +17,16 @@ const statusLabel = (value, zh) => {
     intervention_required: ["Intervention required", "需要立即处理"],
     attention_required: ["Attention required", "需要关注"],
     monitoring: ["AI monitoring", "AI 监控中"],
+    awaiting_framework: ["Awaiting work packages", "等待工序框架"],
+    awaiting_supplier_plan: ["Factory schedule required", "等待工厂排产"],
+    changes_required: ["Schedule changes required", "排产需要修改"],
+    ai_review: ["AI schedule validation", "AI 排产校验中"],
+    awaiting_cho_approval: ["Schedule awaiting Cho", "排产等待 Cho 批准"],
+    revision_pending_cho: ["Revision awaiting Cho", "改期等待 Cho 批准"],
+    plan_revision_required: ["Schedule changes required", "排产需要修改"],
+    plan_revision_pending_cho: ["Revision awaiting Cho", "改期等待 Cho 批准"],
+    awaiting_cho_plan_approval: ["Schedule awaiting Cho", "排产等待 Cho 批准"],
+    plan_approved: ["Approved baseline", "已批准正式基准"],
     awaiting_production_plan: ["Awaiting production plan", "等待生产计划"],
     ready_for_cho_review: ["Ready for Cho review", "等待 Cho 审核"]
   };
@@ -286,6 +297,15 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
               </details>
             )}
 
+            {project.tasks.length > 0 && (
+              <SupplierProductionPlanForm
+                project={project}
+                lang={lang}
+                supabaseClient={supabaseClient}
+                onSubmitted={loadWorkspace}
+              />
+            )}
+
             {!project.tasks.length ? (
               <div className="supplier-portal-empty compact">
                 {t("Crafton is preparing the production work packages.", "Crafton 正在准备生产工序任务。")}
@@ -311,7 +331,18 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
                       </div>
                       <div className="supplier-task-meta">
                         <span>
-                          {t("Due", "截止时间")}: <strong>{dateTime(task.expected_at, zh)}</strong>
+                          {task.analysis?.productionPlan?.hasApprovedBaseline
+                            ? t("Approved due", "已批准截止时间")
+                            : t("Proposed due", "工厂建议完成时间")}
+                          :{" "}
+                          <strong>
+                            {dateTime(
+                              task.analysis?.productionPlan?.hasApprovedBaseline
+                                ? task.expected_at
+                                : task.analysis?.productionPlan?.latest?.expected_at,
+                              zh
+                            )}
+                          </strong>
                         </span>
                         <span>
                           {t("Evidence", "证据")}: <strong>{task.analysis?.evidenceCoveragePercent || 0}%</strong>
@@ -351,8 +382,15 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
                           ))}
                       </div>
                     </div>
-                    <button type="button" className="supplier-task-upload" onClick={() => openEvidenceForm(task)}>
-                      {t("Report progress", "上报进度及证据")}
+                    <button
+                      type="button"
+                      className="supplier-task-upload"
+                      disabled={!task.analysis?.productionPlan?.hasApprovedBaseline}
+                      onClick={() => openEvidenceForm(task)}
+                    >
+                      {task.analysis?.productionPlan?.hasApprovedBaseline
+                        ? t("Report progress", "上报进度及证据")
+                        : t("Awaiting schedule approval", "等待排产批准")}
                     </button>
                   </article>
                 ))}

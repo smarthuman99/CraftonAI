@@ -11,10 +11,12 @@ import { createQuoteAnalysis } from "./lib/quoteAnalyzer.mjs";
 import { createOperationsPlan } from "./lib/operationsAutomation.mjs";
 import {
   analyzeProductionProject,
+  approveSupplierProductionPlan,
   createSupplierPortalAccount,
   loadSupplierProductionWorkspace,
   monitorActiveProduction,
-  submitSupplierProductionEvidence
+  submitSupplierProductionEvidence,
+  submitSupplierProductionPlan
 } from "./lib/supplierProductionPortal.mjs";
 import { loadOperationsContext, loadQuoteAnalysisContext } from "./lib/workflowContext.mjs";
 
@@ -99,6 +101,12 @@ const server = http.createServer(async (req, res) => {
       } else if (body.action === "submit_supplier_production_evidence") {
         const { supabase, user } = await requireAuthenticatedUser(req);
         result = await submitSupplierProductionEvidence({ supabase, user, body });
+      } else if (body.action === "submit_supplier_production_plan") {
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        result = await submitSupplierProductionPlan({ supabase, user, body });
+      } else if (body.action === "approve_supplier_production_plan") {
+        const { supabase, user } = await requireCraftonStaff(req);
+        result = await approveSupplierProductionPlan({ supabase, user, body });
       } else if (body.action === "analyze_production_progress") {
         const { supabase } = await requireCraftonStaff(req);
         result = await analyzeProductionProject({ supabase, projectId: body.projectId });
