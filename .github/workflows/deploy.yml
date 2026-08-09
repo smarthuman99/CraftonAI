@@ -94,9 +94,7 @@ jobs:
               esac
 
               asset="$(grep -o "assets/index-[^\"[:space:]]*\.js" "$index_file" 2>/dev/null | head -n 1 || true)"
-              if grep -Eq 'src="/assets/index-[^"]+\.js"' "$index_file" 2>/dev/null &&
-                [ -n "$asset" ] &&
-                { grep -qi "crafton" "$index_file" 2>/dev/null || grep -qi "crafton" "$dir/$asset" 2>/dev/null; }; then
+              if [ -n "$asset" ] && { grep -qi "crafton" "$index_file" 2>/dev/null || grep -qi "crafton" "$dir/$asset" 2>/dev/null; }; then
                 case " $targets " in
                   *" $dir "*) ;;
                   *) targets="$targets $dir" ;;
