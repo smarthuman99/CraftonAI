@@ -801,10 +801,6 @@ export async function submitSupplierProductionEvidence({ supabase, user, body = 
     "active supplier assignment"
   );
   if (!selectedQuote) throw httpError(403, "This supplier is no longer assigned to the order.");
-  if (!analyzeProductionTask(task).productionPlan.hasApprovedBaseline) {
-    throw httpError(409, "Cho must approve the factory production plan before progress evidence can be reported.");
-  }
-
   const file = body.file || {};
   const bucket = clean(file.bucket);
   const storagePath = clean(file.path);

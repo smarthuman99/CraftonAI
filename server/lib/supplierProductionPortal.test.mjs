@@ -139,6 +139,29 @@ test("does not raise overdue risk from an AI forecast before Cho approves the su
   assert.equal(result.controllerStatus, "awaiting_cho_plan_approval");
 });
 
+test("accepts and measures supplier photo evidence before the production baseline is approved", () => {
+  const result = analyzeProductionTask(
+    {
+      progress_percent: 35,
+      expected_at: "2026-08-01T00:00:00.000Z",
+      evidence: [
+        plannedEvidence,
+        {
+          type: "supplier_upload",
+          requirement: "Dated frame photos",
+          sha256: "early-photo",
+          uploaded_at: "2026-08-09T00:00:00.000Z"
+        }
+      ]
+    },
+    { now: "2026-08-10T00:00:00.000Z" }
+  );
+  assert.equal(result.evidenceCoveragePercent, 50);
+  assert.equal(result.supplierReportedProgressPercent, 35);
+  assert.equal(result.riskLevel, "low");
+  assert.equal(result.controllerStatus, "awaiting_supplier_plan");
+});
+
 test("validates a complete supplier factory schedule for Cho review", () => {
   const tasks = [
     { id: "task-material", process_name: "material_procurement" },

@@ -367,6 +367,14 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
                       {task.analysis?.reasons?.length > 0 && (
                         <div className="supplier-task-alert">{task.analysis.reasons.join(" ")}</div>
                       )}
+                      {!task.analysis?.productionPlan?.hasApprovedBaseline && (
+                        <div className="supplier-task-plan-note">
+                          {t(
+                            "You can upload progress photos now. Until Cho approves the factory schedule, these reports are saved without overdue judgement.",
+                            "现在可以先上传生产进度照片。Cho 批准工厂排产之前，系统会保存照片和进度，但不会按建议日期判断逾期。"
+                          )}
+                        </div>
+                      )}
                       <div className="supplier-evidence-history">
                         {(task.evidence || [])
                           .filter((entry) => entry.type === "supplier_upload")
@@ -382,15 +390,8 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
                           ))}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      className="supplier-task-upload"
-                      disabled={!task.analysis?.productionPlan?.hasApprovedBaseline}
-                      onClick={() => openEvidenceForm(task)}
-                    >
-                      {task.analysis?.productionPlan?.hasApprovedBaseline
-                        ? t("Report progress", "上报进度及证据")
-                        : t("Awaiting schedule approval", "等待排产批准")}
+                    <button type="button" className="supplier-task-upload" onClick={() => openEvidenceForm(task)}>
+                      {t("Upload photos / report progress", "上传进度照片 / 上报进度")}
                     </button>
                   </article>
                 ))}

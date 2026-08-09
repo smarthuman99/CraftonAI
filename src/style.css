@@ -8734,6 +8734,16 @@ select:focus,
   font-size: 0.66rem;
 }
 
+.supplier-task-plan-note {
+  margin-top: 0.65rem;
+  padding: 0.5rem 0.6rem;
+  border-left: 3px solid #806e56;
+  background: rgba(128, 110, 86, 0.08);
+  color: #64594d;
+  font-size: 0.66rem;
+  line-height: 1.5;
+}
+
 .supplier-evidence-history {
   display: flex;
   gap: 0.4rem 0.8rem;
