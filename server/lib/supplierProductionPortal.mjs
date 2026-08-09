@@ -34,12 +34,13 @@ export function latestEvidenceEntry(task = {}, type) {
 }
 
 export function productionPlanState(tasks = []) {
-  if (!tasks.length) return { status: "awaiting_framework", version: 0, approvedVersion: 0 };
-  const latestPlans = tasks.map((task) => latestEvidenceEntry(task, "supplier_plan"));
+  const frameworkTasks = productionFrameworkTasks(tasks);
+  if (!frameworkTasks.length) return { status: "awaiting_framework", version: 0, approvedVersion: 0 };
+  const latestPlans = frameworkTasks.map((task) => latestEvidenceEntry(task, "supplier_plan"));
   if (latestPlans.some((plan) => !plan)) return { status: "awaiting_supplier_plan", version: 0, approvedVersion: 0 };
   const version = Math.max(...latestPlans.map((plan) => Number(plan.version || 1)));
-  const reviews = tasks.map((task) => latestEvidenceEntry(task, "ai_plan_review"));
-  const approvals = tasks.map((task) => latestEvidenceEntry(task, "cho_plan_approval"));
+  const reviews = frameworkTasks.map((task) => latestEvidenceEntry(task, "ai_plan_review"));
+  const approvals = frameworkTasks.map((task) => latestEvidenceEntry(task, "cho_plan_approval"));
   const approvedVersion = Math.min(...approvals.map((approval) => Number(approval?.version || 0)));
   if (reviews.some((review) => Number(review?.version || 0) === version && review.status === "changes_required")) {
     return { status: "changes_required", version, approvedVersion };
@@ -62,6 +63,7 @@ export function validateSupplierProductionPlan({
   version = 1,
   changeReason = ""
 }) {
+  tasks = productionFrameworkTasks(tasks);
   const rows = new Map(planTasks.map((row) => [clean(row.productionUpdateId), row]));
   const issues = [];
   const normalizedTasks = sortProductionTasks(tasks).map((task, index) => {
@@ -551,7 +553,7 @@ export async function loadSupplierProductionWorkspace({ supabase, user }) {
       "approved order specifications"
     )
   ]);
-  const analysis = buildProjectProductionAnalysis(tasks);
+  const analysis = buildProjectProductionAnalysis(productionFrameworkTasks(tasks));
   const tasksWithLinks = await Promise.all(analysis.tasks.map((task) => attachEvidenceLinks(supabase, task)));
   const projectsSafe = projects.map((project) => {
     const projectTasks = tasksWithLinks.filter((task) => task.project_id === project.id);
@@ -582,7 +584,7 @@ export async function submitSupplierProductionPlan({ supabase, user, body = {} }
   if (!identity) throw httpError(403, "This account is not linked to a supplier factory.");
   const projectId = clean(body.projectId);
   if (!projectId) throw httpError(400, "A project ID is required.");
-  const [project, selectedQuote, tasks, supplier] = await Promise.all([
+  const [project, selectedQuote, loadedTasks, supplier] = await Promise.all([
     single(supabase.from("projects").select("*").eq("id", projectId).maybeSingle(), "project"),
     single(
       supabase
@@ -606,6 +608,7 @@ export async function submitSupplierProductionPlan({ supabase, user, body = {} }
   ]);
   if (!project) throw httpError(404, "Project not found.");
   if (!selectedQuote) throw httpError(403, "This supplier is no longer assigned to the order.");
+  const tasks = productionFrameworkTasks(loadedTasks);
   if (!tasks.length) throw httpError(409, "Crafton has not released the production work-package framework yet.");
 
   const currentVersion = Math.max(
@@ -693,10 +696,25 @@ export async function submitSupplierProductionPlan({ supabase, user, body = {} }
 export async function approveSupplierProductionPlan({ supabase, user, body = {} }) {
   const projectId = clean(body.projectId);
   if (!projectId) throw httpError(400, "A project ID is required.");
-  const tasks = await many(
-    supabase.from("production_updates").select("*").eq("project_id", projectId),
+  const selectedQuote = await single(
+    supabase
+      .from("supplier_quotes")
+      .select("supplier_id")
+      .eq("project_id", projectId)
+      .eq("status", "selected")
+      .maybeSingle(),
+    "active supplier assignment"
+  );
+  if (!selectedQuote?.supplier_id) throw httpError(409, "No supplier is currently approved for production.");
+  const loadedTasks = await many(
+    supabase
+      .from("production_updates")
+      .select("*")
+      .eq("project_id", projectId)
+      .eq("supplier_id", selectedQuote.supplier_id),
     "production work packages"
   );
+  const tasks = productionFrameworkTasks(loadedTasks);
   if (!tasks.length) throw httpError(409, "No production work-package framework has been released.");
   const state = productionPlanState(tasks);
   if (!["awaiting_cho_approval", "revision_pending_cho"].includes(state.status)) {
@@ -1069,6 +1087,16 @@ function sortProductionTasks(tasks = []) {
     const normalizedB = bIndex < 0 ? PROCESS_ORDER.length : bIndex;
     return (
       normalizedA - normalizedB || String(a.created_at || a.id || "").localeCompare(String(b.created_at || b.id || ""))
+    );
+  });
+}
+
+function productionFrameworkTasks(tasks = []) {
+  return tasks.filter((task) => {
+    const evidence = Array.isArray(task?.evidence) ? task.evidence : [];
+    return (
+      evidence.some((entry) => ["ai_plan", "supplier_plan"].includes(entry?.type)) ||
+      PROCESS_ORDER.includes(clean(task?.process_name))
     );
   });
 }

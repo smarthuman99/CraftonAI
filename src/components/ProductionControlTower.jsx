@@ -4,6 +4,15 @@ import { callWorkflowAi } from "./workflowAiClient";
 const formatDate = (value, zh) =>
   value ? new Date(value).toLocaleString(zh ? "zh-CN" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "-";
 
+const PRODUCTION_PROCESSES = [
+  "material_procurement",
+  "frame_production",
+  "upholstery",
+  "finishing",
+  "assembly",
+  "pre_shipment_qc"
+];
+
 const label = (value, zh) => {
   const labels = {
     low: ["Monitoring", "正常监控"],
@@ -48,16 +57,23 @@ function latestEntry(task, type) {
 }
 
 function scheduleDashboard(tasks) {
-  if (!tasks.length) {
+  const frameworkTasks = tasks.filter((task) => {
+    const entries = Array.isArray(task?.evidence) ? task.evidence : [];
+    return (
+      entries.some((entry) => ["ai_plan", "supplier_plan"].includes(entry?.type)) ||
+      PRODUCTION_PROCESSES.includes(task?.process_name)
+    );
+  });
+  if (!frameworkTasks.length) {
     return { status: "awaiting_framework", version: 0, approvedVersion: 0, issues: [], canApprove: false };
   }
-  const plans = tasks.map((task) => latestEntry(task, "supplier_plan"));
+  const plans = frameworkTasks.map((task) => latestEntry(task, "supplier_plan"));
   if (plans.some((entry) => !entry)) {
     return { status: "awaiting_supplier_plan", version: 0, approvedVersion: 0, issues: [], canApprove: false };
   }
   const version = Math.max(...plans.map((entry) => Number(entry.version || 0)));
-  const reviews = tasks.map((task) => latestEntry(task, "ai_plan_review"));
-  const approvals = tasks.map((task) => latestEntry(task, "cho_plan_approval"));
+  const reviews = frameworkTasks.map((task) => latestEntry(task, "ai_plan_review"));
+  const approvals = frameworkTasks.map((task) => latestEntry(task, "cho_plan_approval"));
   const approvedVersion = Math.min(...approvals.map((entry) => Number(entry?.version || 0)));
   const issues = reviews
     .filter((entry) => Number(entry?.version || 0) === version)
@@ -87,7 +103,7 @@ function scheduleDashboard(tasks) {
     .filter(Boolean)
     .sort()
     .reverse()[0];
-  const approvedCompletion = tasks
+  const approvedCompletion = frameworkTasks
     .map((task) => task.expected_at)
     .filter(Boolean)
     .sort()
@@ -126,15 +142,17 @@ export default function ProductionControlTower({
   const [credentials, setCredentials] = useState(null);
 
   const dashboard = useMemo(() => {
-    const tasks = productionUpdates.map((task) => {
-      const hasApprovedBaseline = Boolean(latestEntry(task, "cho_plan_approval"));
-      return {
-        ...task,
-        evidenceSummary: taskEvidence(task),
-        hasApprovedBaseline,
-        activeRiskLevel: hasApprovedBaseline ? task.risk_level || "low" : "low"
-      };
-    });
+    const tasks = productionUpdates
+      .filter((task) => !selectedSupplier || task.supplier_id === selectedSupplier.id)
+      .map((task) => {
+        const hasApprovedBaseline = Boolean(latestEntry(task, "cho_plan_approval"));
+        return {
+          ...task,
+          evidenceSummary: taskEvidence(task),
+          hasApprovedBaseline,
+          activeRiskLevel: hasApprovedBaseline ? task.risk_level || "low" : "low"
+        };
+      });
     const schedule = scheduleDashboard(tasks);
     const progress = tasks.length
       ? Math.round(tasks.reduce((sum, task) => sum + Number(task.progress_percent || 0), 0) / tasks.length)
@@ -159,7 +177,7 @@ export default function ProductionControlTower({
       ).length,
       schedule
     };
-  }, [productionUpdates]);
+  }, [productionUpdates, selectedSupplier]);
 
   async function createAccess() {
     if (!selectedSupplier) return;

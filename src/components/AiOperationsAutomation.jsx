@@ -148,7 +148,11 @@ export default function AiOperationsAutomation({
           "Cho 必须先在 S08 审批供应商，才能下达生产计划。"
         )
       );
-    const existing = new Set(productionUpdates.map((row) => row.process_name));
+    const existing = new Set(
+      productionUpdates
+        .filter((row) => row.supplier_id === next.selectedSupplier.supplierId)
+        .map((row) => row.process_name)
+    );
     const rows = next.production.workPackages
       .filter((item) => !existing.has(item.code))
       .map((item) => ({

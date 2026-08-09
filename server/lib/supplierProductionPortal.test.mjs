@@ -204,3 +204,21 @@ test("keeps a prior approved baseline active while a validated revision awaits C
     approvedVersion: 1
   });
 });
+
+test("ignores legacy manual production notes when determining the supplier schedule gate", () => {
+  const frameworkTask = {
+    id: "task-frame",
+    process_name: "frame_production",
+    evidence: [plannedEvidence, ...approvedPlanEvidence]
+  };
+  const legacyManualNote = {
+    id: "legacy-note",
+    process_name: "Factory follow-up note",
+    evidence: [{ type: "manual_override", created_at: "2026-08-09T00:00:00.000Z" }]
+  };
+  assert.deepEqual(productionPlanState([frameworkTask, legacyManualNote]), {
+    status: "approved",
+    version: 1,
+    approvedVersion: 1
+  });
+});
