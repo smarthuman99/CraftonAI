@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { buildRfqWorkbook } from "./rfqExcel";
+import { buildPrintableRfqHtml } from "./rfqPrint";
 
 const AI_API_URL = import.meta.env.VITE_AI_SUPPORT_API_URL || "/api/ai-support-chat";
 
@@ -16,6 +18,13 @@ function displayDate(value, lang) {
 
 async function sha256(value) {
   const digest = await window.crypto.subtle.digest("SHA-256", new window.TextEncoder().encode(JSON.stringify(value)));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function sha256Buffer(value) {
+  const digest = await window.crypto.subtle.digest("SHA-256", value);
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
@@ -41,7 +50,6 @@ export default function AiRfqWorkspace({
   const [status, setStatus] = useState("draft");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
-  const [dispatchService, setDispatchService] = useState(null);
   const [attachmentUrls, setAttachmentUrls] = useState({});
   const [form, setForm] = useState({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: [] });
   const autoUpgradeRef = useRef("");
@@ -100,7 +108,10 @@ export default function AiRfqWorkspace({
         path: file.storage_path
       })),
       ...currentProjectFiles
-        .filter((file) => !["rfq_document", "rfq_dispatch"].includes(file.file_group))
+        .filter(
+          (file) =>
+            !["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(file.file_group)
+        )
         .map((file) => ({
           id: file.id,
           name: file.file_name,
@@ -120,7 +131,6 @@ export default function AiRfqWorkspace({
     () => currentProjectFiles.filter((file) => file.file_group === "rfq_document"),
     [currentProjectFiles]
   );
-  const selectedSuppliers = suppliers.filter((supplier) => form.supplierIds.includes(supplier.id));
   const highWarnings = (document?.missingInformation || []).filter((warning) => warning.severity === "high").length;
 
   useEffect(() => {
@@ -131,7 +141,6 @@ export default function AiRfqWorkspace({
     setActiveBatchId(null);
     setStatus("draft");
     setMessage("");
-    setDispatchService(null);
     setAttachmentUrls({});
     autoUpgradeRef.current = "";
     setForm({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: suggestedSupplierIds });
@@ -203,20 +212,6 @@ export default function AiRfqWorkspace({
     if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
     return payload;
   }
-
-  useEffect(() => {
-    let active = true;
-    post(AI_API_URL, { action: "rfq_dispatch_status" })
-      .then((result) => {
-        if (active) setDispatchService(result);
-      })
-      .catch(() => {
-        if (active) setDispatchService({ configured: false, unavailable: true });
-      });
-    return () => {
-      active = false;
-    };
-  }, [project.id]);
 
   function context() {
     return {
@@ -427,98 +422,12 @@ export default function AiRfqWorkspace({
         approval_type: "rfq_document_approval",
         status: "approved",
         reviewer_name: "Cho",
-        notes: `${batch.rfq_code} approved for supplier dispatch.`,
+        notes: `${batch.rfq_code} approved for supplier Excel export.`,
         reviewed_at: new Date().toISOString(),
         payload: { rfq_batch_id: batch.id, warning_count: document.missingInformation?.length || 0 }
       });
       if (error) throw error;
-      setMessage(t("RFQ approved and ready for supplier dispatch.", "RFQ 已批准，可以发送给供应商。"));
-      await onChanged?.();
-    } catch (error) {
-      setMessage(error.message || String(error));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function dispatch() {
-    if (!activeBatchId || status !== "approved") {
-      setMessage(t("Approve and save this RFQ before dispatch.", "请先保存并批准这份 RFQ，再发送给供应商。"));
-      return;
-    }
-    if (!dispatchService?.configured) {
-      setMessage(
-        t(
-          "Email dispatch is unavailable until RESEND_API_KEY and RFQ_FROM_EMAIL are configured on the VPS.",
-          "VPS 尚未配置 RESEND_API_KEY 与 RFQ_FROM_EMAIL，当前不能实际发送邮件。"
-        )
-      );
-      return;
-    }
-    const withoutEmail = selectedSuppliers.filter((supplier) => !(supplier.contact_email || supplier.email));
-    if (!selectedSuppliers.length || withoutEmail.length) {
-      setMessage(
-        withoutEmail.length
-          ? t(
-              `Add email addresses for: ${withoutEmail.map((row) => row.name).join(", ")}.`,
-              `请先补充以下供应商的邮箱：${withoutEmail.map((row) => row.name).join("、")}。`
-            )
-          : t("Select at least one supplier.", "请至少选择一家供应商。")
-      );
-      return;
-    }
-
-    setBusy("send");
-    setMessage("");
-    try {
-      const batch = projectBatches.find((row) => row.id === activeBatchId) || { id: activeBatchId, rfq_code: "RFQ" };
-      const receipt = await post(AI_API_URL, {
-        action: "dispatch_rfq",
-        projectId: project.id,
-        rfqCode: batch.rfq_code,
-        document,
-        suppliers: selectedSuppliers.map((supplier) => ({
-          id: supplier.id,
-          name: supplier.name,
-          email: supplier.contact_email || supplier.email
-        }))
-      });
-      const { error } = await supabaseClient
-        .from("rfq_batches")
-        .update({
-          status: "sent",
-          sent_at: receipt.sentAt,
-          supplier_ids: form.supplierIds,
-          supplier_count: form.supplierIds.length,
-          invited_count: receipt.recipients.length,
-          payload: { ...(batch.payload || {}), document, generation, status: "sent", dispatch: receipt }
-        })
-        .eq("id", activeBatchId);
-      if (error) throw error;
-      const hash = await sha256(receipt);
-      const { error: receiptError } = await supabaseClient.from("project_files").insert({
-        project_id: project.id,
-        stage_id: "S06",
-        file_group: "rfq_dispatch",
-        file_name: `${batch.rfq_code}-dispatch.json`,
-        sha256: hash,
-        audit_hash: hash,
-        payload: { rfq_batch_id: activeBatchId, ...receipt }
-      });
-      if (receiptError) throw receiptError;
-      await event(
-        "rfq_dispatched",
-        `${batch.rfq_code} 已发送给 ${receipt.recipients.length} 家供应商。`,
-        `${batch.rfq_code} sent to ${receipt.recipients.length} suppliers.`,
-        receipt
-      );
-      setStatus("sent");
-      setMessage(
-        t(
-          `RFQ sent to ${receipt.recipients.length} suppliers; the receipt is saved.`,
-          `RFQ 已发送给 ${receipt.recipients.length} 家供应商，发送回执已保存。`
-        )
-      );
+      setMessage(t("RFQ approved and ready for Excel export.", "RFQ 已批准，可以下载供应商 Excel 询价文件。"));
       await onChanged?.();
     } catch (error) {
       setMessage(error.message || String(error));
@@ -572,62 +481,145 @@ export default function AiRfqWorkspace({
   }
 
   function printRfq() {
-    const popup = document && window.open("", "_blank", "noopener,noreferrer");
+    if (!document) return;
+
+    const popup = window.open("", "_blank");
     if (!popup) {
       setMessage(t("Allow pop-ups to open the printable RFQ.", "请允许浏览器弹出窗口以打开可打印 RFQ。"));
       return;
     }
-    popup.document.write(
-      printableHtml(
+
+    try {
+      const batch = projectBatches.find((row) => row.id === activeBatchId) || null;
+      const html = buildPrintableRfqHtml({
         document,
         form,
-        projectBatches.find((row) => row.id === activeBatchId)
-      )
-    );
-    popup.document.close();
+        batch,
+        project,
+        attachmentUrls,
+        lang,
+        autoPrint: true
+      });
+
+      popup.opener = null;
+      popup.document.open();
+      popup.document.write(html);
+      popup.document.close();
+      popup.focus();
+    } catch (error) {
+      popup.close();
+      setMessage(error.message || String(error));
+    }
   }
 
-  function downloadResponseTemplate() {
+  async function downloadRfqExcel() {
     if (!document) return;
-    const headings = [
-      "RFQ code",
-      "Item no.",
-      "Item / 品项",
-      "Quantity / 数量",
-      "Unit / 单位",
-      "Dimensions / 尺寸",
-      "Material / 材质",
-      "Supplier unit price / 供应商单价",
-      "Supplier total / 供应商总价",
-      "MOQ",
-      "Lead time days / 交期天数",
-      "Material confirmed / 材质确认",
-      "Deviation / 偏差说明"
-    ];
-    const csvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
     const batch = projectBatches.find((row) => row.id === activeBatchId);
-    const rows = document.items.map((item) => [
-      batch?.rfq_code || "DRAFT",
-      item.itemNo,
-      [item.nameEn, item.nameCn].filter(Boolean).join(" / "),
-      item.quantity,
-      item.unit,
-      [item.dimensions, item.tolerance].filter(Boolean).join(" / "),
-      [item.materialEn, item.materialCn].filter(Boolean).join(" / "),
-      "",
-      "",
-      "",
-      "",
-      "",
-      ""
-    ]);
-    const csv = `\uFEFF${[headings, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
-    const url = URL.createObjectURL(new window.Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = window.document.createElement("a");
-    link.href = url;
-    link.download = `${batch?.rfq_code || "RFQ"}-supplier-response.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    if (!batch || !["approved", "sent"].includes(status)) {
+      setMessage(
+        t(
+          "Save and approve the RFQ before downloading its supplier Excel file.",
+          "请先保存并批准 RFQ，再下载供应商 Excel 询价文件。"
+        )
+      );
+      return;
+    }
+    if (!form.supplierIds.length) {
+      setMessage(t("Select at least one supplier before export.", "请先选择至少一家询价供应商。"));
+      return;
+    }
+
+    setBusy("excel");
+    setMessage("");
+    try {
+      const exported = await buildRfqWorkbook({
+        project,
+        batch,
+        document,
+        form,
+        references: (document.attachments || []).map((file) => ({
+          name: file.name,
+          note: file.note,
+          url: attachmentUrls[file.id || file.name] || file.url || ""
+        }))
+      });
+      const hash = await sha256Buffer(exported.buffer);
+      const { data: authData, error: authError } = await supabaseClient.auth.getUser();
+      if (authError || !authData?.user?.id) throw authError || new Error("Staff session unavailable.");
+      const storagePath = `${authData.user.id}/rfq-exports/${project.id}/${Date.now()}-${exported.fileName}`;
+      const exportFile = new window.File([exported.buffer], exported.fileName, { type: exported.mimeType });
+      const { error: uploadError } = await supabaseClient.storage
+        .from("intake-files")
+        .upload(storagePath, exportFile, { contentType: exported.mimeType, upsert: false });
+      if (uploadError) throw uploadError;
+
+      const exportedAt = new Date().toISOString();
+      const { error: fileError } = await supabaseClient.from("project_files").insert({
+        project_id: project.id,
+        stage_id: "S06",
+        file_group: "rfq_excel",
+        file_name: exported.fileName,
+        file_path: storagePath,
+        sha256: hash,
+        audit_hash: hash,
+        payload: {
+          ...exported.metadata,
+          rfq_batch_id: batch.id,
+          rfq_code: batch.rfq_code,
+          supplier_ids: form.supplierIds,
+          storage_bucket: "intake-files",
+          storage_path: storagePath,
+          mime_type: exported.mimeType,
+          exported_at: exportedAt
+        }
+      });
+      if (fileError) throw fileError;
+
+      const { error: batchError } = await supabaseClient
+        .from("rfq_batches")
+        .update({
+          payload: {
+            ...(batch.payload || {}),
+            document,
+            generation,
+            manual_excel: {
+              exported_at: exportedAt,
+              file_name: exported.fileName,
+              sha256: hash,
+              supplier_ids: form.supplierIds
+            }
+          }
+        })
+        .eq("id", batch.id);
+      if (batchError) throw batchError;
+
+      await event(
+        "rfq_excel_exported",
+        `${batch.rfq_code} Excel 询价文件已生成并下载。`,
+        `${batch.rfq_code} supplier Excel RFQ generated and downloaded.`,
+        { rfq_batch_id: batch.id, file_name: exported.fileName, sha256: hash, supplier_ids: form.supplierIds }
+      );
+
+      const url = URL.createObjectURL(exportFile);
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download = exported.fileName;
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage(
+        t(
+          "Excel RFQ downloaded and archived. Send the same file from your own mailbox, then import each supplier return below.",
+          "Excel RFQ 已下载并归档。请用自己的邮箱发送；收到回复后，在下方对应供应商位置导入回传文件。"
+        )
+      );
+      await onChanged?.();
+    } catch (error) {
+      setMessage(error.message || String(error));
+    } finally {
+      setBusy("");
+    }
   }
 
   const statusCn = { draft: "草稿", approved: "已批准", sent: "已发送" };
@@ -653,8 +645,8 @@ export default function AiRfqWorkspace({
             <option>HKD</option>
           </select>
         </label>
-        <label className="wide">
-          <span>{t("Invite suppliers", "邀请供应商")}</span>
+        <div className="wide ai-rfq-suppliers-field">
+          <span>{t("Suppliers to compare", "本轮参与比价的供应商")}</span>
           <div className="admin-ops-checks">
             {suppliers.map((supplier) => (
               <label key={supplier.id}>
@@ -675,7 +667,7 @@ export default function AiRfqWorkspace({
               </label>
             ))}
           </div>
-        </label>
+        </div>
         <label className="wide">
           <span>{t("Internal sourcing notes", "内部询价备注")}</span>
           <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
@@ -697,26 +689,43 @@ export default function AiRfqWorkspace({
 
       {message && (
         <div
-          className={`admin-ops-notice ${/generated|saved|approved|sent|已生成|已保存|已批准|已发送/.test(message) ? "success" : "error"}`}
+          className={`admin-ops-notice ${/generated|saved|approved|downloaded|archived|已生成|已保存|已批准|已下载|已归档/.test(message) ? "success" : "error"}`}
         >
           {message}
         </div>
       )}
 
-      {dispatchService && !dispatchService.configured && (
-        <div className="admin-ops-notice error">
-          {t(
-            "Email sending is locked: configure RESEND_API_KEY and RFQ_FROM_EMAIL on the VPS. RFQ generation, approval, download and quote comparison remain available.",
-            "邮件发送暂未启用：请在 VPS 配置 RESEND_API_KEY 与 RFQ_FROM_EMAIL。询盘生成、批准、下载和比价功能仍可正常使用。"
-          )}
-        </div>
-      )}
+      <div className="manual-rfq-guide" aria-label={t("Manual RFQ workflow", "手动 RFQ 工作流程")}>
+        <article>
+          <b>01</b>
+          <span>
+            <strong>{t("Approve the RFQ", "批准询价内容")}</strong>
+            <small>{t("Confirm items, quantities and commercial terms.", "确认品项、数量与商务要求。")}</small>
+          </span>
+        </article>
+        <article>
+          <b>02</b>
+          <span>
+            <strong>{t("Download Excel", "下载 Excel")}</strong>
+            <small>{t("Send the same editable .xlsx from your mailbox.", "用自己的邮箱发送可填写的 .xlsx。")}</small>
+          </span>
+        </article>
+        <article>
+          <b>03</b>
+          <span>
+            <strong>{t("Import supplier returns", "录入供应商回传")}</strong>
+            <small>
+              {t("Match each returned file to its supplier below.", "在下方把每份回传文件归入对应供应商。")}
+            </small>
+          </span>
+        </article>
+      </div>
 
       {document && (
         <div className="ai-rfq-document">
           <div className="ai-rfq-document-toolbar">
             <div>
-              <strong>{t("RFQ document preview", "RFQ 询价文件预览")}</strong>
+              <strong>{t("RFQ Excel content preview", "RFQ Excel 内容预览")}</strong>
               <span>
                 {generation?.method === "ai"
                   ? t("AI generated from verified Supabase data", "AI 根据 Supabase 已核实资料生成")
@@ -725,11 +734,8 @@ export default function AiRfqWorkspace({
             </div>
             <div>
               <b data-status={status}>{zh ? statusCn[status] || status : status}</b>
-              <button type="button" onClick={printRfq}>
+              <button type="button" disabled={Boolean(busy)} onClick={printRfq}>
                 {t("Print / Save PDF", "打印 / 保存 PDF")}
-              </button>
-              <button type="button" onClick={downloadResponseTemplate}>
-                {t("Download supplier template", "下载供应商回填表")}
               </button>
               <button type="button" disabled={Boolean(busy)} onClick={save}>
                 {busy === "save" ? t("Saving...", "保存中...") : t("Save version", "保存版本")}
@@ -740,10 +746,12 @@ export default function AiRfqWorkspace({
               <button
                 className="btn-premium"
                 type="button"
-                disabled={Boolean(busy) || status !== "approved" || dispatchService?.configured !== true}
-                onClick={dispatch}
+                disabled={Boolean(busy) || !["approved", "sent"].includes(status)}
+                onClick={downloadRfqExcel}
               >
-                {busy === "send" ? t("Sending...", "发送中...") : t("Send to suppliers", "发送给供应商")}
+                {busy === "excel"
+                  ? t("Creating Excel...", "正在生成 Excel...")
+                  : t("Download RFQ Excel", "下载 RFQ Excel")}
               </button>
             </div>
           </div>
@@ -909,8 +917,8 @@ export default function AiRfqWorkspace({
           <strong>{t("RFQ history", "RFQ 历史记录")}</strong>
           <span>
             {t(
-              "Every version and dispatch receipt is retained in Supabase.",
-              "每个版本及发送回执都会保留在 Supabase。"
+              "Every approved version and generated Excel file is retained in Supabase.",
+              "每个批准版本及生成的 Excel 文件都会保留在 Supabase。"
             )}
           </span>
         </div>
@@ -960,24 +968,4 @@ export default function AiRfqWorkspace({
       </div>
     </div>
   );
-}
-
-function printableHtml(document, form, batch) {
-  const esc = (value) =>
-    String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;");
-  const rows = document.items
-    .map(
-      (item) =>
-        `<tr><td>${esc(item.itemNo)}</td><td><b>${esc(item.nameCn)}</b><br>${esc(item.nameEn)}</td><td>${esc(item.quantity)} ${esc(item.unit)}</td><td>${esc(item.dimensions)}<br>${esc(item.tolerance)}</td><td>${esc(item.materialCn)}<br>${esc(item.materialEn)}</td><td>${esc(item.finishColor)}<br>${esc(item.hardware)}</td><td>${esc(item.compliance)}<br>${esc(item.supplierNotes)}</td></tr>`
-    )
-    .join("");
-  const commercial = document.commercialRequirements
-    .map((row) => `<tr><th>${esc(row.labelCn)}<br>${esc(row.labelEn)}</th><td>${esc(row.value)}</td></tr>`)
-    .join("");
-  const files = document.attachments.map((file) => `<li><b>${esc(file.name)}</b> - ${esc(file.note)}</li>`).join("");
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(batch?.rfq_code || document.titleEn)}</title><style>@page{size:A4 landscape;margin:12mm}body{font:12px Arial;color:#2e2926}h1{font-size:22px;margin:8px 0}h2{font-size:14px;margin-top:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cfc8c3;padding:7px;text-align:left;vertical-align:top}th{background:#f3f1ef}.meta{display:flex;gap:25px;border-block:1px solid #999;padding:8px 0}.intro{display:grid;grid-template-columns:1fr 1fr;gap:20px}.commercial{width:55%}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print / Save PDF</button><p>THE CRAFTON · REQUEST FOR QUOTATION</p><h1>${esc(document.titleCn)}<br><small>${esc(document.titleEn)}</small></h1><div class="meta"><span><b>RFQ</b> ${esc(batch?.rfq_code || "DRAFT")}</span><span><b>Due</b> ${esc(form.dueAt)}</span><span><b>Currency</b> ${esc(form.currency)}</span></div><div class="intro"><p>${esc(document.introductionCn)}</p><p>${esc(document.introductionEn)}</p></div><table><thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Dimensions</th><th>Material</th><th>Finish / Hardware</th><th>Compliance / Notes</th></tr></thead><tbody>${rows}</tbody></table><h2>Commercial requirements / 商务要求</h2><table class="commercial">${commercial}</table><h2>Attachments / 附件</h2><ul>${files}</ul></body></html>`;
 }

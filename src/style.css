@@ -2059,6 +2059,11 @@ button.admin-order-card:hover {
   background: rgba(122, 135, 117, 0.07);
 }
 
+.admin-ops-quote-cards article.recommended:not(.selected) {
+  border-color: rgba(36, 91, 156, 0.45);
+  box-shadow: inset 0 3px 0 rgba(36, 91, 156, 0.72);
+}
+
 .admin-ops-quote-cards span,
 .admin-ops-quote-cards p {
   color: var(--text-muted);
@@ -2100,7 +2105,7 @@ button.admin-order-card:hover {
 .sourcing-flow-heading {
   padding: 1rem 1.1rem;
   border-bottom: 1px solid var(--glass-border);
-  background: linear-gradient(110deg, rgba(79, 52, 35, 0.07), rgba(122, 135, 117, 0.05));
+  background: #f6f1e7;
 }
 
 .sourcing-flow-heading span,
@@ -2254,6 +2259,126 @@ button.admin-order-card:hover {
   background: #fff;
 }
 
+.quote-return-import {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  border: 1px solid rgba(76, 53, 37, 0.3);
+  border-radius: 5px;
+  background: #fbf6ec;
+}
+
+.quote-return-import-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem;
+}
+
+.quote-return-import-heading > div > span,
+.quote-return-import-heading > div > strong,
+.quote-return-import-heading > div > small {
+  display: block;
+}
+
+.quote-return-import-heading > div > span {
+  margin-bottom: 0.28rem;
+  color: var(--accent-primary);
+  font: 700 0.62rem var(--font-tech);
+  letter-spacing: 0.1em;
+}
+
+.quote-return-import-heading > div > strong {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.quote-return-import-heading > div > small {
+  margin-top: 0.22rem;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.admin-ops-form .quote-return-import-heading > label {
+  position: relative;
+  display: inline-flex;
+  min-height: 42px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--accent-primary);
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: #fbf6ec;
+  cursor: pointer;
+  padding: 0 1rem;
+}
+
+.admin-ops-form .quote-return-import-heading > label.disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.admin-ops-form .quote-return-import-heading input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.admin-ops-form .quote-return-import-heading > label > span {
+  margin: 0;
+  color: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.quote-import-result {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.4fr) minmax(260px, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  border-top: 1px solid rgba(76, 53, 37, 0.16);
+  padding: 0.72rem 0.9rem;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.quote-import-result strong {
+  grid-column: 1;
+}
+
+.quote-import-result span {
+  grid-column: 2;
+}
+
+.quote-import-result small {
+  grid-column: 3;
+  color: inherit;
+  text-align: right;
+}
+
+.quote-import-result[data-status="ready"] {
+  border-left: 3px solid #53634f;
+  color: #53634f;
+}
+
+.quote-import-result[data-status="warning"] {
+  border-left: 3px solid #8f8064;
+  color: #6c604b;
+}
+
+.quote-import-result[data-status="error"] {
+  border-left: 3px solid #744b45;
+  color: #744b45;
+}
+
 .quote-line-editor > div:first-child {
   padding: 0.7rem 0.8rem;
   border-bottom: 1px solid var(--glass-border);
@@ -2360,6 +2485,32 @@ button.admin-order-card:hover {
   font-size: 0.76rem;
 }
 
+.ai-analysis-provenance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(88, 112, 91, 0.24);
+  background: rgba(88, 112, 91, 0.06);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.ai-analysis-provenance strong {
+  color: #405343;
+  white-space: nowrap;
+}
+
+.ai-analysis-provenance[data-method="ai"] {
+  border-color: rgba(36, 91, 156, 0.24);
+  background: rgba(36, 91, 156, 0.05);
+}
+
+.ai-analysis-provenance[data-method="ai"] strong {
+  color: #245b9c;
+}
+
 .ai-recommendation-banner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.35fr);
@@ -2425,6 +2576,19 @@ button.admin-order-card:hover {
 
 .ai-ok {
   color: #58705b;
+}
+
+.ai-summary-line {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+.admin-form-hint.error {
+  align-self: center;
+  color: #854f48;
+  font-size: 0.7rem;
 }
 
 .ai-human-gate {
@@ -2585,6 +2749,58 @@ button.admin-order-card:hover {
   gap: 1rem;
 }
 
+.manual-rfq-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid rgba(76, 53, 37, 0.24);
+  border-radius: 5px;
+  background: #fbf6ec;
+}
+
+.manual-rfq-guide article {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.85rem;
+  border-right: 1px solid rgba(76, 53, 37, 0.16);
+}
+
+.manual-rfq-guide article:last-child {
+  border-right: 0;
+}
+
+.manual-rfq-guide article > b {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border: 1px solid rgba(76, 53, 37, 0.3);
+  border-radius: 50%;
+  color: var(--accent-primary);
+  font: 700 0.6rem var(--font-tech);
+}
+
+.manual-rfq-guide article > span,
+.manual-rfq-guide strong,
+.manual-rfq-guide small {
+  display: block;
+}
+
+.manual-rfq-guide strong {
+  color: var(--text-primary);
+  font-size: 0.74rem;
+}
+
+.manual-rfq-guide small {
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
 .ai-rfq-controls {
   display: grid;
   grid-template-columns: minmax(220px, 0.65fr) minmax(150px, 0.35fr);
@@ -2597,12 +2813,14 @@ button.admin-order-card:hover {
 
 .ai-rfq-controls > label,
 .ai-rfq-controls > label > span,
+.ai-rfq-suppliers-field > span,
 .ai-rfq-history > div:first-child span,
 .ai-rfq-document-toolbar span {
   display: block;
 }
 
-.ai-rfq-controls > label > span {
+.ai-rfq-controls > label > span,
+.ai-rfq-suppliers-field > span {
   margin-bottom: 0.3rem;
   color: var(--text-muted);
   font-size: 0.66rem;
@@ -5854,6 +6072,7 @@ button.admin-order-card:hover {
   .ai-rfq-controls,
   .ai-rfq-introduction,
   .ai-rfq-lower-grid,
+  .manual-rfq-guide,
   .admin-detail-grid,
   .admin-detail-grid.three,
   .admin-supplier-decision-grid,
@@ -5908,9 +6127,35 @@ button.admin-order-card:hover {
   }
 
   .sourcing-flow-heading,
-  .supplier-response-heading {
+  .supplier-response-heading,
+  .quote-return-import-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .admin-ops-form .quote-return-import-heading > label {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .quote-import-result {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-import-result strong,
+  .quote-import-result span,
+  .quote-import-result small {
+    grid-column: 1;
+    text-align: left;
+  }
+
+  .manual-rfq-guide article {
+    border-right: 0;
+    border-bottom: 1px solid rgba(76, 53, 37, 0.16);
+  }
+
+  .manual-rfq-guide article:last-child {
+    border-bottom: 0;
   }
 
   .sourcing-flow-heading p {
@@ -11620,7 +11865,12 @@ select:focus,
   letter-spacing: 0.06em;
 }
 
-.crafton-backoffice :is(.admin-ops-form label > span, .ai-rfq-controls > label > span, .ai-data-source) {
+.crafton-backoffice :is(
+    .admin-ops-form label > span,
+    .ai-rfq-controls > label > span,
+    .ai-rfq-suppliers-field > span,
+    .ai-data-source
+  ) {
   color: var(--craft-stone);
   font-family: var(--font-mono);
   font-size: 0.62rem;

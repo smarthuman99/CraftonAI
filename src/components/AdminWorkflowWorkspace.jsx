@@ -3,6 +3,7 @@ import { AdminLocalized, adminText } from "../adminI18n";
 import AiRfqWorkspace from "./AiRfqWorkspace";
 import AiQuoteComparison from "./AiQuoteComparison";
 import AiOperationsAutomation from "./AiOperationsAutomation";
+import { parseSupplierRfqWorkbook } from "./rfqExcel";
 
 const PROJECT_TABLES = [
   "rfq_batches",
@@ -127,6 +128,8 @@ export default function AdminWorkflowWorkspace({
   const [authStatus, setAuthStatus] = useState("checking");
   const [quoteLineItems, setQuoteLineItems] = useState(() => quoteLinesFromProject(project));
   const [quoteFile, setQuoteFile] = useState(null);
+  const [quoteImport, setQuoteImport] = useState(null);
+  const [quoteImportBusy, setQuoteImportBusy] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState("");
 
   const [supplierForm, setSupplierForm] = useState({
@@ -267,6 +270,7 @@ export default function AdminWorkflowWorkspace({
   useEffect(() => {
     setQuoteLineItems(quoteLinesFromProject(project));
     setQuoteFile(null);
+    setQuoteImport(null);
     setEditingQuoteId("");
   }, [projectId]);
 
@@ -354,6 +358,36 @@ export default function AdminWorkflowWorkspace({
     );
     return { quantity, total, weightedUnitPrice: quantity ? total / quantity : 0 };
   }, [quoteLineItems]);
+  const editingQuoteRecord = data.supplier_quotes.find((row) => row.id === editingQuoteId);
+  const quoteMissingPriceCount = quoteLineItems.filter((line) => Number(line.unit_price || 0) <= 0).length;
+  const quoteHasSourceFile = Boolean(quoteFile || editingQuoteRecord?.payload?.supplier_quote_file);
+  const quoteCanSave = Boolean(
+    quoteForm.rfq_batch_id &&
+    quoteForm.supplier_id &&
+    quoteForm.quote_code.trim() &&
+    quoteHasSourceFile &&
+    quoteLineItems.length &&
+    quoteMissingPriceCount === 0 &&
+    Number(quoteForm.lead_time_days || 0) > 0
+  );
+  const quoteSaveBlockReason = !quoteForm.rfq_batch_id
+    ? t("Select an RFQ first.", "请先选择 RFQ。")
+    : !quoteForm.supplier_id
+      ? t("Select the supplier that returned this quotation.", "请选择回传本报价的供应商。")
+      : !quoteForm.quote_code.trim()
+        ? t("Enter the supplier quotation number.", "请输入供应商报价编号。")
+        : !quoteHasSourceFile
+          ? t("Import the supplier's returned RFQ Excel first.", "请先导入供应商回传的 RFQ Excel。")
+          : !quoteLineItems.length
+            ? t("No RFQ BOM items are available.", "当前 RFQ 没有可录入的 BOM 品项。")
+            : quoteMissingPriceCount
+              ? t(
+                  `Enter a valid unit price for ${quoteMissingPriceCount} remaining BOM item(s).`,
+                  `还有 ${quoteMissingPriceCount} 个 BOM 品项需要填写有效单价。`
+                )
+              : Number(quoteForm.lead_time_days || 0) <= 0
+                ? t("Enter a valid lead time.", "请输入有效交期。")
+                : "";
 
   const openQuoteForm = (rfqBatchId = "", supplierId = "") => {
     const supplier = suppliers.find((row) => row.id === supplierId);
@@ -388,8 +422,110 @@ export default function AdminWorkflowWorkspace({
         : quoteLinesFromProject(project)
     );
     setQuoteFile(null);
+    setQuoteImport(null);
     setEditingQuoteId(existingQuote?.id || "");
     setActiveForm("quote");
+  };
+
+  const importSupplierRfq = async (file) => {
+    if (!file) {
+      setQuoteFile(null);
+      setQuoteImport(null);
+      return;
+    }
+    if (!quoteForm.rfq_batch_id || !quoteForm.supplier_id) {
+      setQuoteImport({
+        status: "error",
+        message: t("Select the RFQ and supplier before importing Excel.", "请先选择 RFQ 和对应供应商，再导入 Excel。")
+      });
+      return;
+    }
+
+    setQuoteImportBusy(true);
+    setQuoteImport(null);
+    try {
+      const imported = await parseSupplierRfqWorkbook(file);
+      if (String(imported.metadata.project_id) !== String(projectId)) {
+        throw new Error(
+          t("This Excel file belongs to another project.", "这份 Excel 属于其他项目，不能录入当前项目。")
+        );
+      }
+      if (String(imported.metadata.rfq_batch_id) !== String(quoteForm.rfq_batch_id)) {
+        throw new Error(t("This Excel file belongs to another RFQ batch.", "这份 Excel 属于其他 RFQ 批次。"));
+      }
+
+      const importedByItem = new Map(imported.items.map((item) => [String(item.itemNo).trim(), item]));
+      const nextLines = quoteLineItems.map((line) => {
+        const returned = importedByItem.get(String(line.item_no).trim());
+        return returned
+          ? {
+              ...line,
+              unit_price: returned.unitPrice ? String(returned.unitPrice) : "",
+              returned_line_total: Number(returned.lineTotal || 0),
+              line_moq: Number(returned.moq || 0),
+              lead_time_days: Number(returned.leadTimeDays || 0),
+              material_confirmation: returned.materialConfirmation || "",
+              deviation: returned.deviation || "",
+              supplier_notes: returned.supplierNotes || ""
+            }
+          : line;
+      });
+      const matched = nextLines.filter((line) => Number(line.unit_price || 0) > 0).length;
+      const deviations = imported.items
+        .filter((item) => item.deviation)
+        .map((item) => `${item.itemNo}: ${item.deviation}`)
+        .join("\n");
+      const materialConfirmation =
+        imported.materialConfirmation ||
+        imported.items
+          .filter((item) => item.materialConfirmation)
+          .map((item) => `${item.itemNo}: ${item.materialConfirmation}`)
+          .join("; ");
+      const supportingNotes = [
+        imported.deliveryTerms && `Delivery / Incoterm: ${imported.deliveryTerms}`,
+        imported.packing && `Packing: ${imported.packing}`,
+        imported.notes
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      setQuoteLineItems(nextLines);
+      setQuoteForm((current) => ({
+        ...current,
+        quote_code: imported.quoteCode || current.quote_code,
+        currency: String(imported.currency || current.currency || "USD").toUpperCase(),
+        moq: imported.moq || current.moq,
+        lead_time_days: imported.leadTimeDays || current.lead_time_days,
+        payment_terms: imported.paymentTerms || current.payment_terms,
+        material_confirmation: materialConfirmation || current.material_confirmation,
+        validity_until: imported.validityUntil || current.validity_until,
+        risk_notes: deviations || current.risk_notes,
+        notes: supportingNotes || current.notes
+      }));
+      setQuoteFile(file);
+      setQuoteImport({
+        status: matched === nextLines.length ? "ready" : "warning",
+        fileName: file.name,
+        matched,
+        itemCount: nextLines.length,
+        supplierCompany: imported.supplierCompany,
+        totalAmount: imported.totalAmount,
+        metadata: imported.metadata,
+        parsed: imported,
+        message:
+          matched === nextLines.length
+            ? t("All BOM prices were read. Review them before saving.", "所有 BOM 单价均已读取，请复核后保存。")
+            : t(
+                `${nextLines.length - matched} BOM price(s) are still missing. Complete them manually.`,
+                `仍有 ${nextLines.length - matched} 个 BOM 单价缺失，请手动补齐。`
+              )
+      });
+    } catch (error) {
+      setQuoteFile(null);
+      setQuoteImport({ status: "error", message: error.message || String(error) });
+    } finally {
+      setQuoteImportBusy(false);
+    }
   };
 
   const submitQuote = (event) => {
@@ -397,6 +533,14 @@ export default function AdminWorkflowWorkspace({
     const supplier = suppliers.find((row) => row.id === quoteForm.supplier_id);
     const existingQuote = data.supplier_quotes.find((row) => row.id === editingQuoteId);
     runAction("Supplier quote recorded and comparison refreshed.", async () => {
+      if (!quoteFile && !existingQuote?.payload?.supplier_quote_file) {
+        throw new Error(
+          t(
+            "Import the supplier's returned RFQ .xlsx before saving the quotation.",
+            "请先导入供应商回传的 RFQ .xlsx，再保存报价。"
+          )
+        );
+      }
       if (!quoteLineItems.length || quoteLineItems.some((line) => Number(line.unit_price || 0) <= 0)) {
         throw new Error(t("Enter a unit price for every BOM item.", "请为每个 BOM 品项填写供应商单价。"));
       }
@@ -449,7 +593,27 @@ export default function AdminWorkflowWorkspace({
             unit_price: Number(line.unit_price || 0),
             line_total: Number(line.quantity || 0) * Number(line.unit_price || 0)
           })),
-          supplier_quote_file: uploadedQuote || existingQuote?.payload?.supplier_quote_file || null
+          supplier_quote_file: uploadedQuote || existingQuote?.payload?.supplier_quote_file || null,
+          supplier_return: quoteImport
+            ? {
+                supplier_company: quoteImport.parsed?.supplierCompany || "",
+                contact_person: quoteImport.parsed?.contactPerson || "",
+                contact_email: quoteImport.parsed?.contactEmail || "",
+                delivery_terms: quoteImport.parsed?.deliveryTerms || "",
+                packing: quoteImport.parsed?.packing || "",
+                workbook_total: Number(quoteImport.parsed?.totalAmount || 0)
+              }
+            : existingQuote?.payload?.supplier_return || null,
+          rfq_excel_import: quoteImport
+            ? {
+                template_version: quoteImport.metadata?.template_version,
+                source_file_name: quoteImport.fileName,
+                matched_item_count: quoteImport.matched,
+                item_count: quoteImport.itemCount,
+                supplier_company: quoteImport.supplierCompany,
+                imported_at: new Date().toISOString()
+              }
+            : existingQuote?.payload?.rfq_excel_import || null
         }
       };
       let quote;
@@ -495,6 +659,7 @@ export default function AdminWorkflowWorkspace({
       );
       await updateProjectStage(7);
       setQuoteFile(null);
+      setQuoteImport(null);
       setEditingQuoteId("");
     });
   };
@@ -520,9 +685,20 @@ export default function AdminWorkflowWorkspace({
         reviewer_name: "Cho",
         notes: `Selected ${quote.supplier_name} at ${money(quote.unit_price, quote.currency)} per unit.`,
         reviewed_at: new Date().toISOString(),
-        payload: { quote_id: quote.id, supplier_id: quote.supplier_id, comparison_score: quote.comparisonScore }
+        payload: {
+          quote_id: quote.id,
+          supplier_id: quote.supplier_id,
+          comparison_score: quote.comparisonScore,
+          ai_rank: quote.payload?.ai_analysis?.rank || null,
+          ai_recommended: quote.payload?.ai_analysis?.recommended === true,
+          analysis_hash: quote.payload?.ai_analysis?.analysisHash || null
+        }
       });
-      await writeEvent("S08", "supplier_selected", `${quote.supplier_name} selected by Cho.`, { quote_id: quote.id });
+      await writeEvent("S08", "supplier_selected", `${quote.supplier_name} selected by Cho.`, {
+        quote_id: quote.id,
+        analysis_hash: quote.payload?.ai_analysis?.analysisHash || null,
+        ai_recommended: quote.payload?.ai_analysis?.recommended === true
+      });
       await updateProjectStage(9, { selected_supplier: quote });
     });
   };
@@ -735,26 +911,42 @@ export default function AdminWorkflowWorkspace({
     () => data.supplier_quotes.filter((quote) => !sourcingBatch || quote.rfq_batch_id === sourcingBatch.id),
     [data.supplier_quotes, sourcingBatch]
   );
+  const sourcingLatestQuotes = useMemo(() => {
+    const latestBySupplier = new Map();
+    sourcingQuotes.forEach((quote) => {
+      const key = quote.supplier_id || quote.id;
+      const current = latestBySupplier.get(key);
+      const quoteTime = new Date(quote.updated_at || quote.received_at || quote.created_at || 0).getTime();
+      const currentTime = current
+        ? new Date(current.updated_at || current.received_at || current.created_at || 0).getTime()
+        : -1;
+      if (!current || quoteTime >= currentTime) latestBySupplier.set(key, quote);
+    });
+    return [...latestBySupplier.values()];
+  }, [sourcingQuotes]);
   const invitedSuppliers = useMemo(() => {
     const ids = sourcingBatch?.supplier_ids || [];
     return ids.map((id) => suppliers.find((supplier) => supplier.id === id)).filter(Boolean);
   }, [sourcingBatch, suppliers]);
-  const sourcingResponseCount = new Set(sourcingQuotes.map((quote) => quote.supplier_id).filter(Boolean)).size;
+  const sourcingResponseCount = sourcingLatestQuotes.length;
+  const rfqExcelFile = data.project_files.find(
+    (file) => file.file_group === "rfq_excel" && (!sourcingBatch || file.payload?.rfq_batch_id === sourcingBatch.id)
+  );
   const quoteAnalysisFile = data.project_files.find(
     (file) =>
       file.file_group === "quote_analysis" &&
       (!sourcingBatch || file.payload?.analysis?.rfqBatchId === sourcingBatch.id)
   );
-  const latestQuoteTime = Math.max(
-    0,
-    ...sourcingQuotes.map((quote) => new Date(quote.updated_at || quote.received_at || quote.created_at || 0).getTime())
-  );
   const quoteAnalysisReady = Boolean(
-    quoteAnalysisFile && new Date(quoteAnalysisFile.created_at || 0).getTime() >= latestQuoteTime
+    quoteAnalysisFile &&
+    sourcingLatestQuotes.length >= 2 &&
+    sourcingLatestQuotes.every((quote) => quote.payload?.ai_analysis?.analysisHash === quoteAnalysisFile.sha256)
   );
-  const sourcingScoredQuotes = sourcingBatch
-    ? scoredQuotes.filter((quote) => quote.rfq_batch_id === sourcingBatch.id)
-    : scoredQuotes;
+  const sourcingLatestQuoteIds = new Set(sourcingLatestQuotes.map((quote) => quote.id));
+  const sourcingScoredQuotes = scoredQuotes.filter((quote) => sourcingLatestQuoteIds.has(quote.id));
+  const recommendedQuoteId = quoteAnalysisReady
+    ? quoteAnalysisFile?.payload?.analysis?.recommendation?.quoteId || null
+    : null;
   const selectedQuote = sourcingScoredQuotes.find((quote) => quote.status === "selected") || null;
   const sourcingSteps = [
     {
@@ -770,12 +962,9 @@ export default function AdminWorkflowWorkspace({
       done: ["approved", "sent"].includes(sourcingBatch?.status)
     },
     {
-      label: t("Sent to suppliers", "已发送给供应商"),
-      detail:
-        sourcingBatch?.status === "sent"
-          ? t(`${invitedSuppliers.length} invited`, `已邀请 ${invitedSuppliers.length} 家`)
-          : t("Not sent", "尚未发送"),
-      done: sourcingBatch?.status === "sent"
+      label: t("Excel downloaded", "Excel 已下载"),
+      detail: rfqExcelFile ? rfqExcelFile.file_name : t("Download the approved .xlsx", "下载已批准的 .xlsx"),
+      done: Boolean(rfqExcelFile)
     },
     {
       label: t("Quotes returned", "报价已回传"),
@@ -786,11 +975,11 @@ export default function AdminWorkflowWorkspace({
       done: invitedSuppliers.length > 0 && sourcingResponseCount >= invitedSuppliers.length
     },
     {
-      label: t("Best quote selected", "最优报价已选定"),
+      label: t("AI comparison ready", "AI 比价已完成"),
       detail:
         selectedQuote?.supplier_name ||
-        (quoteAnalysisReady ? t("AI recommendation ready", "AI 建议已生成") : t("Waiting for comparison", "等待比价")),
-      done: Boolean(selectedQuote)
+        (quoteAnalysisReady ? t("Recommendation ready", "最优建议已生成") : t("Waiting for comparison", "等待比价")),
+      done: quoteAnalysisReady
     }
   ];
 
@@ -859,8 +1048,8 @@ export default function AdminWorkflowWorkspace({
             </div>
             <p>
               {t(
-                "Generate → approve → send → collect supplier returns → AI comparison → Cho decision",
-                "生成询盘 → 批准 → 发送 → 收集供应商回传 → AI 比价 → Cho 决策"
+                "Generate RFQ → approve → download Excel → import supplier returns → AI comparison → Cho decision",
+                "生成询盘 → 批准 → 下载 Excel → 录入供应商回传 → AI 比价 → Cho 决策"
               )}
             </p>
           </div>
@@ -1017,9 +1206,9 @@ export default function AdminWorkflowWorkspace({
 
           <StageSection
             stage="S06"
-            title="AI RFQ preparation and dispatch"
+            title="AI RFQ Excel preparation"
             status={data.rfq_batches[0]?.status || "pending"}
-            description="Generate a bilingual supplier RFQ from verified Supabase order data, review it, retain every version and dispatch it after Cho approval."
+            description="Generate and approve a bilingual RFQ, then download the supplier-fillable Excel file for sending from your own mailbox."
             wide
           >
             <AiRfqWorkspace
@@ -1038,15 +1227,15 @@ export default function AdminWorkflowWorkspace({
 
           <StageSection
             stage="S07"
-            title="Quote intake and normalized comparison"
+            title="Supplier return intake and AI comparison"
             status={`${scoredQuotes.length} quotes`}
-            description="Record commercial terms and compare price, lead time, quality and supplier reliability."
+            description="Import each supplier's returned RFQ Excel into the correct supplier slot, review the extracted values, then run AI comparison."
             wide
             actions={
               <button
                 onClick={() => (activeForm === "quote" ? setActiveForm("") : openQuoteForm(sourcingBatch?.id || ""))}
               >
-                {t("Record quote", "录入报价")}
+                {t("Record supplier return", "录入供应商回传")}
               </button>
             }
           >
@@ -1060,7 +1249,7 @@ export default function AdminWorkflowWorkspace({
                       : t("Generate and save an RFQ to start tracking.", "生成并保存 RFQ 后即可开始跟踪。")}
                   </span>
                 </div>
-                {sourcingBatch?.status === "sent" && (
+                {invitedSuppliers.length > 0 && (
                   <b>
                     {t(
                       `${sourcingResponseCount} of ${invitedSuppliers.length} returned`,
@@ -1075,7 +1264,7 @@ export default function AdminWorkflowWorkspace({
                     <thead>
                       <tr>
                         <th>{t("Supplier", "供应商")}</th>
-                        <th>{t("Sent", "发送时间")}</th>
+                        <th>{t("RFQ Excel", "RFQ Excel")}</th>
                         <th>{t("Due", "截止时间")}</th>
                         <th>{t("Response", "回传状态")}</th>
                         <th>{t("Quoted total", "报价总额")}</th>
@@ -1087,16 +1276,16 @@ export default function AdminWorkflowWorkspace({
                         const quote = sourcingQuotes.find((row) => row.supplier_id === supplier.id);
                         const overdue =
                           !quote &&
-                          sourcingBatch?.status === "sent" &&
+                          Boolean(rfqExcelFile) &&
                           sourcingBatch?.due_at &&
                           new Date(sourcingBatch.due_at).getTime() < Date.now();
                         const responseStatus = quote
-                          ? t("Received", "已回传")
-                          : sourcingBatch?.status !== "sent"
-                            ? t("Not sent", "尚未发送")
+                          ? t("Recorded", "已录入")
+                          : !rfqExcelFile
+                            ? t("Excel not downloaded", "尚未下载 Excel")
                             : overdue
                               ? t("Overdue", "已逾期")
-                              : t("Awaiting", "等待回传");
+                              : t("Waiting for upload", "等待上传");
                         return (
                           <tr key={supplier.id}>
                             <td>
@@ -1106,7 +1295,17 @@ export default function AdminWorkflowWorkspace({
                                 {supplier.email || supplier.contact_email || t("Email missing", "缺少邮箱")}
                               </small>
                             </td>
-                            <td>{shortDate(sourcingBatch?.sent_at)}</td>
+                            <td>
+                              {rfqExcelFile ? (
+                                <>
+                                  <strong>{t("Ready", "已生成")}</strong>
+                                  <br />
+                                  <small>{shortDate(rfqExcelFile.created_at)}</small>
+                                </>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
                             <td>{shortDate(sourcingBatch?.due_at)}</td>
                             <td>
                               <b data-state={quote ? "received" : overdue ? "overdue" : "waiting"}>{responseStatus}</b>
@@ -1114,7 +1313,7 @@ export default function AdminWorkflowWorkspace({
                             <td>{quote ? money(quote.total_amount, quote.currency) : "-"}</td>
                             <td>
                               <button type="button" onClick={() => openQuoteForm(sourcingBatch.id, supplier.id)}>
-                                {quote ? t("Record revision", "记录修订版") : t("Record return", "录入回传报价")}
+                                {quote ? t("Replace / revise", "替换／修订") : t("Upload and record", "上传并录入")}
                               </button>
                             </td>
                           </tr>
@@ -1126,8 +1325,8 @@ export default function AdminWorkflowWorkspace({
               ) : (
                 <Empty>
                   {t(
-                    "Select suppliers in S06 and save the RFQ to create the response list.",
-                    "请在 S06 选择供应商并保存 RFQ，以建立回传名单。"
+                    "Select suppliers in S06, approve the RFQ and download its Excel file to create the response list.",
+                    "请在 S06 选择供应商、批准并下载 RFQ Excel，以建立回传名单。"
                   )}
                 </Empty>
               )}
@@ -1138,7 +1337,7 @@ export default function AdminWorkflowWorkspace({
                   <select
                     required
                     value={quoteForm.rfq_batch_id}
-                    onChange={(e) => setQuoteForm({ ...quoteForm, rfq_batch_id: e.target.value })}
+                    onChange={(e) => openQuoteForm(e.target.value, quoteForm.supplier_id)}
                   >
                     <option value="">Select RFQ</option>
                     {data.rfq_batches.map((rfq) => (
@@ -1152,15 +1351,7 @@ export default function AdminWorkflowWorkspace({
                   <select
                     required
                     value={quoteForm.supplier_id}
-                    onChange={(e) => {
-                      const supplier = suppliers.find((row) => row.id === e.target.value);
-                      setQuoteForm({
-                        ...quoteForm,
-                        supplier_id: e.target.value,
-                        quality_score: supplier?.rating ? Number(supplier.rating) * 20 : quoteForm.quality_score,
-                        reliability_score: supplier?.reliability_score || quoteForm.reliability_score
-                      });
-                    }}
+                    onChange={(e) => openQuoteForm(quoteForm.rfq_batch_id, e.target.value)}
                   >
                     <option value="">Select supplier</option>
                     {suppliers.map((supplier) => (
@@ -1172,6 +1363,7 @@ export default function AdminWorkflowWorkspace({
                 </Field>
                 <Field label="Quote code">
                   <input
+                    required
                     value={quoteForm.quote_code}
                     onChange={(e) => setQuoteForm({ ...quoteForm, quote_code: e.target.value })}
                   />
@@ -1185,8 +1377,50 @@ export default function AdminWorkflowWorkspace({
                     <option>CNY</option>
                     <option>GBP</option>
                     <option>EUR</option>
+                    <option>HKD</option>
                   </select>
                 </Field>
+                <section className="quote-return-import wide">
+                  <div className="quote-return-import-heading">
+                    <div>
+                      <span>STEP 1 · SUPPLIER RETURN</span>
+                      <strong>{t("Import the returned RFQ Excel", "导入供应商回传的 RFQ Excel")}</strong>
+                      <small>
+                        {quoteForm.supplier_id
+                          ? t(
+                              `This file will be recorded under ${suppliers.find((row) => row.id === quoteForm.supplier_id)?.name || "the selected supplier"}.`,
+                              `这份文件将录入到 ${suppliers.find((row) => row.id === quoteForm.supplier_id)?.name || "当前供应商"} 名下。`
+                            )
+                          : t("Choose a supplier above first.", "请先在上方选择对应供应商。")}
+                      </small>
+                    </div>
+                    <label className={quoteForm.rfq_batch_id && quoteForm.supplier_id ? "" : "disabled"}>
+                      <input
+                        type="file"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        disabled={!quoteForm.rfq_batch_id || !quoteForm.supplier_id || quoteImportBusy}
+                        onChange={(event) => importSupplierRfq(event.target.files?.[0] || null)}
+                      />
+                      <span>
+                        {quoteImportBusy ? t("Reading Excel...", "正在读取 Excel...") : t("Choose .xlsx", "选择 .xlsx")}
+                      </span>
+                    </label>
+                  </div>
+                  {quoteImport && (
+                    <div className="quote-import-result" data-status={quoteImport.status}>
+                      <strong>{quoteImport.fileName || t("Import check", "导入检查")}</strong>
+                      <span>{quoteImport.message}</span>
+                      {quoteImport.status !== "error" && (
+                        <small>
+                          {t(
+                            `${quoteImport.matched}/${quoteImport.itemCount} items priced · ${money(quoteImport.totalAmount, quoteForm.currency)}`,
+                            `已读取 ${quoteImport.matched}/${quoteImport.itemCount} 个品项 · ${money(quoteImport.totalAmount, quoteForm.currency)}`
+                          )}
+                        </small>
+                      )}
+                    </div>
+                  )}
+                </section>
                 <div className="quote-line-editor wide">
                   <div>
                     <strong>{t("BOM item pricing", "BOM 逐项报价")}</strong>
@@ -1291,19 +1525,6 @@ export default function AdminWorkflowWorkspace({
                     onChange={(e) => setQuoteForm({ ...quoteForm, risk_notes: e.target.value })}
                   />
                 </Field>
-                <Field label={t("Supplier quote file", "供应商报价文件")} wide>
-                  <input
-                    type="file"
-                    accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.png,.jpg,.jpeg,.webp"
-                    onChange={(event) => setQuoteFile(event.target.files?.[0] || null)}
-                  />
-                  <small>
-                    {t(
-                      "Optional; PDF, spreadsheet, document or image up to 15 MB.",
-                      "可选；支持 PDF、表格、文档或图片，最大 15 MB。"
-                    )}
-                  </small>
-                </Field>
                 <Field label={t("Internal notes", "内部备注")} wide>
                   <textarea
                     value={quoteForm.notes}
@@ -1311,10 +1532,26 @@ export default function AdminWorkflowWorkspace({
                   />
                 </Field>
                 <div className="admin-ops-form-actions">
-                  <button type="button" onClick={() => setActiveForm("")} disabled={loading}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveForm("");
+                      setQuoteImport(null);
+                      setQuoteFile(null);
+                    }}
+                    disabled={loading || quoteImportBusy}
+                  >
                     {t("Cancel", "取消")}
                   </button>
-                  <button className="btn-premium" disabled={loading || !quoteLineItems.length}>
+                  {quoteSaveBlockReason && <small className="admin-form-hint error">{quoteSaveBlockReason}</small>}
+                  <button
+                    className="btn-premium"
+                    disabled={loading || quoteImportBusy || !quoteCanSave}
+                    title={
+                      quoteSaveBlockReason ||
+                      t("Save this supplier return for AI comparison.", "保存供应商回传并进入 AI 比价。")
+                    }
+                  >
                     {t("Save supplier return", "保存供应商回传")}
                   </button>
                 </div>
@@ -1349,19 +1586,34 @@ export default function AdminWorkflowWorkspace({
             {sourcingScoredQuotes.length ? (
               <div className="admin-ops-quote-cards">
                 {sourcingScoredQuotes.map((quote, index) => (
-                  <article key={quote.id} className={quote.status === "selected" ? "selected" : ""}>
+                  <article
+                    key={quote.id}
+                    className={[
+                      quote.status === "selected" ? "selected" : "",
+                      quote.id === recommendedQuoteId ? "recommended" : ""
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
                     <span>{quoteAnalysisReady ? `Rank #${index + 1}` : t("AI rank pending", "等待 AI 排名")}</span>
                     <h4>{quote.supplier_name || quote.suppliers?.name}</h4>
                     <strong>{money(quote.unit_price, quote.currency)} / unit</strong>
                     <p>
                       {quote.lead_time_days} days · score {quote.comparisonScore}
                     </p>
+                    {quote.id === recommendedQuoteId && (
+                      <small>{t("AI recommended best value", "AI 推荐综合最优")}</small>
+                    )}
                     <button
                       className="btn-premium"
                       disabled={loading || quote.status === "selected" || !quoteAnalysisReady}
                       onClick={() => selectQuote(quote)}
                     >
-                      {quote.status === "selected" ? "Selected" : "Approve supplier"}
+                      {quote.status === "selected"
+                        ? t("Selected", "已选择")
+                        : quote.id === recommendedQuoteId
+                          ? t("Approve AI recommendation", "批准 AI 推荐")
+                          : t("Approve supplier", "批准该供应商")}
                     </button>
                   </article>
                 ))}

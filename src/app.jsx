@@ -4247,7 +4247,7 @@ function App() {
       stageIndexes: [5, 6, 7],
       titleCn: "供应商报价与最优报价",
       titleEn: "Supplier RFQ & Best Quote",
-      descCn: "向供应商发出 RFQ，收集报价，由 Cho 审核并选定最优供应商。",
+      descCn: "生成并下载 RFQ Excel，自行邮件询价；收到回传后按供应商录入，再由 AI 比价并交 Cho 决策。",
       descEn: "Dispatch RFQs, compare supplier bids, and let Cho select the best offer."
     },
     {
@@ -7813,10 +7813,10 @@ function App() {
       <div className="admin-flow-grid sourcing-flow">
         {renderAdminStagePanel({
           stageId: "S06",
-          title: "Supplier RFQ dispatch and return tracking",
-          status: adminRfqBatches.length ? "sent" : "pending",
+          title: "Supplier RFQ Excel and return tracking",
+          status: adminRfqBatches.length ? "ready" : "pending",
           subtitle:
-            "Reads Supabase rfq_batches and supplier_quotes to show RFQ batches, invited suppliers, quote status, and due dates.",
+            "Reads Supabase RFQ batches, generated Excel files and supplier quotations to track the manual sourcing workflow.",
           className: "wide",
           children: (
             <>
@@ -7830,7 +7830,7 @@ function App() {
                 {renderAdminMetric("Source", dbConnected ? "Supabase" : "Disconnected", dbConnected ? "good" : "warn")}
               </div>
               {rfqRows.length
-                ? renderAdminMiniTable(["RFQ", "Status", "Suppliers", "Sent", "Due"], rfqRows)
+                ? renderAdminMiniTable(["RFQ", "Status", "Suppliers", "Created", "Due"], rfqRows)
                 : renderAdminEmptyState("No RFQ batch records", getAdminTableMissingText("rfq_batches"))}
             </>
           )
@@ -8192,8 +8192,8 @@ function App() {
       ["BOM 与规格草稿", "BOM and specification draft"],
       ["Cho 技术审批", "Cho technical approval"],
       ["合规放行", "Compliance release"],
-      ["RFQ 准备与发送", "RFQ preparation and dispatch"],
-      ["供应商报价比较", "Supplier quote comparison"],
+      ["RFQ Excel 准备与下载", "RFQ Excel preparation and download"],
+      ["供应商回传与 AI 比价", "Supplier returns and AI comparison"],
       ["Cho 供应商决策", "Cho supplier decision"],
       ["生产启动", "Production kickoff"],
       ["生产风险跟进", "Production risk follow-up"],
@@ -8230,11 +8230,13 @@ function App() {
           ? "由 Cho 批准技术资料并放行 RFQ"
           : "Cho to approve the technical package and release it for RFQ";
       if (stage === 6)
-        return lang === "Cn" ? "确认询价单与受邀供应商后发送" : "Confirm the RFQ and invited suppliers, then dispatch";
+        return lang === "Cn"
+          ? "确认询价单与供应商后下载 Excel，并使用自己的邮箱发送"
+          : "Confirm the RFQ and suppliers, download Excel, then send it from your own mailbox";
       if (stage === 7)
         return lang === "Cn"
-          ? "收集报价并查看 AI 标准化比价结果"
-          : "Collect quotations and review the AI-normalized comparison";
+          ? "把回传 Excel 录入对应供应商，再运行 AI 标准化比价"
+          : "Import each returned Excel under its supplier, then run the AI-normalized comparison";
       if (stage === 8) return lang === "Cn" ? "由 Cho 决定中选供应商" : "Cho to select the winning supplier";
       if (stage <= 10)
         return lang === "Cn" ? "检查生产进度、证据与延期风险" : "Review production progress, evidence and delay risks";

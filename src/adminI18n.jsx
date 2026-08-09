@@ -1,6 +1,12 @@
 import React from "react";
 
 const ADMIN_ZH = {
+  "AI RFQ Excel preparation": "AI RFQ Excel 准备",
+  "Generate and approve a bilingual RFQ, then download the supplier-fillable Excel file for sending from your own mailbox.":
+    "生成并批准双语 RFQ，再下载供应商可填写的 Excel 文件，并使用你自己的邮箱发送。",
+  "Supplier return intake and AI comparison": "供应商回传录入与 AI 比价",
+  "Import each supplier's returned RFQ Excel into the correct supplier slot, review the extracted values, then run AI comparison.":
+    "将每家供应商回传的 RFQ Excel 录入对应供应商栏位，核对系统读取的报价后再运行 AI 比价。",
   "AI RFQ preparation and dispatch": "AI 询价单准备与发送",
   "Generate a bilingual supplier RFQ from verified Supabase order data, review it, retain every version and dispatch it after Cho approval.":
     "根据 Supabase 已核实订单资料生成双语供应商询价单，审核后保留每个版本，并在 Cho 批准后发送。",
