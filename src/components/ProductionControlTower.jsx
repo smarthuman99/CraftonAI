@@ -190,7 +190,7 @@ export default function ProductionControlTower({
           <h4>{selectedSupplier?.name || t("No supplier approved in S08", "S08 尚未批准供应商")}</h4>
           <p>
             {selectedSupplier
-              ? `${selectedSupplier.contact_email || t("Missing contact email", "缺少联系人邮箱")} · ${t(
+              ? `${selectedSupplier.email || selectedSupplier.contact_email || t("Missing contact email", "缺少联系人邮箱")} · ${t(
                   "This account only receives this factory's approved orders and production tasks.",
                   "该账号只会收到属于这家工厂的已批准订单和生产任务。"
                 )}`

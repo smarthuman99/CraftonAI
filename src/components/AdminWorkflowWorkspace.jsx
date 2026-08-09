@@ -40,6 +40,21 @@ const valueList = (value) =>
 
 const quoteLinesFromProject = (project) => quoteLinesForBatch(null, project);
 
+const EMPTY_SUPPLIER_FORM = {
+  name: "",
+  code: "",
+  category: "",
+  contact_name: "",
+  contact_email: "",
+  phone: "",
+  country: "",
+  city: "",
+  capabilities: "",
+  quality_score: "80",
+  reliability_score: "80",
+  notes: ""
+};
+
 const calculateQuoteScores = (quotes) => {
   const priced = quotes.filter((quote) => Number(quote.unit_price) > 0);
   const fastest = Math.min(...priced.map((quote) => Number(quote.lead_time_days || 999)), 999);
@@ -129,20 +144,8 @@ export default function AdminWorkflowWorkspace({
   const [bulkQuoteResults, setBulkQuoteResults] = useState([]);
   const [quoteAutoAnalyzeToken, setQuoteAutoAnalyzeToken] = useState("");
 
-  const [supplierForm, setSupplierForm] = useState({
-    name: "",
-    code: "",
-    category: "",
-    contact_name: "",
-    contact_email: "",
-    phone: "",
-    country: "",
-    city: "",
-    capabilities: "",
-    quality_score: "80",
-    reliability_score: "80",
-    notes: ""
-  });
+  const [supplierForm, setSupplierForm] = useState(EMPTY_SUPPLIER_FORM);
+  const [editingSupplierId, setEditingSupplierId] = useState("");
   const [quoteForm, setQuoteForm] = useState({
     rfq_batch_id: "",
     supplier_id: "",
@@ -269,6 +272,8 @@ export default function AdminWorkflowWorkspace({
     setQuoteFile(null);
     setQuoteImport(null);
     setEditingQuoteId("");
+    setEditingSupplierId("");
+    setSupplierForm(EMPTY_SUPPLIER_FORM);
   }, [projectId]);
 
   const insert = async (table, payload) => {
@@ -318,7 +323,7 @@ export default function AdminWorkflowWorkspace({
 
   const submitSupplier = (event) => {
     event.preventDefault();
-    runAction("Supplier saved to Supabase.", async () => {
+    runAction(editingSupplierId ? "Supplier details updated in Supabase." : "Supplier saved to Supabase.", async () => {
       const payload = {
         name: supplierForm.name,
         code: supplierForm.code || null,
@@ -333,18 +338,50 @@ export default function AdminWorkflowWorkspace({
         notes: supplierForm.notes,
         is_active: true
       };
-      const { error } = await supabaseClient.from("suppliers").insert(payload);
+      const query = editingSupplierId
+        ? supabaseClient.from("suppliers").update(payload).eq("id", editingSupplierId)
+        : supabaseClient.from("suppliers").insert(payload);
+      const { error } = await query;
       if (error) throw error;
-      setSupplierForm({
-        ...supplierForm,
-        name: "",
-        code: "",
-        contact_name: "",
-        contact_email: "",
-        phone: "",
-        notes: ""
-      });
+      setEditingSupplierId("");
+      setSupplierForm(EMPTY_SUPPLIER_FORM);
     });
+  };
+
+  const openSupplierForm = (supplier = null) => {
+    if (!supplier) {
+      setEditingSupplierId("");
+      setSupplierForm(EMPTY_SUPPLIER_FORM);
+      setActiveForm("supplier");
+      return;
+    }
+    const [country = "", city = ""] = String(supplier.address || "").split("/");
+    setEditingSupplierId(supplier.id);
+    setSupplierForm({
+      name: supplier.name || "",
+      code: supplier.code || "",
+      category: (supplier.categories || []).join(", ") || supplier.category || "",
+      contact_name: supplier.contact_person || supplier.contact_name || "",
+      contact_email: supplier.email || supplier.contact_email || "",
+      phone: supplier.phone || "",
+      country: supplier.country || country.trim(),
+      city: supplier.city || city.trim(),
+      capabilities: (supplier.capabilities || []).join(", "),
+      quality_score: String(
+        supplier.rating !== null && supplier.rating !== undefined
+          ? Math.round(Number(supplier.rating) * 20)
+          : Number(supplier.quality_score || 80)
+      ),
+      reliability_score: String(supplier.reliability_score ?? 80),
+      notes: supplier.notes || ""
+    });
+    setActiveForm("supplier");
+  };
+
+  const closeSupplierForm = () => {
+    setEditingSupplierId("");
+    setSupplierForm(EMPTY_SUPPLIER_FORM);
+    setActiveForm("");
   };
 
   const quoteTotals = useMemo(() => {
@@ -1282,11 +1319,36 @@ export default function AdminWorkflowWorkspace({
             description="Reusable supplier contacts, capability tags and performance scores."
             wide
             actions={
-              <button onClick={() => setActiveForm(activeForm === "supplier" ? "" : "supplier")}>Add supplier</button>
+              <button
+                onClick={() =>
+                  activeForm === "supplier" && !editingSupplierId ? closeSupplierForm() : openSupplierForm()
+                }
+              >
+                {activeForm === "supplier" && !editingSupplierId
+                  ? t("Close form", "关闭表单")
+                  : t("Add supplier", "新增供应商")}
+              </button>
             }
           >
             {activeForm === "supplier" && (
               <form className="admin-ops-form" onSubmit={submitSupplier}>
+                <div className="supplier-form-heading">
+                  <div>
+                    <span>
+                      {editingSupplierId ? t("EDIT SUPPLIER", "修改供应商资料") : t("NEW SUPPLIER", "新增供应商")}
+                    </span>
+                    <strong>
+                      {editingSupplierId
+                        ? t("Update the factory contact and portal login email", "修改工厂联系人及生产工作台登录邮箱")
+                        : t("Create a reusable supplier record", "建立可重复使用的供应商资料")}
+                    </strong>
+                  </div>
+                  {editingSupplierId && (
+                    <button type="button" onClick={closeSupplierForm}>
+                      {t("Cancel editing", "取消修改")}
+                    </button>
+                  )}
+                </div>
                 <Field label="Supplier name">
                   <input
                     required
@@ -1322,6 +1384,7 @@ export default function AdminWorkflowWorkspace({
                 <Field label="Email">
                   <input
                     type="email"
+                    required
                     value={supplierForm.contact_email}
                     onChange={(e) => setSupplierForm({ ...supplierForm, contact_email: e.target.value })}
                   />
@@ -1366,8 +1429,13 @@ export default function AdminWorkflowWorkspace({
                   />
                 </Field>
                 <div className="admin-ops-form-actions">
+                  <button type="button" onClick={closeSupplierForm} disabled={loading}>
+                    {t("Cancel", "取消")}
+                  </button>
                   <button className="btn-premium" disabled={loading}>
-                    Save supplier
+                    {editingSupplierId
+                      ? t("Save supplier changes", "保存供应商修改")
+                      : t("Save supplier", "保存供应商")}
                   </button>
                 </div>
               </form>
@@ -1382,6 +1450,7 @@ export default function AdminWorkflowWorkspace({
                       <th>Contact</th>
                       <th>Quality</th>
                       <th>Reliability</th>
+                      <th>{t("Actions", "操作")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1400,6 +1469,11 @@ export default function AdminWorkflowWorkspace({
                         </td>
                         <td>{supplier.rating ? Math.round(Number(supplier.rating) * 20) : "-"}</td>
                         <td>{supplier.reliability_score || "-"}</td>
+                        <td>
+                          <button type="button" onClick={() => openSupplierForm(supplier)}>
+                            {t("Edit details", "修改资料")}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

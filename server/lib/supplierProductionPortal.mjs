@@ -145,7 +145,7 @@ export async function createSupplierPortalAccount({ supabase, supplierId, projec
   );
   if (!supplier) throw httpError(404, "Supplier not found.");
   if (supplier.status && supplier.status !== "active") throw httpError(409, "This supplier is not active.");
-  const email = clean(supplier.contact_email).toLowerCase();
+  const email = clean(supplier.email || supplier.contact_email).toLowerCase();
   if (!email || !email.includes("@")) {
     throw httpError(400, "Add a valid supplier contact email before creating portal access.");
   }
@@ -166,10 +166,20 @@ export async function createSupplierPortalAccount({ supabase, supplierId, projec
 
   const { data: usersData, error: usersError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (usersError) throw new Error(`Unable to search supplier accounts: ${usersError.message}`);
-  const existing = (usersData?.users || []).find((entry) => clean(entry.email).toLowerCase() === email);
+  const users = usersData?.users || [];
+  const existingByEmail = users.find((entry) => clean(entry.email).toLowerCase() === email);
+  const existingBySupplier = users.find(
+    (entry) =>
+      clean(entry.app_metadata?.role).toLowerCase() === SUPPLIER_ROLE &&
+      clean(entry.app_metadata?.supplier_id) === supplier.id
+  );
+  if (existingByEmail && existingBySupplier && existingByEmail.id !== existingBySupplier.id) {
+    throw httpError(409, "The new email already belongs to another account. Use another supplier email.");
+  }
+  const existing = existingBySupplier || existingByEmail;
   const temporaryPassword = createTemporaryPassword();
   const userMetadata = {
-    full_name: supplier.contact_name || supplier.name,
+    full_name: supplier.contact_person || supplier.contact_name || supplier.name,
     company: supplier.name,
     account_type: "supplier_factory"
   };
@@ -187,6 +197,7 @@ export async function createSupplierPortalAccount({ supabase, supplierId, projec
       throw httpError(409, "This email is already linked to another supplier.");
     }
     const { data, error } = await supabase.auth.admin.updateUserById(existing.id, {
+      email,
       password: temporaryPassword,
       email_confirm: true,
       user_metadata: { ...(existing.user_metadata || {}), ...userMetadata },
@@ -519,8 +530,8 @@ function safeSupplier(supplier) {
     id: supplier.id,
     name: supplier.name,
     code: supplier.code || "",
-    contactName: supplier.contact_name || "",
-    contactEmail: supplier.contact_email || "",
+    contactName: supplier.contact_person || supplier.contact_name || "",
+    contactEmail: supplier.email || supplier.contact_email || "",
     capabilities: supplier.capabilities || []
   };
 }

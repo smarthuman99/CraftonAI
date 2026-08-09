@@ -1973,6 +1973,45 @@ button.admin-order-card:hover {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.supplier-form-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.supplier-form-heading span,
+.supplier-form-heading strong {
+  display: block;
+}
+
+.supplier-form-heading span {
+  margin-bottom: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.supplier-form-heading strong {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+}
+
+.supplier-form-heading button {
+  min-height: 32px;
+  border: 1px solid var(--glass-border);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.65rem;
+}
+
 .admin-ops-form label {
   min-width: 0;
 }
