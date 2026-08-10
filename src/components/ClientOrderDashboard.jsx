@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { deriveProjectLifecycle } from "../projectLifecycle.js";
 
 const copy = (lang, cn, en) => (lang === "Cn" ? cn : en);
 
@@ -38,38 +39,13 @@ const uniqueRows = (rows = []) => {
 const getProgressRows = (project, key) =>
   uniqueRows((project.jobs || []).flatMap((job) => job.clientProgress?.[key] || []));
 
-const getOrderStage = (job) => {
-  const status = String(job.status || "").toLowerCase();
-  const reviewStatus = String(job.reviewStatus || "").toLowerCase();
-  const rfqStatus = String(job.rfqStatus || "").toLowerCase();
-  const currentStage = Number(job.currentStage || 0);
-  const progress = job.clientProgress || {};
-
-  if (status === "delivered" || currentStage >= 14 || (progress.shipments || []).length) return 4;
-  if (status === "quality_check" || currentStage >= 11 || (progress.inspections || []).length) return 3;
-  if (
-    ["in_production", "production", "manufacturing", "packing"].includes(status) ||
-    currentStage >= 9 ||
-    (progress.productionUpdates || []).length
-  ) {
-    return 2;
-  }
-  if (
-    currentStage >= 3 ||
-    ["ready", "sent", "priced"].includes(rfqStatus) ||
-    ["approved", "rfq_ready", "revision_requested", "pending"].includes(reviewStatus) ||
-    status === "needs_review"
-  ) {
-    return 1;
-  }
-  return 0;
-};
+const getOrderStage = (job) => deriveProjectLifecycle(job).customerStep;
 
 const getOrderStatus = (job, lang) => {
-  const status = String(job.status || "").toLowerCase();
-  const stage = getOrderStage(job);
+  const lifecycle = deriveProjectLifecycle(job);
+  const stage = lifecycle.customerStep;
 
-  if (status === "delivered" || Number(job.currentStage || 0) >= 16) {
+  if (lifecycle.stageNumber >= 16) {
     return { label: copy(lang, "已交付", "Delivered"), tone: "complete" };
   }
   if (stage === 4) return { label: copy(lang, "运输与交付", "Shipping & delivery"), tone: "progress" };

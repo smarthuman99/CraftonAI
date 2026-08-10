@@ -23,6 +23,7 @@ import ClientOrderDashboard from "./components/ClientOrderDashboard";
 import CraftonHomepage from "./components/CraftonHomepage";
 import SupplierProductionPortal from "./components/SupplierProductionPortal";
 import { AdminLocalized, adminText } from "./adminI18n";
+import { deriveProjectLifecycle, mergeProjectJobSources } from "./projectLifecycle.js";
 
 const IMAGES = {
   heroChair: "/hero_chair.jpg", // 侘寂奢華皮質單椅 (取代 image1)
@@ -738,6 +739,33 @@ const buildClientGroupsFromJobs = (jobs = []) => {
     .sort((a, b) => a.clientName.localeCompare(b.clientName));
 };
 
+const buildAiOrderOverview = (job) => {
+  const lifecycle = deriveProjectLifecycle(job);
+  return {
+    jobId: job.id,
+    projectName: job.projectName,
+    destination: job.destination,
+    quantityText: job.quantityText,
+    status: job.status,
+    reviewStatus: job.reviewStatus,
+    rfqStatus: job.rfqStatus,
+    currentStage: lifecycle.stageNumber,
+    stageId: lifecycle.stageId,
+    lifecycle,
+    summary: job.summaryEn,
+    questions: job.questions,
+    clientAnswers: job.clientAnswers,
+    items: job.items.map((item) => ({
+      item: item.typeEn || item.typeCn,
+      quantity: item.qty,
+      material: item.materialEn || item.materialCn,
+      notes: item.notesEn || item.notesCn
+    })),
+    fileName: job.fileName,
+    createdAt: job.createdAt
+  };
+};
+
 const buildAiProjectOverviewFromJobs = (jobs = [], currentDraft = {}) => {
   const groups = buildProjectGroupsFromJobs(jobs);
   const allJobs = groups.flatMap((group) => group.jobs);
@@ -746,44 +774,22 @@ const buildAiProjectOverviewFromJobs = (jobs = [], currentDraft = {}) => {
   return {
     totalProjects: groups.length,
     totalOrders: allJobs.length,
-    latestOrder: latestOrder
-      ? {
-          jobId: latestOrder.id,
-          projectName: latestOrder.projectName,
-          destination: latestOrder.destination,
-          quantityText: latestOrder.quantityText,
-          status: latestOrder.status,
-          reviewStatus: latestOrder.reviewStatus,
-          rfqStatus: latestOrder.rfqStatus,
-          summary: latestOrder.summaryEn,
-          fileName: latestOrder.fileName
-        }
-      : null,
+    latestOrder: latestOrder ? buildAiOrderOverview(latestOrder) : null,
     currentDraft,
-    projects: groups.slice(0, 8).map((group) => ({
-      projectId: group.projectId,
-      projectName: group.projectName,
-      destination: group.destination,
-      orderCount: group.jobs.length,
-      orders: group.jobs.slice(0, 6).map((job) => ({
-        jobId: job.id,
-        quantityText: job.quantityText,
-        status: job.status,
-        reviewStatus: job.reviewStatus,
-        rfqStatus: job.rfqStatus,
-        summary: job.summaryEn,
-        questions: job.questions,
-        clientAnswers: job.clientAnswers,
-        items: job.items.map((item) => ({
-          item: item.typeEn || item.typeCn,
-          quantity: item.qty,
-          material: item.materialEn || item.materialCn,
-          notes: item.notesEn || item.notesCn
-        })),
-        fileName: job.fileName,
-        createdAt: job.createdAt
-      }))
-    }))
+    projects: groups.slice(0, 8).map((group) => {
+      const orders = group.jobs.slice(0, 6).map(buildAiOrderOverview);
+      const lifecycle = [...orders].sort(
+        (left, right) => Number(right.lifecycle?.stageNumber || 0) - Number(left.lifecycle?.stageNumber || 0)
+      )[0]?.lifecycle;
+      return {
+        projectId: group.projectId,
+        projectName: group.projectName,
+        destination: group.destination,
+        orderCount: group.jobs.length,
+        lifecycle,
+        orders
+      };
+    })
   };
 };
 
@@ -1704,13 +1710,7 @@ function App() {
   };
 
   const getPortalContextJobs = () => {
-    const merged = new Map();
-    [...clientProjectJobs, ...getLocalReviewJobs()].forEach((job) => {
-      const key =
-        job.id || `${job.project_name || job.projectName || "local"}-${job.created_at || job.submittedAt || ""}`;
-      if (!merged.has(key)) merged.set(key, job);
-    });
-    return Array.from(merged.values());
+    return mergeProjectJobSources(clientProjectJobs, getLocalReviewJobs());
   };
 
   const buildSupportProjectContext = () =>
@@ -1754,9 +1754,16 @@ function App() {
     );
 
     if (wantsProgress && latestOrder) {
-      return `The latest order I can see is "${latestOrder.projectName || "To confirm"}", currently ${
-        latestOrder.reviewStatus || latestOrder.status
-      }. ${latestOrder.summary || "The Crafton team is preparing the intake draft."}`;
+      const lifecycle = latestOrder.lifecycle || deriveProjectLifecycle(latestOrder);
+      const production = lifecycle.production || {};
+      if (lifecycle.stageNumber >= 9) {
+        return lang === "Cn"
+          ? `「${latestOrder.projectName || "当前项目"}」已进入 ${lifecycle.stageId} 生产阶段。现有 ${production.updateCount || 0} 个生产工序，最高上报进度 ${production.maxProgressPercent || 0}%；${production.pendingReviewCount || 0} 项等待 Cho 审核，${production.revisionRequiredCount || 0} 项排期需要修改。`
+          : `"${latestOrder.projectName || "Current project"}" is now at ${lifecycle.stageId} production. ${production.updateCount || 0} work packages are recorded, with a maximum reported progress of ${production.maxProgressPercent || 0}%; ${production.pendingReviewCount || 0} await Cho review and ${production.revisionRequiredCount || 0} require schedule changes.`;
+      }
+      return lang === "Cn"
+        ? `「${latestOrder.projectName || "当前项目"}」目前处于 ${lifecycle.stageId}（${lifecycle.status}）。`
+        : `"${latestOrder.projectName || "Current project"}" is currently at ${lifecycle.stageId} (${lifecycle.status}).`;
     }
 
     if (latestOrder) {
@@ -5157,7 +5164,8 @@ function App() {
           { table: "shipments", key: "shipments" },
           { table: "shipment_documents", key: "shipmentDocuments" },
           { table: "project_files", key: "projectFiles" },
-          { table: "handover_reports", key: "handovers" }
+          { table: "handover_reports", key: "handovers" },
+          { table: "workflow_events", key: "workflowEvents" }
         ];
         const progressRows = {};
 
@@ -6852,9 +6860,7 @@ function App() {
   const renderClientOrderDashboard = () => {
     const forceEmptyDashboard =
       import.meta.env.DEV && new window.URLSearchParams(window.location.search).has("empty-dashboard");
-    const dashboardJobs = [...getLocalReviewJobs(), ...clientProjectJobs].filter(
-      (job, index, jobs) => jobs.findIndex((item) => String(item.id) === String(job.id)) === index
-    );
+    const dashboardJobs = mergeProjectJobSources(clientProjectJobs, getLocalReviewJobs());
     const jobs = forceEmptyDashboard ? [] : dashboardJobs;
     const projectGroups = buildProjectGroupsFromJobs(jobs).map((project) => ({
       ...project,

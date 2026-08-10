@@ -60,7 +60,9 @@ function buildSystemPrompt() {
     "Before replying, read the visible projectOverview carefully and infer the customer's latest intent.",
     "Classify the latest intent as one of: greeting, new_order, modify_existing_order, progress_inquiry, answer_clarification, file_upload, quotation_or_process, or unrelated.",
     "If the customer says the project name, location, destination, material, or other details are 'same as last project', 'same as previous', '跟上一个一样', '同上', or similar, reuse the matching values from projectOverview.latestOrder or the most relevant known project. Do not ask again for values already visible in projectOverview.",
-    "If the message is a progress inquiry, answer from visible statuses in projectOverview, including reviewStatus, rfqStatus, questions, clientAnswers, or summary. Do not turn a progress question into a new intake unless the customer adds new furniture requirements.",
+    "If the message is a progress inquiry, use projectOverview.lifecycle as the authoritative current status. currentStage and lifecycle.stageId take priority over reviewStatus and rfqStatus, which are historical subprocess fields and must never move a project backwards.",
+    "For a project at S09 or later, describe it as production, quality, shipping, or handover according to lifecycle.phase. Include visible production progress, pending review, revision requirements, risk, and the latest event when available.",
+    "Do not turn a progress question into a new intake unless the customer adds new furniture requirements.",
     "If the message is a modification, identify the most likely existing project/order and summarize what changed. If unclear, ask one focused question to confirm which project or order.",
     "If the message is a new order, collect missing details and keep it separate from existing projects unless the customer clearly says it belongs to the same project.",
     "If the latest message is only a greeting such as hello, hi, hey, ??, ??, or ?, do not treat it as project requirements. Reply with a warm welcome and ask whether they want to discuss bespoke furniture, upload references, or understand the quotation process.",
@@ -94,7 +96,8 @@ function buildSystemPrompt() {
     "Return strict JSON only with this shape:",
     JSON.stringify({
       reply: "string, customer-facing response",
-      intent: "greeting | new_order | modify_existing_order | progress_inquiry | answer_clarification | file_upload | quotation_or_process | unrelated",
+      intent:
+        "greeting | new_order | modify_existing_order | progress_inquiry | answer_clarification | file_upload | quotation_or_process | unrelated",
       matchedProjectId: "string or empty",
       matchedProjectName: "string or empty",
       orderOverview: "one-sentence summary of the current visible order/project state",
@@ -145,41 +148,83 @@ function normalizeContext(context, messages = []) {
     company: String(context.company || "").slice(0, 200),
     projectOverview: normalizeProjectOverview(context.projectOverview),
     latestCustomerMessage: latestClientMessage.slice(0, 500),
-    latestCustomerLanguage: prefersChinese || /[\u3400-\u9fff]/.test(latestClientMessage) ? "Chinese" : "English or mixed"
+    latestCustomerLanguage:
+      prefersChinese || /[\u3400-\u9fff]/.test(latestClientMessage) ? "Chinese" : "English or mixed"
   };
 }
 
 function normalizeProjectOverview(overview = {}) {
   if (!overview || typeof overview !== "object") return {};
 
-  const normalizeOrder = (order = {}) => ({
-    jobId: stringify(order.jobId).slice(0, 80),
-    projectName: stringify(order.projectName).slice(0, 180),
-    destination: stringify(order.destination).slice(0, 180),
-    quantityText: stringify(order.quantityText).slice(0, 300),
-    status: stringify(order.status).slice(0, 80),
-    reviewStatus: stringify(order.reviewStatus).slice(0, 80),
-    rfqStatus: stringify(order.rfqStatus).slice(0, 80),
-    summary: stringify(order.summary).slice(0, 500),
-    fileName: stringify(order.fileName).slice(0, 180),
-    questions: Array.isArray(order.questions) ? order.questions.slice(0, 6).map((item) => stringify(item).slice(0, 220)) : [],
-    clientAnswers:
-      order.clientAnswers && typeof order.clientAnswers === "object"
-        ? Object.fromEntries(
-            Object.entries(order.clientAnswers)
-              .slice(0, 8)
-              .map(([key, value]) => [String(key).slice(0, 40), stringify(value).slice(0, 300)])
-          )
-        : {},
-    items: Array.isArray(order.items)
-      ? order.items.slice(0, 8).map((item = {}) => ({
-          item: stringify(item.item).slice(0, 160),
-          quantity: Number(item.quantity || 0),
-          material: stringify(item.material).slice(0, 180),
-          notes: stringify(item.notes).slice(0, 260)
-        }))
-      : []
-  });
+  const normalizeLifecycle = (lifecycle = {}) => {
+    const production = lifecycle.production && typeof lifecycle.production === "object" ? lifecycle.production : {};
+    const lastEvent = lifecycle.lastEvent && typeof lifecycle.lastEvent === "object" ? lifecycle.lastEvent : null;
+    const stageNumber = clampNumber(Number(lifecycle.stageNumber) || 1, 1, 17);
+    return {
+      stageNumber,
+      stageId: stringify(lifecycle.stageId).slice(0, 8) || `S${String(stageNumber).padStart(2, "0")}`,
+      phase: stringify(lifecycle.phase).slice(0, 40),
+      status: stringify(lifecycle.status).slice(0, 80),
+      source: stringify(lifecycle.source).slice(0, 80),
+      production: {
+        updateCount: clampNumber(production.updateCount, 0, 1000),
+        completedCount: clampNumber(production.completedCount, 0, 1000),
+        pendingReviewCount: clampNumber(production.pendingReviewCount, 0, 1000),
+        revisionRequiredCount: clampNumber(production.revisionRequiredCount, 0, 1000),
+        averageProgressPercent: clampNumber(production.averageProgressPercent, 0, 100),
+        maxProgressPercent: clampNumber(production.maxProgressPercent, 0, 100),
+        latestProcess: stringify(production.latestProcess).slice(0, 160),
+        latestStatus: stringify(production.latestStatus).slice(0, 80),
+        latestReportedAt: stringify(production.latestReportedAt).slice(0, 80),
+        riskLevel: stringify(production.riskLevel).slice(0, 40)
+      },
+      lastEvent: lastEvent
+        ? {
+            stageId: stringify(lastEvent.stageId).slice(0, 8),
+            type: stringify(lastEvent.type).slice(0, 120),
+            createdAt: stringify(lastEvent.createdAt).slice(0, 80)
+          }
+        : null
+    };
+  };
+
+  const normalizeOrder = (order = {}) => {
+    const lifecycle = normalizeLifecycle(order.lifecycle || {});
+    return {
+      jobId: stringify(order.jobId).slice(0, 80),
+      projectName: stringify(order.projectName).slice(0, 180),
+      destination: stringify(order.destination).slice(0, 180),
+      quantityText: stringify(order.quantityText).slice(0, 300),
+      status: stringify(order.status).slice(0, 80),
+      reviewStatus: stringify(order.reviewStatus).slice(0, 80),
+      rfqStatus: stringify(order.rfqStatus).slice(0, 80),
+      currentStage: clampNumber(order.currentStage || lifecycle.stageNumber, 1, 17),
+      stageId: stringify(order.stageId).slice(0, 8) || lifecycle.stageId,
+      lifecycle,
+      summary: stringify(order.summary).slice(0, 500),
+      fileName: stringify(order.fileName).slice(0, 180),
+      createdAt: stringify(order.createdAt).slice(0, 80),
+      questions: Array.isArray(order.questions)
+        ? order.questions.slice(0, 6).map((item) => stringify(item).slice(0, 220))
+        : [],
+      clientAnswers:
+        order.clientAnswers && typeof order.clientAnswers === "object"
+          ? Object.fromEntries(
+              Object.entries(order.clientAnswers)
+                .slice(0, 8)
+                .map(([key, value]) => [String(key).slice(0, 40), stringify(value).slice(0, 300)])
+            )
+          : {},
+      items: Array.isArray(order.items)
+        ? order.items.slice(0, 8).map((item = {}) => ({
+            item: stringify(item.item).slice(0, 160),
+            quantity: Number(item.quantity || 0),
+            material: stringify(item.material).slice(0, 180),
+            notes: stringify(item.notes).slice(0, 260)
+          }))
+        : []
+    };
+  };
 
   return {
     totalProjects: Number(overview.totalProjects || 0),
@@ -201,6 +246,7 @@ function normalizeProjectOverview(overview = {}) {
           projectName: stringify(project.projectName).slice(0, 180),
           destination: stringify(project.destination).slice(0, 180),
           orderCount: Number(project.orderCount || 0),
+          lifecycle: normalizeLifecycle(project.lifecycle || {}),
           orders: Array.isArray(project.orders) ? project.orders.slice(0, 6).map(normalizeOrder) : []
         }))
       : []
@@ -215,7 +261,9 @@ function normalizeAiResult(result, context = {}) {
     /same as (the )?(last|previous)|same project|same location|same destination|同上|跟上一个一样|跟上一個一樣|和上一个一样|和上一個一樣|同一个项目|同一個項目/i.test(
       latestMessage
     );
-  const asksProgress = /progress|status|stage|when|ready|done|進度|进度|狀態|状态|完成|幾時|什么时候|何時/i.test(latestMessage);
+  const asksProgress = /progress|status|stage|when|ready|done|進度|进度|狀態|状态|完成|幾時|什么时候|何時/i.test(
+    latestMessage
+  );
   let intent = stringify(result?.intent);
   let matchedProjectId = stringify(result?.matchedProjectId);
   let matchedProjectName = stringify(result?.matchedProjectName);
@@ -237,8 +285,12 @@ function normalizeAiResult(result, context = {}) {
     matchedProjectName,
     orderOverview: stringify(result?.orderOverview),
     extracted: {
-      projectName: stringify(extracted.projectName) || (saysSameAsPrevious && latestOrder ? stringify(latestOrder.projectName) : ""),
-      destination: stringify(extracted.destination) || (saysSameAsPrevious && latestOrder ? stringify(latestOrder.destination) : ""),
+      projectName:
+        stringify(extracted.projectName) ||
+        (saysSameAsPrevious && latestOrder ? stringify(latestOrder.projectName) : ""),
+      destination:
+        stringify(extracted.destination) ||
+        (saysSameAsPrevious && latestOrder ? stringify(latestOrder.destination) : ""),
       quantityText: stringify(extracted.quantityText),
       briefText: stringify(extracted.briefText),
       readinessScore: clampNumber(extracted.readinessScore, 0, 100)
@@ -287,7 +339,8 @@ async function requestDeepSeekJson(url, requestBody, context) {
 function buildRecoveryResult(context = {}) {
   const isChinese = context.latestCustomerLanguage === "Chinese";
   const latestMessage = String(context.latestCustomerMessage || "");
-  const looksLikeInjection = /ignore|system prompt|developer message|api key|secret|隐藏提示|系统提示|忽略|密钥|规则|指令/i.test(latestMessage);
+  const looksLikeInjection =
+    /ignore|system prompt|developer message|api key|secret|隐藏提示|系统提示|忽略|密钥|规则|指令/i.test(latestMessage);
 
   if (looksLikeInjection) {
     return {
