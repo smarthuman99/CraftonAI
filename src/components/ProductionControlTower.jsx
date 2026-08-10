@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { callWorkflowAi } from "./workflowAiClient";
 
 const formatDate = (value, zh) =>
@@ -21,6 +21,8 @@ const label = (value, zh) => {
     not_started: ["Not started", "未开始"],
     in_progress: ["In progress", "生产中"],
     pending_review: ["Cho review", "等待 Cho 审核"],
+    completed: ["Cho approved", "Cho 已批准"],
+    evidence_changes_required: ["Evidence changes required", "完工证据需要修改"],
     awaiting_framework: ["Awaiting framework", "等待工序框架"],
     awaiting_supplier_plan: ["Awaiting factory schedule", "等待工厂排产"],
     changes_required: ["AI requires changes", "AI 要求修改"],
@@ -54,6 +56,28 @@ function latestEntry(task, type) {
       .filter((entry) => entry?.type === type)
       .sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0] || null
   );
+}
+
+function evidenceTimestamp(entry = {}) {
+  const timestamp = Date.parse(
+    entry.reviewed_at || entry.uploaded_at || entry.created_at || entry.submitted_at || entry.approved_at || ""
+  );
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function completionReview(task) {
+  const evidence = Array.isArray(task?.evidence) ? task.evidence : [];
+  const uploads = evidence.filter((entry) => entry?.type === "supplier_upload");
+  const review = evidence
+    .filter((entry) => entry?.type === "cho_evidence_review")
+    .sort((a, b) => evidenceTimestamp(b) - evidenceTimestamp(a))[0];
+  const latestUploadAt = uploads.reduce((latest, entry) => Math.max(latest, evidenceTimestamp(entry)), 0);
+  const current = review && evidenceTimestamp(review) >= latestUploadAt ? review : null;
+  return {
+    status: current?.decision === "approved" || current?.decision === "changes_required" ? current.decision : "pending",
+    review: current,
+    uploads
+  };
 }
 
 function scheduleDashboard(tasks) {
@@ -140,6 +164,9 @@ export default function ProductionControlTower({
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [credentials, setCredentials] = useState(null);
+  const [reviewTaskId, setReviewTaskId] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [evidenceUrls, setEvidenceUrls] = useState({});
 
   const dashboard = useMemo(() => {
     const tasks = productionUpdates
@@ -149,6 +176,7 @@ export default function ProductionControlTower({
         return {
           ...task,
           evidenceSummary: taskEvidence(task),
+          completionReview: completionReview(task),
           hasApprovedBaseline,
           activeRiskLevel: hasApprovedBaseline ? task.risk_level || "low" : "low"
         };
@@ -175,9 +203,52 @@ export default function ProductionControlTower({
       readyForReview: tasks.filter(
         (task) => Number(task.progress_percent || 0) >= 100 && task.evidenceSummary.missing.length === 0
       ).length,
+      approvedCompletion: tasks.filter((task) => task.completionReview.status === "approved").length,
+      changesRequired: tasks.filter((task) => task.completionReview.status === "changes_required").length,
+      allCompletionApproved: tasks.length > 0 && tasks.every((task) => task.completionReview.status === "approved"),
       schedule
     };
   }, [productionUpdates, selectedSupplier]);
+
+  const reviewTask = dashboard.tasks.find((task) => task.id === reviewTaskId) || null;
+  const canApproveReviewTask = Boolean(
+    reviewTask &&
+    reviewTask.hasApprovedBaseline &&
+    reviewTask.completionReview.status === "pending" &&
+    Number(reviewTask.progress_percent || 0) >= 100 &&
+    reviewTask.evidenceSummary.missing.length === 0 &&
+    reviewTask.activeRiskLevel === "low"
+  );
+
+  useEffect(() => {
+    let active = true;
+    const files = dashboard.tasks.flatMap((task) =>
+      task.completionReview.uploads
+        .filter((entry) => entry?.bucket && entry?.path)
+        .map((entry) => ({ key: `${entry.bucket}:${entry.path}`, ...entry }))
+    );
+    if (!files.length) {
+      setEvidenceUrls({});
+      return () => {
+        active = false;
+      };
+    }
+    Promise.all(
+      files.map(async (entry) => {
+        const { data } = await supabaseClient.storage.from(entry.bucket).createSignedUrl(entry.path, 60 * 60);
+        return [entry.key, data?.signedUrl || ""];
+      })
+    )
+      .then((entries) => {
+        if (active) setEvidenceUrls(Object.fromEntries(entries));
+      })
+      .catch(() => {
+        if (active) setEvidenceUrls({});
+      });
+    return () => {
+      active = false;
+    };
+  }, [dashboard.tasks, supabaseClient]);
 
   async function createAccess() {
     if (!selectedSupplier) return;
@@ -244,6 +315,56 @@ export default function ProductionControlTower({
         )
       );
       onChanged?.();
+    } catch (error) {
+      setMessage(error.message || String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function openCompletionReview(task) {
+    setReviewTaskId(task.id);
+    setReviewNote(task.completionReview.review?.note || "");
+    setMessage("");
+  }
+
+  async function submitCompletionReview(decision) {
+    if (!reviewTask) return;
+    if (decision === "changes_required" && !reviewNote.trim()) {
+      setMessage(
+        t("Explain what the supplier must correct or upload again.", "请说明供应商需要修正或重新上传的内容。")
+      );
+      return;
+    }
+    setBusy(`review-${reviewTask.id}`);
+    setMessage("");
+    try {
+      const result = await callWorkflowAi(supabaseClient, {
+        action: "review_production_evidence",
+        projectId: project.id,
+        productionUpdateId: reviewTask.id,
+        decision,
+        note: reviewNote.trim()
+      });
+      setMessage(
+        result.projectReleased
+          ? t(
+              "All production evidence is approved. The project has entered S11 visual quality inspection.",
+              "全部生产工序的完工证据已批准，项目已进入 S11 视觉品质检验。"
+            )
+          : decision === "approved"
+            ? t(
+                "Completion evidence approved. Review the remaining work packages before S11 release.",
+                "该工序完工证据已批准，请继续审核其余工序后再统一进入 S11。"
+              )
+            : t(
+                "Evidence returned to the supplier. The exception is now tracked in S10.",
+                "证据已退回供应商，相关异常现已进入 S10 跟进。"
+              )
+      );
+      setReviewTaskId("");
+      setReviewNote("");
+      await onChanged?.();
     } catch (error) {
       setMessage(error.message || String(error));
     } finally {
@@ -422,57 +543,200 @@ export default function ProductionControlTower({
           </p>
         </div>
       ) : (
-        <div className="production-work-package-grid">
-          {dashboard.tasks.map((task, index) => (
-            <article className={`risk-${task.activeRiskLevel}`} key={task.id}>
+        <>
+          <section className={`production-completion-gate ${dashboard.allCompletionApproved ? "released" : ""}`}>
+            <div>
+              <span>{t("S09 COMPLETION REVIEW GATE", "S09 完工审核闸口")}</span>
+              <h4>
+                {dashboard.allCompletionApproved
+                  ? t("Released to S11 visual quality inspection", "已放行进入 S11 视觉品质检验")
+                  : t("Cho approval required for every work package", "每个生产工序都必须经过 Cho 审核")}
+              </h4>
+              <p>
+                {t(
+                  "Review the supplier's files below. The final approval automatically releases the project to S11; returned evidence is tracked in S10.",
+                  "请逐项检查供应商上传的文件。最后一项批准后项目会自动进入 S11；被退回的证据会进入 S10 跟进。"
+                )}
+              </p>
+            </div>
+            <div className="production-completion-count">
+              <strong>
+                {dashboard.approvedCompletion}/{dashboard.tasks.length}
+              </strong>
+              <span>{t("work packages approved", "个工序已批准")}</span>
+              {dashboard.changesRequired > 0 && (
+                <small>
+                  {dashboard.changesRequired} {t("returned", "项已退回")}
+                </small>
+              )}
+            </div>
+          </section>
+
+          <div className="production-work-package-grid">
+            {dashboard.tasks.map((task, index) => (
+              <article className={`risk-${task.activeRiskLevel}`} key={task.id}>
+                <header>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <div>
+                    <small>{task.item_name || t("Production package", "生产工序")}</small>
+                    <h5>{task.process_name}</h5>
+                  </div>
+                  <b>{label(task.activeRiskLevel, zh)}</b>
+                </header>
+                <div className="production-package-progress">
+                  <div>
+                    <span style={{ width: `${task.progress_percent || 0}%` }} />
+                  </div>
+                  <strong>{task.progress_percent || 0}%</strong>
+                </div>
+                <dl>
+                  <div>
+                    <dt>
+                      {task.hasApprovedBaseline
+                        ? t("Approved due", "已批准截止")
+                        : t("Supplier proposed", "供应商建议")}
+                    </dt>
+                    <dd>
+                      {formatDate(
+                        task.hasApprovedBaseline ? task.expected_at : latestEntry(task, "supplier_plan")?.expected_at,
+                        zh
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t("Evidence", "证据")}</dt>
+                    <dd>
+                      {task.evidenceSummary.coverage}% · {task.evidenceSummary.uploads.length} {t("files", "份文件")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t("Cho gate", "Cho 审核")}</dt>
+                    <dd>
+                      {task.completionReview.status === "approved"
+                        ? t("Approved", "已批准")
+                        : task.completionReview.status === "changes_required"
+                          ? t("Returned", "已退回")
+                          : Number(task.progress_percent || 0) >= 100 && task.evidenceSummary.missing.length === 0
+                            ? t("Ready", "可审核")
+                            : t("Not ready", "未就绪")}
+                    </dd>
+                  </div>
+                </dl>
+                <div className="production-package-checks">
+                  {task.evidenceSummary.required.map((item) => (
+                    <span className={task.evidenceSummary.missing.includes(item) ? "missing" : "done"} key={item}>
+                      {task.evidenceSummary.missing.includes(item) ? "○" : "✓"} {item}
+                    </span>
+                  ))}
+                </div>
+                {task.completionReview.review?.note && (
+                  <p className={`completion-review-note ${task.completionReview.status}`}>
+                    {task.completionReview.review.note}
+                  </p>
+                )}
+                {task.notes && <p>{task.notes}</p>}
+                <button
+                  type="button"
+                  className="production-package-review-button"
+                  disabled={!task.completionReview.uploads.length}
+                  onClick={() => openCompletionReview(task)}
+                >
+                  {task.completionReview.status === "approved"
+                    ? t("View approved evidence", "查看已批准证据")
+                    : t("Review supplier evidence", "审核供应商证据")}
+                </button>
+              </article>
+            ))}
+          </div>
+
+          {reviewTask && (
+            <section className="production-evidence-review-panel">
               <header>
-                <span>{String(index + 1).padStart(2, "0")}</span>
                 <div>
-                  <small>{task.item_name || t("Production package", "生产工序")}</small>
-                  <h5>{task.process_name}</h5>
+                  <span>{t("CHO COMPLETION REVIEW", "CHO 完工证据审核")}</span>
+                  <h4>{reviewTask.process_name}</h4>
+                  <p>
+                    {reviewTask.item_name} · {reviewTask.progress_percent || 0}% · {reviewTask.evidenceSummary.coverage}
+                    % {t("evidence coverage", "证据完整度")}
+                  </p>
                 </div>
-                <b>{label(task.activeRiskLevel, zh)}</b>
+                <button type="button" onClick={() => setReviewTaskId("")}>
+                  {t("Close", "关闭")}
+                </button>
               </header>
-              <div className="production-package-progress">
-                <div>
-                  <span style={{ width: `${task.progress_percent || 0}%` }} />
-                </div>
-                <strong>{task.progress_percent || 0}%</strong>
+
+              <div className="production-evidence-files">
+                {reviewTask.completionReview.uploads.map((entry, index) => {
+                  const url = evidenceUrls[`${entry.bucket}:${entry.path}`];
+                  const isImage = String(entry.mime_type || "").startsWith("image/");
+                  return (
+                    <a
+                      href={url || undefined}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={isImage ? "image" : "document"}
+                      key={`${entry.sha256 || entry.path}-${index}`}
+                    >
+                      {isImage && url ? <img src={url} alt={entry.requirement || entry.file_name} /> : <b>FILE</b>}
+                      <span>{entry.requirement || t("Production evidence", "生产证据")}</span>
+                      <strong>{entry.file_name}</strong>
+                      <small>{formatDate(entry.uploaded_at, zh)}</small>
+                    </a>
+                  );
+                })}
               </div>
-              <dl>
-                <div>
-                  <dt>
-                    {task.hasApprovedBaseline ? t("Approved due", "已批准截止") : t("Supplier proposed", "供应商建议")}
-                  </dt>
-                  <dd>
-                    {formatDate(
-                      task.hasApprovedBaseline ? task.expected_at : latestEntry(task, "supplier_plan")?.expected_at,
-                      zh
-                    )}
-                  </dd>
+
+              {reviewTask.completionReview.status === "approved" ? (
+                <div className="production-review-approved">
+                  <strong>{t("Approved by Cho", "已由 Cho 批准")}</strong>
+                  <span>{reviewTask.completionReview.review?.note}</span>
                 </div>
-                <div>
-                  <dt>{t("Evidence", "证据")}</dt>
-                  <dd>
-                    {task.evidenceSummary.coverage}% · {task.evidenceSummary.uploads.length} {t("files", "份文件")}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("State", "状态")}</dt>
-                  <dd>{label(task.status, zh)}</dd>
-                </div>
-              </dl>
-              <div className="production-package-checks">
-                {task.evidenceSummary.required.map((item) => (
-                  <span className={task.evidenceSummary.missing.includes(item) ? "missing" : "done"} key={item}>
-                    {task.evidenceSummary.missing.includes(item) ? "○" : "✓"} {item}
-                  </span>
-                ))}
-              </div>
-              {task.notes && <p>{task.notes}</p>}
-            </article>
-          ))}
-        </div>
+              ) : (
+                <>
+                  {!canApproveReviewTask && (
+                    <div className="production-review-warning">
+                      {t(
+                        "Approval unlocks only at 100% progress, 100% required evidence, an approved schedule and no active AI risk.",
+                        "只有在进度 100%、指定证据完整、排产已批准且没有 AI 风险时，才可批准完工。"
+                      )}
+                    </div>
+                  )}
+                  <label className="production-review-note-field">
+                    <span>{t("Cho review note / correction instructions", "Cho 审核备注／返工指示")}</span>
+                    <textarea
+                      value={reviewNote}
+                      onChange={(event) => setReviewNote(event.target.value)}
+                      placeholder={t(
+                        "Approval note is optional. A correction reason is required when returning evidence.",
+                        "批准备注可留空；退回证据时必须说明需要修正的内容。"
+                      )}
+                    />
+                  </label>
+                  <div className="production-review-actions">
+                    <button
+                      type="button"
+                      className="return"
+                      disabled={Boolean(busy)}
+                      onClick={() => submitCompletionReview("changes_required")}
+                    >
+                      {t("Return for correction", "退回供应商修正")}
+                    </button>
+                    <button
+                      type="button"
+                      className="approve"
+                      disabled={Boolean(busy) || !canApproveReviewTask}
+                      onClick={() => submitCompletionReview("approved")}
+                    >
+                      {busy === `review-${reviewTask.id}`
+                        ? t("Saving review...", "正在保存审核……")
+                        : t("Approve completion evidence", "批准完工证据")}
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+        </>
       )}
     </div>
   );

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   analyzeProductionTask,
   buildProjectProductionAnalysis,
+  productionCompletionState,
+  productionEvidenceReviewState,
   productionPlanState,
   supplierIdentity,
   validateSupplierProductionPlan
@@ -94,6 +96,108 @@ test("marks a complete evidence set ready for Cho rather than auto-approving it"
   assert.equal(result.readyForReview, true);
   assert.equal(result.controllerStatus, "ready_for_cho_review");
   assert.equal(result.evidenceCoveragePercent, 100);
+});
+
+test("treats a current Cho approval as the completed production gate", () => {
+  const task = {
+    progress_percent: 100,
+    expected_at: "2026-08-20T00:00:00.000Z",
+    evidence: [
+      plannedEvidence,
+      ...approvedPlanEvidence,
+      {
+        type: "supplier_upload",
+        requirement: "Dated frame photos",
+        sha256: "hash-a",
+        uploaded_at: "2026-08-09T09:00:00.000Z"
+      },
+      {
+        type: "supplier_upload",
+        requirement: "Key dimension measurements",
+        sha256: "hash-b",
+        uploaded_at: "2026-08-09T09:05:00.000Z"
+      },
+      {
+        type: "cho_evidence_review",
+        decision: "approved",
+        reviewed_at: "2026-08-09T10:00:00.000Z"
+      }
+    ]
+  };
+  const result = analyzeProductionTask(task, { now: "2026-08-10T00:00:00.000Z" });
+  assert.equal(result.readyForReview, false);
+  assert.equal(result.completionReview.status, "approved");
+  assert.equal(result.controllerStatus, "completed");
+});
+
+test("keeps a rejection active until the supplier uploads newer evidence", () => {
+  const evidence = [
+    plannedEvidence,
+    ...approvedPlanEvidence,
+    {
+      type: "supplier_upload",
+      requirement: "Dated frame photos",
+      sha256: "hash-a",
+      uploaded_at: "2026-08-09T09:00:00.000Z"
+    },
+    {
+      type: "supplier_upload",
+      requirement: "Key dimension measurements",
+      sha256: "hash-b",
+      uploaded_at: "2026-08-09T09:05:00.000Z"
+    },
+    {
+      type: "cho_evidence_review",
+      decision: "changes_required",
+      note: "Replace the blurred frame photo.",
+      reviewed_at: "2026-08-09T10:00:00.000Z"
+    }
+  ];
+  const rejected = analyzeProductionTask(
+    { progress_percent: 100, expected_at: "2026-08-20T00:00:00.000Z", evidence },
+    { now: "2026-08-10T00:00:00.000Z" }
+  );
+  assert.equal(rejected.completionReview.status, "changes_required");
+  assert.equal(rejected.controllerStatus, "evidence_changes_required");
+  assert.equal(rejected.riskLevel, "medium");
+
+  const correctedEvidence = [
+    ...evidence,
+    {
+      type: "supplier_upload",
+      requirement: "Dated frame photos",
+      sha256: "hash-c",
+      uploaded_at: "2026-08-09T11:00:00.000Z"
+    }
+  ];
+  const resubmitted = analyzeProductionTask(
+    { progress_percent: 100, expected_at: "2026-08-20T00:00:00.000Z", evidence: correctedEvidence },
+    { now: "2026-08-10T00:00:00.000Z" }
+  );
+  assert.equal(productionEvidenceReviewState({ evidence: correctedEvidence }).status, "pending");
+  assert.equal(resubmitted.readyForReview, true);
+  assert.equal(resubmitted.controllerStatus, "ready_for_cho_review");
+});
+
+test("releases production only when every work package has a current Cho approval", () => {
+  const approved = (id) => ({
+    id,
+    process_name: id,
+    evidence: [
+      plannedEvidence,
+      { type: "supplier_upload", uploaded_at: "2026-08-09T09:00:00.000Z" },
+      { type: "cho_evidence_review", decision: "approved", reviewed_at: "2026-08-09T10:00:00.000Z" }
+    ]
+  });
+  assert.deepEqual(productionCompletionState([approved("frame_production"), approved("assembly")]), {
+    taskCount: 2,
+    approvedCount: 2,
+    changesRequiredCount: 0,
+    allApproved: true
+  });
+  const reopened = approved("assembly");
+  reopened.evidence.push({ type: "supplier_upload", uploaded_at: "2026-08-09T11:00:00.000Z" });
+  assert.equal(productionCompletionState([approved("frame_production"), reopened]).allApproved, false);
 });
 
 test("detects evidence reused across work packages", () => {

@@ -13,6 +13,8 @@ const statusLabel = (value, zh) => {
     not_started: ["Not started", "未开始"],
     in_progress: ["In progress", "生产中"],
     pending_review: ["Ready for Cho review", "等待 Cho 审核"],
+    completed: ["Completion approved", "完工已批准"],
+    evidence_changes_required: ["Evidence changes required", "完工证据需要修改"],
     awaiting_supplier_evidence: ["Evidence required", "等待上传证据"],
     intervention_required: ["Intervention required", "需要立即处理"],
     attention_required: ["Attention required", "需要关注"],
@@ -367,6 +369,23 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
                       {task.analysis?.reasons?.length > 0 && (
                         <div className="supplier-task-alert">{task.analysis.reasons.join(" ")}</div>
                       )}
+                      {task.analysis?.completionReview?.status === "changes_required" && (
+                        <div className="supplier-task-alert completion-review">
+                          <strong>{t("Cho returned this evidence", "Cho 已退回本工序证据")}</strong>
+                          <span>
+                            {task.analysis.completionReview.latestReview?.note ||
+                              t("Upload corrected evidence for another review.", "请上传修正后的证据并重新提交审核。")}
+                          </span>
+                        </div>
+                      )}
+                      {task.analysis?.completionReview?.status === "approved" && (
+                        <div className="supplier-task-approved">
+                          {t(
+                            "Cho approved this work package. Further uploads are locked.",
+                            "Cho 已批准本工序完工，系统已锁定后续上传。"
+                          )}
+                        </div>
+                      )}
                       {!task.analysis?.productionPlan?.hasApprovedBaseline && (
                         <div className="supplier-task-plan-note">
                           {t(
@@ -390,8 +409,17 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
                           ))}
                       </div>
                     </div>
-                    <button type="button" className="supplier-task-upload" onClick={() => openEvidenceForm(task)}>
-                      {t("Upload photos / report progress", "上传进度照片 / 上报进度")}
+                    <button
+                      type="button"
+                      className="supplier-task-upload"
+                      disabled={task.analysis?.completionReview?.status === "approved"}
+                      onClick={() => openEvidenceForm(task)}
+                    >
+                      {task.analysis?.completionReview?.status === "approved"
+                        ? t("Completion approved", "完工已批准")
+                        : task.analysis?.completionReview?.status === "changes_required"
+                          ? t("Upload corrected evidence", "上传修正证据")
+                          : t("Upload photos / report progress", "上传进度照片 / 上报进度")}
                     </button>
                   </article>
                 ))}

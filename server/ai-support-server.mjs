@@ -15,6 +15,7 @@ import {
   createSupplierPortalAccount,
   loadSupplierProductionWorkspace,
   monitorActiveProduction,
+  reviewSupplierProductionEvidence,
   submitSupplierProductionEvidence,
   submitSupplierProductionPlan
 } from "./lib/supplierProductionPortal.mjs";
@@ -110,6 +111,9 @@ const server = http.createServer(async (req, res) => {
       } else if (body.action === "analyze_production_progress") {
         const { supabase } = await requireCraftonStaff(req);
         result = await analyzeProductionProject({ supabase, projectId: body.projectId });
+      } else if (body.action === "review_production_evidence") {
+        const { supabase, user } = await requireCraftonStaff(req);
+        result = await reviewSupplierProductionEvidence({ supabase, user, body });
       } else {
         result = await createAiSupportReply({ messages: body.messages, context: body.context });
       }

@@ -33,6 +33,42 @@ export function latestEvidenceEntry(task = {}, type) {
   );
 }
 
+function evidenceTimestamp(entry = {}) {
+  const value =
+    entry.reviewed_at || entry.uploaded_at || entry.created_at || entry.submitted_at || entry.approved_at || "";
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+export function productionEvidenceReviewState(task = {}) {
+  const evidence = Array.isArray(task.evidence) ? task.evidence : [];
+  const uploads = evidence.filter((entry) => entry?.type === "supplier_upload");
+  const reviews = evidence
+    .filter((entry) => entry?.type === "cho_evidence_review")
+    .sort((a, b) => evidenceTimestamp(b) - evidenceTimestamp(a));
+  const latestReview = reviews[0] || null;
+  const latestUploadAt = uploads.reduce((latest, entry) => Math.max(latest, evidenceTimestamp(entry)), 0);
+  const reviewIsCurrent = Boolean(latestReview) && evidenceTimestamp(latestReview) >= latestUploadAt;
+  const decision = reviewIsCurrent ? clean(latestReview.decision).toLowerCase() : "pending";
+  return {
+    status: ["approved", "changes_required"].includes(decision) ? decision : "pending",
+    latestReview: reviewIsCurrent ? latestReview : null,
+    latestUploadAt: latestUploadAt ? new Date(latestUploadAt).toISOString() : null,
+    reviewedAt: reviewIsCurrent ? latestReview.reviewed_at || null : null
+  };
+}
+
+export function productionCompletionState(tasks = []) {
+  const frameworkTasks = productionFrameworkTasks(tasks);
+  const states = frameworkTasks.map((task) => productionEvidenceReviewState(task));
+  return {
+    taskCount: frameworkTasks.length,
+    approvedCount: states.filter((state) => state.status === "approved").length,
+    changesRequiredCount: states.filter((state) => state.status === "changes_required").length,
+    allApproved: frameworkTasks.length > 0 && states.every((state) => state.status === "approved")
+  };
+}
+
 export function productionPlanState(tasks = []) {
   const frameworkTasks = productionFrameworkTasks(tasks);
   if (!frameworkTasks.length) return { status: "awaiting_framework", version: 0, approvedVersion: 0 };
@@ -280,6 +316,7 @@ export function analyzeProductionTask(task = {}, options = {}) {
     .filter(Boolean)
     .sort((a, b) => b - a)[0];
   const latestReportAt = latestUploadAt || validDate(task.reported_at) || validDate(task.created_at);
+  const completionReview = productionEvidenceReviewState(task);
   const reasons = [];
   let riskLevel = "low";
 
@@ -311,7 +348,15 @@ export function analyzeProductionTask(task = {}, options = {}) {
     reasons.push("No supplier progress evidence has been received for more than three days.");
   }
 
-  const readyForReview = reportedProgressPercent >= 100 && missingEvidence.length === 0 && !hasDuplicate;
+  if (completionReview.status === "changes_required" && riskLevel === "low") {
+    riskLevel = "medium";
+    reasons.push(
+      clean(completionReview.latestReview?.note) || "Cho requires replacement evidence or corrective action."
+    );
+  }
+
+  const evidenceReady = reportedProgressPercent >= 100 && missingEvidence.length === 0 && !hasDuplicate;
+  const readyForReview = evidenceReady && completionReview.status === "pending";
   const planStatus = !supplierPlan
     ? "awaiting_supplier_plan"
     : planReview?.status === "changes_required"
@@ -340,16 +385,21 @@ export function analyzeProductionTask(task = {}, options = {}) {
       latestVersionApproved: latestPlanApproved,
       hasApprovedBaseline
     },
+    completionReview,
     readyForReview,
     controllerStatus: !hasApprovedBaseline
       ? planStatus
-      : readyForReview
-        ? "ready_for_cho_review"
-        : riskLevel === "high"
-          ? "intervention_required"
-          : missingEvidence.length
-            ? "awaiting_supplier_evidence"
-            : "monitoring"
+      : completionReview.status === "approved"
+        ? "completed"
+        : completionReview.status === "changes_required"
+          ? "evidence_changes_required"
+          : readyForReview
+            ? "ready_for_cho_review"
+            : riskLevel === "high"
+              ? "intervention_required"
+              : missingEvidence.length
+                ? "awaiting_supplier_evidence"
+                : "monitoring"
   };
 }
 
@@ -378,6 +428,7 @@ export function buildProjectProductionAnalysis(tasks = [], options = {}) {
       )
     : 0;
   const plan = productionPlanState(analyzedTasks);
+  const completion = productionCompletionState(analyzedTasks);
   return {
     tasks: analyzedTasks,
     summary: {
@@ -388,29 +439,32 @@ export function buildProjectProductionAnalysis(tasks = [], options = {}) {
       mediumRiskCount: analyzedTasks.filter((task) => task.analysis.riskLevel === "medium").length,
       readyForReviewCount: analyzedTasks.filter((task) => task.analysis.readyForReview).length,
       duplicateEvidenceCount: duplicateHashes.length,
+      approvedCompletionCount: completion.approvedCount,
+      completionChangesRequiredCount: completion.changesRequiredCount,
+      allProductionEvidenceApproved: completion.allApproved,
       planStatus: plan.status,
       planVersion: plan.version,
       approvedPlanVersion: plan.approvedVersion,
-      controllerStatus:
-        plan.status !== "approved" && plan.approvedVersion === 0
-          ? plan.status
-          : analyzedTasks.some((task) => task.analysis.riskLevel === "high")
-            ? "intervention_required"
-            : analyzedTasks.some((task) => task.analysis.riskLevel === "medium")
-              ? "attention_required"
-              : analyzedTasks.length
-                ? "monitoring"
-                : "awaiting_production_plan"
+      controllerStatus: completion.allApproved
+        ? "completed"
+        : completion.changesRequiredCount
+          ? "evidence_changes_required"
+          : plan.status !== "approved" && plan.approvedVersion === 0
+            ? plan.status
+            : analyzedTasks.some((task) => task.analysis.riskLevel === "high")
+              ? "intervention_required"
+              : analyzedTasks.some((task) => task.analysis.riskLevel === "medium")
+                ? "attention_required"
+                : analyzedTasks.length
+                  ? "monitoring"
+                  : "awaiting_production_plan"
     }
   };
 }
 
 export async function createSupplierPortalAccount({ supabase, supplierId, projectId }) {
   if (!supplierId) throw httpError(400, "A supplier ID is required.");
-  const supplier = await single(
-    supabase.from("suppliers").select("*").eq("id", supplierId).maybeSingle(),
-    "supplier"
-  );
+  const supplier = await single(supabase.from("suppliers").select("*").eq("id", supplierId).maybeSingle(), "supplier");
   if (!supplier) throw httpError(404, "Supplier not found.");
   if (supplier.status && supplier.status !== "active") throw httpError(409, "This supplier is not active.");
   const email = clean(supplier.email || supplier.contact_email).toLowerCase();
@@ -545,11 +599,7 @@ export async function loadSupplierProductionWorkspace({ supabase, user }) {
       "production tasks"
     ),
     many(
-      supabase
-        .from("rfq_batches")
-        .select("*")
-        .in("project_id", projectIds)
-        .order("created_at", { ascending: false }),
+      supabase.from("rfq_batches").select("*").in("project_id", projectIds).order("created_at", { ascending: false }),
       "approved order specifications"
     )
   ]);
@@ -775,6 +825,182 @@ export async function approveSupplierProductionPlan({ supabase, user, body = {} 
   return { ok: true, ...buildProjectProductionAnalysis(refreshed), approvedAt };
 }
 
+export async function reviewSupplierProductionEvidence({ supabase, user, body = {} }) {
+  const projectId = clean(body.projectId);
+  const taskId = clean(body.productionUpdateId);
+  const decision = clean(body.decision).toLowerCase();
+  const note = clean(body.note);
+  if (!projectId || !taskId) throw httpError(400, "A project and production work package are required.");
+  if (!["approved", "changes_required"].includes(decision)) {
+    throw httpError(400, "Choose approved or changes_required as the evidence review decision.");
+  }
+  if (decision === "changes_required" && !note) {
+    throw httpError(400, "Explain what the supplier must correct or upload again.");
+  }
+
+  const [task, selectedQuote, projectTasks] = await Promise.all([
+    single(
+      supabase.from("production_updates").select("*").eq("id", taskId).eq("project_id", projectId).maybeSingle(),
+      "production work package"
+    ),
+    single(
+      supabase
+        .from("supplier_quotes")
+        .select("supplier_id")
+        .eq("project_id", projectId)
+        .eq("status", "selected")
+        .maybeSingle(),
+      "active supplier assignment"
+    ),
+    many(
+      supabase.from("production_updates").select("*").eq("project_id", projectId),
+      "project production work packages"
+    )
+  ]);
+  if (!task || !productionFrameworkTasks([task]).length) {
+    throw httpError(404, "Production work package not found.");
+  }
+  if (!selectedQuote?.supplier_id || selectedQuote.supplier_id !== task.supplier_id) {
+    throw httpError(409, "This work package is not assigned to the currently approved supplier.");
+  }
+
+  const analysis =
+    buildProjectProductionAnalysis(productionFrameworkTasks(projectTasks)).tasks.find((entry) => entry.id === task.id)
+      ?.analysis || analyzeProductionTask(task);
+  if (!analysis.productionPlan.hasApprovedBaseline) {
+    throw httpError(409, "Approve the supplier production schedule before reviewing completion evidence.");
+  }
+  if (analysis.completionReview.status === "approved") {
+    throw httpError(409, "This work package has already passed Cho's completion review.");
+  }
+  if (decision === "approved" && !analysis.readyForReview) {
+    throw httpError(
+      409,
+      "Progress must be 100%, all required evidence must be present, and no evidence risk can remain."
+    );
+  }
+  if (decision === "changes_required" && analysis.uploadCount < 1) {
+    throw httpError(409, "There is no supplier evidence to review yet.");
+  }
+
+  const reviewedAt = new Date().toISOString();
+  const reviewerName = clean(user?.user_metadata?.full_name) || clean(user?.email) || "Cho";
+  const uploadHashes = supplierUploads(task)
+    .map((entry) => entry.sha256)
+    .filter(Boolean);
+  const reviewEntry = {
+    type: "cho_evidence_review",
+    decision,
+    note: note || "Completion evidence approved for visual quality inspection.",
+    reviewed_by: user?.id || null,
+    reviewed_by_name: reviewerName,
+    reviewed_at: reviewedAt,
+    supplier_upload_hashes: uploadHashes
+  };
+  const { error: updateError } = await supabase
+    .from("production_updates")
+    .update({
+      evidence: [...(Array.isArray(task.evidence) ? task.evidence : []), reviewEntry],
+      status: decision === "approved" ? "completed" : "changes_required",
+      progress_percent: decision === "approved" ? 100 : Number(task.progress_percent || 0),
+      risk_level: decision === "approved" ? "low" : "medium"
+    })
+    .eq("id", task.id)
+    .eq("project_id", projectId);
+  if (updateError) throw new Error(`Unable to save the production evidence review: ${updateError.message}`);
+
+  const { error: approvalError } = await supabase.from("approvals").insert({
+    project_id: projectId,
+    stage_id: "S09",
+    approval_type: "production_evidence",
+    status: decision,
+    reviewer_id: user?.id || null,
+    reviewer_name: reviewerName,
+    notes: reviewEntry.note,
+    reviewed_at: reviewedAt,
+    payload: {
+      production_update_id: task.id,
+      supplier_id: task.supplier_id,
+      process_name: task.process_name,
+      supplier_upload_hashes: uploadHashes
+    }
+  });
+  if (approvalError) {
+    throw new Error(`The evidence review was saved, but the approval record failed: ${approvalError.message}`);
+  }
+
+  await insertEvent(supabase, {
+    project_id: projectId,
+    stage_id: decision === "approved" ? "S09" : "S10",
+    event_type: decision === "approved" ? "production_evidence_approved" : "production_evidence_changes_required",
+    actor: reviewerName,
+    message_cn:
+      decision === "approved"
+        ? `Cho 已批准 ${task.process_name} 的完工证据。`
+        : `Cho 已退回 ${task.process_name} 的完工证据：${reviewEntry.note}`,
+    message_en:
+      decision === "approved"
+        ? `Cho approved completion evidence for ${task.process_name}.`
+        : `Cho returned completion evidence for ${task.process_name}: ${reviewEntry.note}`,
+    payload: {
+      production_update_id: task.id,
+      supplier_id: task.supplier_id,
+      decision,
+      note: reviewEntry.note,
+      supplier_upload_hashes: uploadHashes
+    }
+  });
+
+  if (decision === "changes_required") {
+    const { data: project, error: projectLoadError } = await supabase
+      .from("projects")
+      .select("current_stage")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (projectLoadError) throw new Error(`Unable to load the project stage: ${projectLoadError.message}`);
+    if (Number(project?.current_stage || 0) < 11) {
+      const { error: stageError } = await supabase.from("projects").update({ current_stage: 10 }).eq("id", projectId);
+      if (stageError) throw new Error(`Unable to move the project to S10: ${stageError.message}`);
+    }
+  }
+
+  const refreshedTasks = productionFrameworkTasks(
+    await many(
+      supabase.from("production_updates").select("*").eq("project_id", projectId).eq("supplier_id", task.supplier_id),
+      "reviewed production work packages"
+    )
+  );
+  const completion = productionCompletionState(refreshedTasks);
+  let projectReleased = false;
+  if (completion.allApproved) {
+    const { error: stageError } = await supabase
+      .from("projects")
+      .update({ current_stage: 11 })
+      .eq("id", projectId)
+      .lt("current_stage", 11);
+    if (stageError) throw new Error(`Unable to release the project to S11: ${stageError.message}`);
+    await insertEvent(supabase, {
+      project_id: projectId,
+      stage_id: "S11",
+      event_type: "production_completion_released_to_visual_qc",
+      actor: reviewerName,
+      message_cn: `全部 ${completion.taskCount} 个生产工序的完工证据已获 Cho 批准，项目进入 S11 视觉品质检验。`,
+      message_en: `Cho approved completion evidence for all ${completion.taskCount} production work packages. The project is released to S11 visual quality inspection.`,
+      payload: { supplier_id: task.supplier_id, ...completion, released_at: reviewedAt }
+    });
+    projectReleased = true;
+  }
+
+  return {
+    ok: true,
+    decision,
+    reviewedAt,
+    projectReleased,
+    completion,
+    ...buildProjectProductionAnalysis(refreshedTasks)
+  };
+}
+
 export async function submitSupplierProductionEvidence({ supabase, user, body = {} }) {
   const identity = supplierIdentity(user);
   if (!identity) throw httpError(403, "This account is not linked to a supplier factory.");
@@ -790,6 +1016,9 @@ export async function submitSupplierProductionEvidence({ supabase, user, body = 
     "production task"
   );
   if (!task) throw httpError(404, "The production task is not assigned to this supplier.");
+  if (productionEvidenceReviewState(task).status === "approved") {
+    throw httpError(409, "This work package is complete and locked after Cho approval.");
+  }
   const selectedQuote = await single(
     supabase
       .from("supplier_quotes")
@@ -892,7 +1121,9 @@ export async function submitSupplierProductionEvidence({ supabase, user, body = 
   await insertEvent(supabase, {
     project_id: task.project_id,
     stage_id: analysis.riskLevel === "high" ? "S10" : "S09",
-    event_type: analysis.readyForReview ? "production_evidence_ready_for_review" : "supplier_production_evidence_uploaded",
+    event_type: analysis.readyForReview
+      ? "production_evidence_ready_for_review"
+      : "supplier_production_evidence_uploaded",
     actor: supplier?.name || user.email || "Supplier",
     message_cn: `${supplier?.name || "供应商"} 已上报 ${task.process_name} 生产证据；AI 判定：${controllerNote}`,
     message_en: `${supplier?.name || "Supplier"} uploaded evidence for ${task.process_name}. AI controller: ${controllerNote}`,
@@ -922,7 +1153,11 @@ export async function submitSupplierProductionEvidence({ supabase, user, body = 
 export async function analyzeProductionProject({ supabase, projectId }) {
   if (!projectId) throw httpError(400, "A project ID is required.");
   const tasks = await many(
-    supabase.from("production_updates").select("*").eq("project_id", projectId).order("expected_at", { ascending: true }),
+    supabase
+      .from("production_updates")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("expected_at", { ascending: true }),
     "production tasks"
   );
   const analysis = buildProjectProductionAnalysis(tasks);
@@ -950,11 +1185,7 @@ export async function analyzeProductionProject({ supabase, projectId }) {
 
 export async function monitorActiveProduction({ supabase, now = new Date() }) {
   const tasks = await many(
-    supabase
-      .from("production_updates")
-      .select("*")
-      .neq("status", "completed")
-      .order("project_id", { ascending: true }),
+    supabase.from("production_updates").select("*").neq("status", "completed").order("project_id", { ascending: true }),
     "active production tasks"
   );
   const projectIds = unique(tasks.map((task) => task.project_id).filter(Boolean));
@@ -1068,6 +1299,9 @@ function emptySummary() {
     mediumRiskCount: 0,
     readyForReviewCount: 0,
     duplicateEvidenceCount: 0,
+    approvedCompletionCount: 0,
+    completionChangesRequiredCount: 0,
+    allProductionEvidenceApproved: false,
     planStatus: "awaiting_framework",
     planVersion: 0,
     approvedPlanVersion: 0,
@@ -1131,7 +1365,10 @@ function validDate(value) {
 }
 
 function normalize(value) {
-  return clean(value).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ").trim();
+  return clean(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
+    .trim();
 }
 
 function unique(values) {
