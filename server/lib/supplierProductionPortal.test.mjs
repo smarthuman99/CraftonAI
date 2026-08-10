@@ -4,6 +4,7 @@ import {
   analyzeProductionTask,
   buildProjectProductionAnalysis,
   productionCompletionState,
+  productionEvidenceApprovalGate,
   productionEvidenceReviewState,
   productionPlanState,
   supplierIdentity,
@@ -198,6 +199,86 @@ test("releases production only when every work package has a current Cho approva
   const reopened = approved("assembly");
   reopened.evidence.push({ type: "supplier_upload", uploaded_at: "2026-08-09T11:00:00.000Z" });
   assert.equal(productionCompletionState([approved("frame_production"), reopened]).allApproved, false);
+});
+
+test("allows evidence approval before schedule baseline approval when evidence itself is complete", () => {
+  const analysis = analyzeProductionTask(
+    {
+      progress_percent: 100,
+      evidence: [
+        plannedEvidence,
+        { type: "supplier_upload", requirement: "Dated frame photos", sha256: "hash-a" },
+        { type: "supplier_upload", requirement: "Key dimension measurements", sha256: "hash-b" }
+      ]
+    },
+    { now: "2026-08-10T00:00:00.000Z" }
+  );
+  assert.equal(analysis.productionPlan.hasApprovedBaseline, false);
+  assert.deepEqual(productionEvidenceApprovalGate(analysis), {
+    allowed: true,
+    blockers: [],
+    requiresRiskAcknowledgement: false,
+    riskLevel: "low",
+    riskReasons: []
+  });
+});
+
+test("requires an explicit Cho acknowledgement and note to approve duplicate evidence risk", () => {
+  const analysis = analyzeProductionTask(
+    {
+      progress_percent: 100,
+      evidence: [
+        plannedEvidence,
+        ...approvedPlanEvidence,
+        { type: "supplier_upload", requirement: "Dated frame photos", sha256: "duplicate" },
+        { type: "supplier_upload", requirement: "Key dimension measurements", sha256: "hash-b" }
+      ]
+    },
+    { now: "2026-08-10T00:00:00.000Z", duplicateHashes: ["duplicate"] }
+  );
+  const blocked = productionEvidenceApprovalGate(analysis);
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.requiresRiskAcknowledgement, true);
+  assert.match(blocked.blockers.join(" "), /acknowledge/i);
+  assert.match(blocked.blockers.join(" "), /review note/i);
+
+  const approved = productionEvidenceApprovalGate(analysis, {
+    acknowledgeRisk: true,
+    note: "The same dated wide shot legitimately proves both adjacent production stages."
+  });
+  assert.equal(approved.allowed, true);
+  assert.deepEqual(approved.blockers, []);
+
+  const acknowledged = analyzeProductionTask(
+    {
+      progress_percent: 100,
+      evidence: [
+        plannedEvidence,
+        ...approvedPlanEvidence,
+        {
+          type: "supplier_upload",
+          requirement: "Dated frame photos",
+          sha256: "duplicate",
+          uploaded_at: "2026-08-09T09:00:00.000Z"
+        },
+        {
+          type: "supplier_upload",
+          requirement: "Key dimension measurements",
+          sha256: "hash-b",
+          uploaded_at: "2026-08-09T09:05:00.000Z"
+        },
+        {
+          type: "cho_evidence_review",
+          decision: "approved",
+          risk_acknowledged: true,
+          reviewed_at: "2026-08-09T10:00:00.000Z"
+        }
+      ]
+    },
+    { now: "2026-08-10T00:00:00.000Z", duplicateHashes: ["duplicate"] }
+  );
+  assert.equal(acknowledged.riskLevel, "low");
+  assert.equal(acknowledged.controllerStatus, "completed");
 });
 
 test("detects evidence reused across work packages", () => {

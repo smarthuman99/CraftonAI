@@ -69,6 +69,39 @@ export function productionCompletionState(tasks = []) {
   };
 }
 
+export function productionEvidenceApprovalGate(analysis = {}, options = {}) {
+  const blockers = [];
+  const progress = Number(analysis.supplierReportedProgressPercent || 0);
+  const missingEvidence = Array.isArray(analysis.missingEvidence) ? analysis.missingEvidence : [];
+  const riskLevel = clean(analysis.riskLevel || "low").toLowerCase();
+  const riskReasons = Array.isArray(analysis.reasons) ? analysis.reasons.filter(Boolean) : [];
+  const acknowledgeRisk = options.acknowledgeRisk === true;
+  const note = clean(options.note);
+
+  if (progress < 100) blockers.push("Supplier-reported progress must reach 100%.");
+  if (missingEvidence.length) blockers.push(`${missingEvidence.length} required evidence item(s) are still missing.`);
+  if (analysis.completionReview?.status === "approved") blockers.push("This work package is already approved.");
+  if (analysis.completionReview?.status === "changes_required") {
+    blockers.push("The supplier must upload corrected evidence after Cho's latest return decision.");
+  }
+
+  const requiresRiskAcknowledgement = riskLevel !== "low";
+  if (requiresRiskAcknowledgement && !acknowledgeRisk) {
+    blockers.push("Cho must explicitly acknowledge the active AI evidence risk.");
+  }
+  if (requiresRiskAcknowledgement && !note) {
+    blockers.push("A Cho review note is required when approving evidence with an active AI risk.");
+  }
+
+  return {
+    allowed: blockers.length === 0,
+    blockers,
+    requiresRiskAcknowledgement,
+    riskLevel,
+    riskReasons
+  };
+}
+
 export function productionPlanState(tasks = []) {
   const frameworkTasks = productionFrameworkTasks(tasks);
   if (!frameworkTasks.length) return { status: "awaiting_framework", version: 0, approvedVersion: 0 };
@@ -353,6 +386,10 @@ export function analyzeProductionTask(task = {}, options = {}) {
     reasons.push(
       clean(completionReview.latestReview?.note) || "Cho requires replacement evidence or corrective action."
     );
+  }
+  if (completionReview.status === "approved" && completionReview.latestReview?.risk_acknowledged === true) {
+    riskLevel = "low";
+    reasons.length = 0;
   }
 
   const evidenceReady = reportedProgressPercent >= 100 && missingEvidence.length === 0 && !hasDuplicate;
@@ -867,17 +904,15 @@ export async function reviewSupplierProductionEvidence({ supabase, user, body = 
   const analysis =
     buildProjectProductionAnalysis(productionFrameworkTasks(projectTasks)).tasks.find((entry) => entry.id === task.id)
       ?.analysis || analyzeProductionTask(task);
-  if (!analysis.productionPlan.hasApprovedBaseline) {
-    throw httpError(409, "Approve the supplier production schedule before reviewing completion evidence.");
-  }
   if (analysis.completionReview.status === "approved") {
     throw httpError(409, "This work package has already passed Cho's completion review.");
   }
-  if (decision === "approved" && !analysis.readyForReview) {
-    throw httpError(
-      409,
-      "Progress must be 100%, all required evidence must be present, and no evidence risk can remain."
-    );
+  const approvalGate = productionEvidenceApprovalGate(analysis, {
+    acknowledgeRisk: body.acknowledgeRisk,
+    note
+  });
+  if (decision === "approved" && !approvalGate.allowed) {
+    throw httpError(409, approvalGate.blockers.join(" "));
   }
   if (decision === "changes_required" && analysis.uploadCount < 1) {
     throw httpError(409, "There is no supplier evidence to review yet.");
@@ -895,7 +930,11 @@ export async function reviewSupplierProductionEvidence({ supabase, user, body = 
     reviewed_by: user?.id || null,
     reviewed_by_name: reviewerName,
     reviewed_at: reviewedAt,
-    supplier_upload_hashes: uploadHashes
+    supplier_upload_hashes: uploadHashes,
+    schedule_baseline_approved: analysis.productionPlan.hasApprovedBaseline,
+    risk_acknowledged: approvalGate.requiresRiskAcknowledgement && body.acknowledgeRisk === true,
+    risk_level_at_review: approvalGate.riskLevel,
+    risk_reasons: approvalGate.riskReasons
   };
   const { error: updateError } = await supabase
     .from("production_updates")
@@ -922,7 +961,11 @@ export async function reviewSupplierProductionEvidence({ supabase, user, body = 
       production_update_id: task.id,
       supplier_id: task.supplier_id,
       process_name: task.process_name,
-      supplier_upload_hashes: uploadHashes
+      supplier_upload_hashes: uploadHashes,
+      schedule_baseline_approved: reviewEntry.schedule_baseline_approved,
+      risk_acknowledged: reviewEntry.risk_acknowledged,
+      risk_level_at_review: reviewEntry.risk_level_at_review,
+      risk_reasons: reviewEntry.risk_reasons
     }
   });
   if (approvalError) {
@@ -947,7 +990,11 @@ export async function reviewSupplierProductionEvidence({ supabase, user, body = 
       supplier_id: task.supplier_id,
       decision,
       note: reviewEntry.note,
-      supplier_upload_hashes: uploadHashes
+      supplier_upload_hashes: uploadHashes,
+      schedule_baseline_approved: reviewEntry.schedule_baseline_approved,
+      risk_acknowledged: reviewEntry.risk_acknowledged,
+      risk_level_at_review: reviewEntry.risk_level_at_review,
+      risk_reasons: reviewEntry.risk_reasons
     }
   });
 

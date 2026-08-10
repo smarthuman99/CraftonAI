@@ -166,21 +166,33 @@ export default function ProductionControlTower({
   const [credentials, setCredentials] = useState(null);
   const [reviewTaskId, setReviewTaskId] = useState("");
   const [reviewNote, setReviewNote] = useState("");
+  const [reviewRiskAcknowledged, setReviewRiskAcknowledged] = useState(false);
   const [evidenceUrls, setEvidenceUrls] = useState({});
 
   const dashboard = useMemo(() => {
-    const tasks = productionUpdates
-      .filter((task) => !selectedSupplier || task.supplier_id === selectedSupplier.id)
-      .map((task) => {
-        const hasApprovedBaseline = Boolean(latestEntry(task, "cho_plan_approval"));
-        return {
-          ...task,
-          evidenceSummary: taskEvidence(task),
-          completionReview: completionReview(task),
-          hasApprovedBaseline,
-          activeRiskLevel: hasApprovedBaseline ? task.risk_level || "low" : "low"
-        };
+    const selectedTasks = productionUpdates.filter(
+      (task) => !selectedSupplier || task.supplier_id === selectedSupplier.id
+    );
+    const hashCounts = new Map();
+    selectedTasks.forEach((task) => {
+      taskEvidence(task).uploads.forEach((entry) => {
+        if (entry.sha256) hashCounts.set(entry.sha256, (hashCounts.get(entry.sha256) || 0) + 1);
       });
+    });
+    const tasks = selectedTasks.map((task) => {
+      const hasApprovedBaseline = Boolean(latestEntry(task, "cho_plan_approval"));
+      const evidenceSummary = taskEvidence(task);
+      return {
+        ...task,
+        evidenceSummary,
+        completionReview: completionReview(task),
+        duplicateEvidence: evidenceSummary.uploads.some(
+          (entry) => entry.sha256 && Number(hashCounts.get(entry.sha256) || 0) > 1
+        ),
+        hasApprovedBaseline,
+        activeRiskLevel: hasApprovedBaseline ? task.risk_level || "low" : "low"
+      };
+    });
     const schedule = scheduleDashboard(tasks);
     const progress = tasks.length
       ? Math.round(tasks.reduce((sum, task) => sum + Number(task.progress_percent || 0), 0) / tasks.length)
@@ -211,13 +223,18 @@ export default function ProductionControlTower({
   }, [productionUpdates, selectedSupplier]);
 
   const reviewTask = dashboard.tasks.find((task) => task.id === reviewTaskId) || null;
-  const canApproveReviewTask = Boolean(
+  const reviewEvidenceReady = Boolean(
     reviewTask &&
-    reviewTask.hasApprovedBaseline &&
     reviewTask.completionReview.status === "pending" &&
     Number(reviewTask.progress_percent || 0) >= 100 &&
-    reviewTask.evidenceSummary.missing.length === 0 &&
-    reviewTask.activeRiskLevel === "low"
+    reviewTask.evidenceSummary.missing.length === 0
+  );
+  const reviewRequiresRiskAcknowledgement = Boolean(
+    reviewTask && (reviewTask.duplicateEvidence || String(reviewTask.risk_level || "low") !== "low")
+  );
+  const canApproveReviewTask = Boolean(
+    reviewEvidenceReady &&
+    (!reviewRequiresRiskAcknowledgement || (reviewRiskAcknowledged && reviewNote.trim().length > 0))
   );
 
   useEffect(() => {
@@ -325,6 +342,7 @@ export default function ProductionControlTower({
   function openCompletionReview(task) {
     setReviewTaskId(task.id);
     setReviewNote(task.completionReview.review?.note || "");
+    setReviewRiskAcknowledged(false);
     setMessage("");
   }
 
@@ -344,7 +362,8 @@ export default function ProductionControlTower({
         projectId: project.id,
         productionUpdateId: reviewTask.id,
         decision,
-        note: reviewNote.trim()
+        note: reviewNote.trim(),
+        acknowledgeRisk: reviewRiskAcknowledged
       });
       setMessage(
         result.projectReleased
@@ -364,6 +383,7 @@ export default function ProductionControlTower({
       );
       setReviewTaskId("");
       setReviewNote("");
+      setReviewRiskAcknowledged(false);
       await onChanged?.();
     } catch (error) {
       setMessage(error.message || String(error));
@@ -693,12 +713,66 @@ export default function ProductionControlTower({
                 </div>
               ) : (
                 <>
-                  {!canApproveReviewTask && (
+                  {!reviewEvidenceReady && (
                     <div className="production-review-warning">
-                      {t(
-                        "Approval unlocks only at 100% progress, 100% required evidence, an approved schedule and no active AI risk.",
-                        "只有在进度 100%、指定证据完整、排产已批准且没有 AI 风险时，才可批准完工。"
+                      <strong>{t("Evidence is not ready for approval", "证据尚未达到批准条件")}</strong>
+                      {Number(reviewTask.progress_percent || 0) < 100 && (
+                        <span>{t("Supplier progress must reach 100%.", "供应商上报进度必须达到 100%。")}</span>
                       )}
+                      {reviewTask.evidenceSummary.missing.length > 0 && (
+                        <span>
+                          {t("Missing required evidence:", "仍缺少指定证据：")}{" "}
+                          {reviewTask.evidenceSummary.missing.join(", ")}
+                        </span>
+                      )}
+                      {reviewTask.completionReview.status === "changes_required" && (
+                        <span>
+                          {t(
+                            "The supplier must upload a corrected file after the latest return decision.",
+                            "供应商必须在最近一次退回后上传修正文件。"
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {!reviewTask.hasApprovedBaseline && (
+                    <div className="production-review-advisory">
+                      <strong>{t("Production schedule is not an approved baseline", "供应商排产尚未获批")}</strong>
+                      <span>
+                        {t(
+                          `Schedule v${dashboard.schedule.version || 1} is ${dashboard.schedule.status.replaceAll("_", " ")}. This no longer blocks evidence review, but the exception will be kept in the audit record.`,
+                          `供应商第 ${dashboard.schedule.version || 1} 版排产目前为“${label(dashboard.schedule.status, true)}”。这不会再阻止完工证据审核，但系统会保留例外记录。`
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {reviewRequiresRiskAcknowledgement && (
+                    <div className="production-review-risk-acknowledgement">
+                      <strong>{t("AI evidence risk requires Cho confirmation", "AI 证据风险需要 Cho 确认")}</strong>
+                      <span>
+                        {reviewTask.duplicateEvidence
+                          ? t(
+                              "At least one uploaded file is also used in another work package. Confirm that the reused evidence genuinely proves this stage.",
+                              "至少一份上传文件同时用于其他生产工序。请确认该重复证据确实能够证明本工序已经完成。"
+                            )
+                          : t(
+                              `The current stored risk level is ${reviewTask.risk_level}. Review the evidence before overriding it.`,
+                              `当前记录的风险等级为 ${reviewTask.risk_level}，请核实证据后再决定是否覆盖。`
+                            )}
+                      </span>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={reviewRiskAcknowledged}
+                          onChange={(event) => setReviewRiskAcknowledged(event.target.checked)}
+                        />
+                        <b>
+                          {t(
+                            "I verified the evidence and accept responsibility for this risk override.",
+                            "我已核实证据，并确认承担本次风险覆盖的审核责任。"
+                          )}
+                        </b>
+                      </label>
                     </div>
                   )}
                   <label className="production-review-note-field">
@@ -707,8 +781,12 @@ export default function ProductionControlTower({
                       value={reviewNote}
                       onChange={(event) => setReviewNote(event.target.value)}
                       placeholder={t(
-                        "Approval note is optional. A correction reason is required when returning evidence.",
-                        "批准备注可留空；退回证据时必须说明需要修正的内容。"
+                        reviewRequiresRiskAcknowledgement
+                          ? "Explain why the flagged evidence is acceptable. This note is required."
+                          : "Approval note is optional. A correction reason is required when returning evidence.",
+                        reviewRequiresRiskAcknowledgement
+                          ? "请说明为何可以接受该风险证据；此审核说明为必填。"
+                          : "批准备注可留空；退回证据时必须说明需要修正的内容。"
                       )}
                     />
                   </label>
@@ -729,7 +807,9 @@ export default function ProductionControlTower({
                     >
                       {busy === `review-${reviewTask.id}`
                         ? t("Saving review...", "正在保存审核……")
-                        : t("Approve completion evidence", "批准完工证据")}
+                        : reviewRequiresRiskAcknowledgement
+                          ? t("Acknowledge risk and approve", "确认风险并批准")
+                          : t("Approve completion evidence", "批准完工证据")}
                     </button>
                   </div>
                 </>
