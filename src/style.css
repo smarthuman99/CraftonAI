@@ -14683,3 +14683,187 @@ select:focus,
     text-align: left;
   }
 }
+
+/* =====================================================================
+   BACKOFFICE DEPTH AND INTERACTION
+   Restrained paper elevation and tactile controls for the operational UI.
+   ===================================================================== */
+
+.crafton-backoffice {
+  --backoffice-shadow-raised: 0 1px 2px rgba(51, 37, 26, 0.07), 0 10px 26px rgba(51, 37, 26, 0.075);
+  --backoffice-shadow-control: 0 1px 2px rgba(51, 37, 26, 0.08), 0 4px 10px rgba(51, 37, 26, 0.07);
+  --backoffice-ease: 300ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.admin-portfolio-live,
+.admin-portfolio-overview,
+.admin-active-clients,
+.admin-project-workspace-nav > button,
+.crafton-backoffice
+  :is(
+    .intake-command-header,
+    .intake-client-project-directory,
+    .intake-order-brief-panel,
+    .intake-ai-review-panel,
+    .intake-bom-spec-panel,
+    .intake-approval-panel,
+    .admin-stage-panel,
+    .admin-ops-section,
+    .ai-rfq-document
+  ) {
+  box-shadow: var(--backoffice-shadow-raised);
+}
+
+.crafton-backoffice
+  :is(
+    .intake-command-header,
+    .intake-client-project-directory,
+    .intake-order-brief-panel,
+    .intake-ai-review-panel,
+    .intake-bom-spec-panel,
+    .intake-approval-panel,
+    .admin-stage-panel,
+    .admin-ops-section,
+    .ai-rfq-document
+  ) {
+  transition:
+    border-color var(--backoffice-ease),
+    box-shadow var(--backoffice-ease);
+}
+
+.crafton-backoffice
+  :is(
+    .intake-command-header,
+    .intake-client-project-directory,
+    .intake-order-brief-panel,
+    .intake-ai-review-panel,
+    .intake-bom-spec-panel,
+    .intake-approval-panel,
+    .admin-stage-panel,
+    .admin-ops-section,
+    .ai-rfq-document
+  ):hover {
+  border-color: var(--craft-line);
+  box-shadow: var(--backoffice-shadow-raised);
+  transform: none;
+}
+
+.crafton-backoffice
+  :is(
+    .admin-metric-card,
+    .admin-detail-block,
+    .admin-note-box,
+    .admin-check-row,
+    .admin-ops-form,
+    .ai-rfq-controls,
+    .ai-workflow-commandbar
+  ) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.52),
+    0 2px 7px rgba(51, 37, 26, 0.045);
+}
+
+.admin-portfolio-metric,
+.admin-portfolio-pipeline-step,
+.admin-client-portfolio-group > header {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.admin-portfolio-metric.primary {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -8px 20px rgba(24, 16, 11, 0.12);
+}
+
+.crafton-backoffice button:not(:disabled) {
+  cursor: pointer;
+  transition:
+    color var(--backoffice-ease),
+    background-color var(--backoffice-ease),
+    border-color var(--backoffice-ease),
+    box-shadow var(--backoffice-ease),
+    transform 180ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.crafton-backoffice
+  :is(
+    .admin-stage-chip,
+    .admin-project-workspace-nav > button,
+    .admin-portfolio-filters button,
+    .admin-ops-toolbar button,
+    .admin-ops-stage-actions button,
+    .admin-mini-table button,
+    .admin-ops-form-actions button,
+    .ai-workflow-commandbar button,
+    .ai-rfq-primary-actions button,
+    .ai-rfq-document-toolbar button,
+    .ai-rfq-history button,
+    .admin-panel-actions button,
+    .btn-primary,
+    .btn-secondary,
+    .btn-premium
+  ):not(:disabled) {
+  box-shadow: var(--backoffice-shadow-control);
+}
+
+.crafton-backoffice
+  :is(
+    .admin-stage-chip,
+    .admin-project-workspace-nav > button,
+    .admin-portfolio-filters button,
+    .admin-ops-toolbar button,
+    .admin-ops-stage-actions button,
+    .admin-mini-table button,
+    .admin-ops-form-actions button,
+    .ai-workflow-commandbar button,
+    .ai-rfq-primary-actions button,
+    .ai-rfq-document-toolbar button,
+    .ai-rfq-history button,
+    .admin-panel-actions button,
+    .btn-primary,
+    .btn-secondary,
+    .btn-premium
+  ):not(:disabled):hover {
+  box-shadow:
+    0 2px 4px rgba(51, 37, 26, 0.1),
+    0 9px 20px rgba(51, 37, 26, 0.13);
+  transform: translateY(-2px);
+}
+
+.crafton-backoffice button:not(:disabled):active {
+  box-shadow: 0 1px 3px rgba(51, 37, 26, 0.12);
+  transform: translateY(1px) scale(0.985);
+  transition-duration: 80ms;
+}
+
+.crafton-backoffice button:focus-visible {
+  outline: 2px solid var(--craft-walnut);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(74, 53, 37, 0.12);
+}
+
+.crafton-backoffice .admin-progress-button:not(:disabled):hover {
+  box-shadow: 0 7px 18px rgba(18, 12, 8, 0.2);
+  transform: translateX(2px);
+}
+
+.crafton-backoffice .admin-progress-button.active {
+  box-shadow:
+    inset 3px 0 0 var(--craft-cream),
+    0 8px 22px rgba(18, 12, 8, 0.22);
+}
+
+.admin-portfolio-project-row:hover,
+.admin-portfolio-project-row:focus-visible {
+  position: relative;
+  z-index: 1;
+  background: rgba(239, 231, 214, 0.58);
+  box-shadow:
+    inset 3px 0 0 var(--craft-walnut),
+    0 7px 18px rgba(51, 37, 26, 0.08);
+  transform: translateX(2px);
+}
+
+.admin-portfolio-project-row:active {
+  transform: translateX(1px) scale(0.997) !important;
+}
