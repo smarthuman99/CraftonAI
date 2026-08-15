@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import * as tus from "tus-js-client";
 import mockData from "./mockData";
 
 // Modularized components
@@ -20,10 +21,12 @@ import Footer from "./components/Footer";
 import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
 import AdminWorkflowWorkspace from "./components/AdminWorkflowWorkspace";
 import ClientOrderDashboard from "./components/ClientOrderDashboard";
+import ClientFfeIntake from "./components/ClientFfeIntake";
 import CraftonHomepage from "./components/CraftonHomepage";
 import SupplierProductionPortal from "./components/SupplierProductionPortal";
 import { AdminLocalized, adminText } from "./adminI18n";
 import { deriveProjectLifecycle, mergeProjectJobSources } from "./projectLifecycle.js";
+import { normalizeProjectItemsForLoading } from "./loadingAiProjectItems.js";
 
 const IMAGES = {
   heroChair: "/hero_chair.jpg", // 侘寂奢華皮質單椅 (取代 image1)
@@ -88,6 +91,8 @@ window.supabase = { createClient };
 const AI_SUPPORT_API_URL = "/api/ai-support-chat";
 const INTAKE_UPLOAD_TIMEOUT_MS = 45000;
 const INTAKE_DB_TIMEOUT_MS = 30000;
+const INTAKE_TUS_THRESHOLD_BYTES = 6 * 1024 * 1024;
+const INTAKE_MAX_FILE_BYTES = 250 * 1024 * 1024;
 const ENV_SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || "").trim();
 const ENV_SUPABASE_ANON_KEY = (
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
@@ -120,6 +125,60 @@ const WORKSHOP_MILESTONE_MEDIA = {
 
 const getSupabaseUrl = () => ENV_SUPABASE_URL || safeGetItem("supabase_url");
 const getSupabaseKey = () => ENV_SUPABASE_ANON_KEY || safeGetItem("supabase_key");
+
+const getSupabaseTusEndpoint = () => {
+  const supabaseUrl = new URL(getSupabaseUrl());
+  if (supabaseUrl.hostname.endsWith(".supabase.co")) {
+    const projectRef = supabaseUrl.hostname.split(".")[0];
+    return `${supabaseUrl.protocol}//${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
+  }
+  return `${supabaseUrl.origin}/storage/v1/upload/resumable`;
+};
+
+const uploadIntakeFileWithTus = async ({ client, file, storagePath, onProgress }) => {
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  const accessToken = data?.session?.access_token;
+  if (!accessToken) throw new Error("Your sign-in session expired. Please sign in again before uploading.");
+
+  return new Promise((resolve, reject) => {
+    let resolvedStoragePath = storagePath;
+    const upload = new tus.Upload(file, {
+      endpoint: getSupabaseTusEndpoint(),
+      retryDelays: [0, 3000, 5000, 10000, 20000],
+      headers: { authorization: `Bearer ${accessToken}` },
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      chunkSize: 6 * 1024 * 1024,
+      metadata: {
+        bucketName: "intake-files",
+        objectName: storagePath,
+        contentType: file.type || "application/octet-stream",
+        cacheControl: "3600"
+      },
+      onError: reject,
+      onProgress: (uploaded, total) => {
+        const percent = total > 0 ? Math.min(100, Math.round((uploaded / total) * 100)) : 0;
+        onProgress?.(percent, uploaded, total);
+      },
+      onSuccess: () => {
+        onProgress?.(100, file.size, file.size);
+        resolve(resolvedStoragePath);
+      }
+    });
+
+    upload
+      .findPreviousUploads()
+      .then((previousUploads) => {
+        if (previousUploads.length) {
+          resolvedStoragePath = previousUploads[0].metadata?.objectName || storagePath;
+          upload.resumeFromPreviousUpload(previousUploads[0]);
+        }
+        upload.start();
+      })
+      .catch(reject);
+  });
+};
 
 // Initialize Supabase from deploy-time env vars first, then browser storage as a fallback.
 const savedUrl = getSupabaseUrl();
@@ -931,7 +990,10 @@ function App() {
   const [intakeSelectedFileName, setIntakeSelectedFileName] = useState("");
   const [intakeUploadedFileId, setIntakeUploadedFileId] = useState(null);
   const [intakeUploadStatus, setIntakeUploadStatus] = useState("");
+  const [intakeUploadProgress, setIntakeUploadProgress] = useState(0);
   const [intakeFileUploading, setIntakeFileUploading] = useState(false);
+  const [ffeAnalysisJobId, setFfeAnalysisJobId] = useState("");
+  const [ffeConfirmationSaving, setFfeConfirmationSaving] = useState(false);
   const [latestIntakeJob, setLatestIntakeJob] = useState(null);
   const [liveIntakeWarning, setLiveIntakeWarning] = useState("");
   const [submittedTrackerProject, setSubmittedTrackerProject] = useState(null);
@@ -983,6 +1045,7 @@ function App() {
   const [adminWorkspaceMode, setAdminWorkspaceMode] = useState("overview");
   const [adminPortfolioSearch, setAdminPortfolioSearch] = useState("");
   const [adminPortfolioFilter, setAdminPortfolioFilter] = useState("all");
+  const [adminPortfolioClientKey, setAdminPortfolioClientKey] = useState("");
   const [activeAdminFlow, setActiveAdminFlow] = useState(() => {
     const savedFlow = safeGetItem("crafton_admin_active_flow");
     return ["intake", "sourcing", "production", "shipping"].includes(savedFlow) ? savedFlow : "intake";
@@ -1023,6 +1086,7 @@ function App() {
   const [loadingAiResult, setLoadingAiResult] = useState(null);
   const [loadingAiSaveStatus, setLoadingAiSaveStatus] = useState("");
   const loadingAiFrameRef = useRef(null);
+  const loadingAiPopupRef = useRef(null);
 
   // WOW effect state variables for homepage V1.2 enhancements
   const [activeSwatch, setActiveSwatch] = useState("nubuck"); // nubuck, linen, gold, walnut
@@ -1046,12 +1110,12 @@ function App() {
 
   useEffect(() => {
     const handleLoadingAiMessage = (event) => {
-      if (!loadingAiFrameRef.current || event.source !== loadingAiFrameRef.current.contentWindow) return;
+      if (event.origin !== window.location.origin) return;
+      const isEmbeddedTool = event.source === loadingAiFrameRef.current?.contentWindow;
+      const isPopupTool = event.source === loadingAiPopupRef.current;
+      if (!isEmbeddedTool && !isPopupTool) return;
       if (event.data?.type === "CRAFTON_LOADING_READY" && loadingAiContext) {
-        loadingAiFrameRef.current.contentWindow.postMessage(
-          { type: "CRAFTON_LOADING_INIT", payload: loadingAiContext },
-          window.location.origin
-        );
+        event.source.postMessage({ type: "CRAFTON_LOADING_INIT", payload: loadingAiContext }, window.location.origin);
       }
       if (event.data?.type === "CRAFTON_LOADING_RESULT") {
         setLoadingAiResult(event.data.payload || null);
@@ -1069,6 +1133,14 @@ function App() {
       { type: "CRAFTON_LOADING_INIT", payload: loadingAiContext },
       window.location.origin
     );
+  };
+
+  const openLoadingAiPopup = () => {
+    const popup = window.open(
+      `/loading-ai/index.html?lang=${lang === "Cn" ? "cn" : "en"}&projectId=${encodeURIComponent(loadingAiContext?.projectId || "")}`,
+      "_blank"
+    );
+    if (popup) loadingAiPopupRef.current = popup;
   };
 
   const saveLoadingAiPlan = async () => {
@@ -1390,7 +1462,7 @@ function App() {
     lastProfileSyncRef.current = "";
     setCurrentStageView("Marketing");
     setMarketingTab("Overview");
-    setClientPortalTab("Intake");
+    setClientPortalTab("Tracker");
     setClientProjectsLoading(true);
     setSubmittedTrackerProject(null);
     setLatestIntakeJob(null);
@@ -1470,21 +1542,32 @@ function App() {
     return { client, supabaseUser };
   };
 
-  const uploadIntakeFileRecord = async ({ file, fileType = "PORTAL_FORM", notes = "" }) => {
+  const uploadIntakeFileRecord = async ({ file, fileType = "PORTAL_FORM", notes = "", onProgress }) => {
     const context = await getPortalSupabaseContext();
     if (!context) return null;
+    if (Number(file?.size || 0) > INTAKE_MAX_FILE_BYTES) {
+      throw new Error("This file exceeds the 250MB FF&E upload limit.");
+    }
 
     const { client, supabaseUser } = context;
     const cleanName = file.name.replace(/[^\w.-]+/g, "_");
-    const storagePath = `${supabaseUser.id}/${Date.now()}-${cleanName}`;
-    const { error: uploadError } = await withTimeout(
-      client.storage.from("intake-files").upload(storagePath, file, {
-        contentType: file.type || "application/octet-stream",
-        upsert: false
-      }),
-      INTAKE_UPLOAD_TIMEOUT_MS,
-      "File upload to Supabase timed out. Please check the network, Storage bucket policy, and file size."
-    );
+    let storagePath = `${supabaseUser.id}/${Date.now()}-${cleanName}`;
+    let uploadError = null;
+
+    if (Number(file.size || 0) > INTAKE_TUS_THRESHOLD_BYTES) {
+      storagePath = await uploadIntakeFileWithTus({ client, file, storagePath, onProgress });
+    } else {
+      const uploadResult = await withTimeout(
+        client.storage.from("intake-files").upload(storagePath, file, {
+          contentType: file.type || "application/octet-stream",
+          upsert: false
+        }),
+        INTAKE_UPLOAD_TIMEOUT_MS,
+        "File upload to Supabase timed out. Please check the network and Storage bucket policy."
+      );
+      uploadError = uploadResult.error;
+      if (!uploadError) onProgress?.(100, file.size, file.size);
+    }
 
     if (uploadError) throw uploadError;
 
@@ -2152,8 +2235,20 @@ function App() {
     setIntakeSelectedFileName(file?.name || "");
     setIntakeUploadedFileId(null);
     setIntakeUploadStatus("");
+    setIntakeUploadProgress(0);
     setIntakeFileUploading(false);
+    setFfeAnalysisJobId("");
     if (!file) return;
+    if (Number(file.size || 0) > INTAKE_MAX_FILE_BYTES) {
+      setIntakeSelectedFile(null);
+      setIntakeSelectedFileName("");
+      setLiveIntakeWarning(
+        lang === "Cn"
+          ? "文件超过 250MB 上传上限，请联系 Crafton 团队协助处理。"
+          : "This file exceeds the 250MB upload limit. Please contact the Crafton team for assistance."
+      );
+      return;
+    }
 
     setLiveIntakeWarning("");
     setIntakeFileUploading(true);
@@ -2165,6 +2260,12 @@ function App() {
       const fileRow = await uploadIntakeFileRecord({
         file,
         fileType: "PORTAL_FORM",
+        onProgress: (percent) => {
+          setIntakeUploadProgress(percent);
+          setIntakeUploadStatus(
+            lang === "Cn" ? `正在安全上传到 Supabase... ${percent}%` : `Uploading securely to Supabase... ${percent}%`
+          );
+        },
         notes: [
           intakeProjectName,
           intakeDestination,
@@ -2183,6 +2284,7 @@ function App() {
       });
 
       if (fileRow?.id) {
+        setIntakeUploadProgress(100);
         setIntakeUploadedFileId(fileRow.id);
         setIntakeUploadStatus(
           `${lang === "Cn" ? "\u5df2\u4fdd\u5b58\u5230 intake_files\uff1a" : "Saved to intake_files: "}${file.name}`
@@ -2197,10 +2299,108 @@ function App() {
     } catch (err) {
       console.error("Intake file upload failed:", err);
       setIntakeUploadedFileId(null);
+      setIntakeUploadProgress(0);
       setIntakeUploadStatus("");
       setLiveIntakeWarning(err.message || "File upload failed. Please check Supabase Storage and table permissions.");
     } finally {
       setIntakeFileUploading(false);
+    }
+  };
+
+  const handleFfeScheduleAnalysis = async () => {
+    if (!intakeSelectedFile && !intakeUploadedFileId) {
+      setLiveIntakeWarning(
+        lang === "Cn" ? "请先选择一份 FF&E 文件。" : "Choose an FF&E file before starting the extraction."
+      );
+      return;
+    }
+
+    setIsIntakeUploading(true);
+    setLiveIntakeWarning("");
+    setParsingLogs([]);
+
+    try {
+      const job = await createLiveIntakeJob({
+        projectName: intakeProjectName.trim(),
+        destination: intakeDestination.trim(),
+        quantity: "",
+        fileType: "FFE_SCHEDULE",
+        textBrief: [
+          "Source: customer FF&E schedule upload",
+          intakeProjectName.trim() ? `Project hint: ${intakeProjectName.trim()}` : "",
+          intakeDestination.trim() ? `Destination hint: ${intakeDestination.trim()}` : "",
+          intakeAdditionalNotes.trim() ? `Client note: ${intakeAdditionalNotes.trim()}` : "",
+          "Extract every furniture line, image reference, quantity, dimension, material, finish, use location, project name, delivery address, target date, and compliance requirement present in the source file. Keep missing facts as clarification questions."
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        structuredBrief: null,
+        file: intakeUploadedFileId ? null : intakeSelectedFile,
+        intakeFileId: intakeUploadedFileId
+      });
+
+      if (!job) {
+        throw new Error(
+          lang === "Cn"
+            ? "当前未连接到已登录的 Supabase 账户，无法创建分析任务。"
+            : "A signed-in Supabase session is required to create the extraction job."
+        );
+      }
+
+      setFfeAnalysisJobId(job.id);
+      setLatestIntakeJob(job);
+      setIntakeUploadStatus(
+        lang === "Cn" ? "文件已提交，正在读取 FF&E 内容。" : "File submitted. The FF&E extraction is running."
+      );
+      loadPrequoteWorkspace().catch((error) => console.warn("FF&E extraction refresh failed:", error.message || error));
+    } catch (error) {
+      console.error("FF&E schedule analysis failed:", error);
+      setLiveIntakeWarning(error.message || "FF&E schedule analysis failed.");
+    } finally {
+      setIsIntakeUploading(false);
+    }
+  };
+
+  const handleConfirmFfeExtraction = async () => {
+    const job = [...clientProjectJobs, latestIntakeJob].find(
+      (row) => row && String(row.id) === String(ffeAnalysisJobId)
+    );
+    if (!job) return;
+
+    setFfeConfirmationSaving(true);
+    setLiveIntakeWarning("");
+
+    try {
+      const context = await getPortalSupabaseContext();
+      if (!context) throw new Error("A signed-in Supabase session is required to confirm this project.");
+
+      const existingAnswers = safeJsonObject(job.client_answers, {});
+      const confirmedAt = new Date().toISOString();
+      const { data: updated, error } = await context.client
+        .from("intake_jobs")
+        .update({
+          step: "client_confirmed_extraction",
+          client_answers: {
+            ...existingAnswers,
+            intake_confirmation: "confirmed",
+            intake_confirmed_at: confirmedAt
+          }
+        })
+        .eq("id", job.id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      setLatestIntakeJob(updated);
+      setClientProjectJobs((previous) => [updated, ...previous.filter((row) => row.id !== updated.id)]);
+      await loadPrequoteWorkspace();
+      setClientPortalTab("Tracker");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      console.error("FF&E extraction confirmation failed:", error);
+      setLiveIntakeWarning(error.message || "The extracted project could not be confirmed.");
+    } finally {
+      setFfeConfirmationSaving(false);
     }
   };
 
@@ -2482,6 +2682,7 @@ function App() {
     setIntakeSelectedFileName(file?.name || "");
     setIntakeUploadedFileId(null);
     setIntakeUploadStatus("");
+    setIntakeUploadProgress(0);
     setIntakeFileUploading(false);
     setClientPortalTab("Intake");
     setCurrentStageView("ClientPortal");
@@ -5076,6 +5277,57 @@ function App() {
     setAdminDataStatus({ loaded: true, missingTables });
   };
 
+  const addSignedIntakeItemImages = async (client, row) => {
+    const result = safeJsonObject(row?.result_json, {});
+    const items = Array.isArray(result.items) ? result.items : [];
+    const entries = items
+      .map((item, index) => ({
+        index,
+        bucket: item.image_storage_bucket,
+        path: item.image_storage_path
+      }))
+      .filter((entry) => entry.bucket && entry.path);
+    if (!entries.length) return row;
+
+    const signedByIndex = new Map();
+    const grouped = entries.reduce((groups, entry) => {
+      const current = groups.get(entry.bucket) || [];
+      current.push(entry);
+      groups.set(entry.bucket, current);
+      return groups;
+    }, new Map());
+
+    await Promise.all(
+      Array.from(grouped.entries()).map(async ([bucket, bucketEntries]) => {
+        try {
+          const { data, error } = await client.storage.from(bucket).createSignedUrls(
+            bucketEntries.map((entry) => entry.path),
+            60 * 60
+          );
+          if (error) throw error;
+          bucketEntries.forEach((entry, index) => {
+            const signedUrl = data?.[index]?.signedUrl || "";
+            if (signedUrl) signedByIndex.set(entry.index, signedUrl);
+          });
+        } catch (error) {
+          console.warn("Extracted furniture image previews could not be signed:", error.message || error);
+        }
+      })
+    );
+
+    if (!signedByIndex.size) return row;
+    return {
+      ...row,
+      result_json: {
+        ...result,
+        items: items.map((item, index) => ({
+          ...item,
+          image_url: signedByIndex.get(index) || item.image_url || ""
+        }))
+      }
+    };
+  };
+
   const loadPrequoteWorkspace = async () => {
     setClientProjectsLoading(true);
     const localJobs = getLocalReviewJobs();
@@ -5116,7 +5368,10 @@ function App() {
           .limit(24);
 
         if (reviewError) throw reviewError;
-        setIntakeReviewJobs(reviewData || []);
+        const reviewRowsWithPreviews = await Promise.all(
+          (reviewData || []).map((row) => addSignedIntakeItemImages(client, row))
+        );
+        setIntakeReviewJobs(reviewRowsWithPreviews);
         setAdminAccessStatus("ready");
       } else {
         setAdminAccessStatus("forbidden");
@@ -5135,18 +5390,21 @@ function App() {
         const clientRows = clientData && clientData.length > 0 ? clientData : [];
         const clientRowsWithPreviews = await Promise.all(
           clientRows.map(async (row) => {
+            const rowWithItemImages = await addSignedIntakeItemImages(client, row);
             const file = getIntakeFileFromJob(row);
-            if (!file?.mime_type?.startsWith("image/") || !file.storage_bucket || !file.storage_path) return row;
+            if (!file?.mime_type?.startsWith("image/") || !file.storage_bucket || !file.storage_path) {
+              return rowWithItemImages;
+            }
 
             try {
               const { data: signed, error: signedError } = await client.storage
                 .from(file.storage_bucket)
                 .createSignedUrl(file.storage_path, 60 * 60);
               if (signedError) throw signedError;
-              return { ...row, client_preview_url: signed?.signedUrl || "" };
+              return { ...rowWithItemImages, client_preview_url: signed?.signedUrl || "" };
             } catch (previewError) {
               console.warn("Client furniture preview could not be created:", previewError.message || previewError);
-              return row;
+              return rowWithItemImages;
             }
           })
         );
@@ -6916,6 +7174,45 @@ function App() {
     );
   };
 
+  const renderClientFfeIntake = () => {
+    const rawJob = [...clientProjectJobs, latestIntakeJob].find(
+      (row) => row && String(row.id) === String(ffeAnalysisJobId)
+    );
+    const extractedJob = rawJob ? normalizeReviewJob(rawJob) : null;
+
+    return (
+      <ClientFfeIntake
+        lang={lang}
+        user={user}
+        file={intakeSelectedFile}
+        fileName={intakeSelectedFileName}
+        uploadStatus={intakeUploadStatus}
+        uploadProgress={intakeUploadProgress}
+        warning={liveIntakeWarning}
+        uploading={intakeFileUploading}
+        analyzing={isIntakeUploading}
+        confirming={ffeConfirmationSaving}
+        rawJob={rawJob}
+        extractedJob={extractedJob}
+        projectName={intakeProjectName}
+        destination={intakeDestination}
+        notes={intakeAdditionalNotes}
+        fileInputRef={intakeFileInputRef}
+        onFileSelect={handleIntakeFileSelect}
+        onProjectNameChange={setIntakeProjectName}
+        onDestinationChange={setIntakeDestination}
+        onNotesChange={setIntakeAdditionalNotes}
+        onAnalyze={handleFfeScheduleAnalysis}
+        onConfirm={handleConfirmFfeExtraction}
+        onBack={() => {
+          setClientPortalTab("Tracker");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        concierge={renderAiConciergePanel({ embedded: true })}
+      />
+    );
+  };
+
   const getAdminStageLabel = (stage) => {
     const copy = adminStageCopy[stage.id];
     if (!copy) return lang === "Cn" ? stage.nameCn : stage.nameEn;
@@ -8318,14 +8615,19 @@ function App() {
         portfolioProjects: filteredProjects.filter((project) => project.clientKey === clientGroup.key)
       }))
       .filter((clientGroup) => clientGroup.portfolioProjects.length > 0);
+    const needsActionCount = activeProjects.filter((project) => project.needsAction).length;
     const portfolioFilters = [
-      { id: "all", cn: "全部", en: "All" },
-      { id: "action", cn: "待处理", en: "Needs action" },
-      { id: "intake", cn: "订单接入", en: "Intake" },
-      { id: "sourcing", cn: "询价", en: "Sourcing" },
-      { id: "production", cn: "生产", en: "Production" },
-      { id: "shipping", cn: "交付", en: "Shipping" }
+      { id: "all", cn: "全部", en: "All", count: activeProjects.length },
+      { id: "action", cn: "待处理", en: "Needs action", count: needsActionCount },
+      { id: "intake", cn: "订单接入", en: "Intake", count: phaseCounts.intake || 0 },
+      { id: "sourcing", cn: "询价", en: "Sourcing", count: phaseCounts.sourcing || 0 },
+      { id: "production", cn: "生产", en: "Production", count: phaseCounts.production || 0 },
+      { id: "shipping", cn: "交付", en: "Shipping", count: phaseCounts.shipping || 0 }
     ];
+    const selectedClientGroup =
+      visibleClientGroups.find((clientGroup) => clientGroup.key === adminPortfolioClientKey) ||
+      visibleClientGroups[0] ||
+      null;
 
     return (
       <AdminLocalized lang={lang}>
@@ -8336,8 +8638,8 @@ function App() {
               <h2>{lang === "Cn" ? "订单管理总览" : "Order portfolio overview"}</h2>
               <p>
                 {lang === "Cn"
-                  ? "先掌握全部客户项目、当前阶段与待办事项，再进入单个项目执行自动化流程。"
-                  : "See every client project, its current stage and the next decision before opening the automation workspace."}
+                  ? "从客户进入项目；需要时再打开完整的自动化工作区。"
+                  : "Move from client to project, then open the full automation workspace only when needed."}
               </p>
             </div>
             <div className="admin-portfolio-live">
@@ -8350,81 +8652,51 @@ function App() {
           <section className="admin-portfolio-overview" aria-labelledby="admin-order-overview-title">
             <div className="admin-portfolio-section-heading">
               <div>
-                <span className="admin-section-kicker">{lang === "Cn" ? "总体订单详情" : "Overall order details"}</span>
-                <h3 id="admin-order-overview-title">{lang === "Cn" ? "当前订单组合" : "Current order portfolio"}</h3>
+                <span className="admin-section-kicker">{lang === "Cn" ? "一览" : "At a glance"}</span>
+                <h3 id="admin-order-overview-title">
+                  {lang === "Cn" ? "今天需要关注的订单" : "What needs your attention"}
+                </h3>
               </div>
               <p>
                 {lang === "Cn"
-                  ? `${activeClientKeys.size} 个活跃客户，共 ${activeProjects.length} 个进行中项目`
-                  : `${activeClientKeys.size} active clients across ${activeProjects.length} live projects`}
+                  ? `${activeClientKeys.size} 个客户 · ${activeProjects.length} 个进行中项目`
+                  : `${activeClientKeys.size} clients · ${activeProjects.length} live projects`}
               </p>
             </div>
 
             <div className="admin-portfolio-metrics">
               <div className="admin-portfolio-metric">
-                <span>{lang === "Cn" ? "活跃客户" : "Active clients"}</span>
-                <strong>{activeClientKeys.size}</strong>
-                <small>{lang === "Cn" ? "有进行中项目" : "with live projects"}</small>
-              </div>
-              <div className="admin-portfolio-metric">
-                <span>{lang === "Cn" ? "进行中项目" : "Active projects"}</span>
                 <strong>{activeProjects.length}</strong>
-                <small>{lang === "Cn" ? `${jobs.length} 条订单提交记录` : `${jobs.length} intake submissions`}</small>
+                <span>{lang === "Cn" ? "进行中项目" : "Live projects"}</span>
+                <small>{lang === "Cn" ? "跨全部业务阶段" : "Across every workflow stage"}</small>
               </div>
-              <div className="admin-portfolio-metric primary attention">
+              <div className={`admin-portfolio-metric ${needsActionCount ? "attention" : ""}`}>
+                <strong>{needsActionCount}</strong>
                 <span>{lang === "Cn" ? "需要处理" : "Needs action"}</span>
-                <strong>{activeProjects.filter((project) => project.needsAction).length}</strong>
-                <small>{lang === "Cn" ? "等待 Cho 或客户" : "waiting on Cho or client"}</small>
+                <small>{lang === "Cn" ? "等待 Cho 或客户确认" : "Waiting on Cho or the client"}</small>
               </div>
               <div className="admin-portfolio-metric">
-                <span>{lang === "Cn" ? "询价与比价" : "RFQ and sourcing"}</span>
-                <strong>{phaseCounts.sourcing || 0}</strong>
-                <small>S06-S08</small>
+                <strong>{(phaseCounts.production || 0) + (phaseCounts.shipping || 0)}</strong>
+                <span>{lang === "Cn" ? "生产与交付" : "Production & delivery"}</span>
+                <small>{lang === "Cn" ? "S09–S17 执行中" : "Moving through S09–S17"}</small>
               </div>
-              <div className="admin-portfolio-metric">
-                <span>{lang === "Cn" ? "生产中" : "In production"}</span>
-                <strong>{phaseCounts.production || 0}</strong>
-                <small>S09-S11</small>
-              </div>
-              <div className="admin-portfolio-metric">
-                <span>{lang === "Cn" ? "出货与交付" : "Shipping and handover"}</span>
-                <strong>{phaseCounts.shipping || 0}</strong>
-                <small>S12-S17</small>
-              </div>
-            </div>
-
-            <div
-              className="admin-portfolio-pipeline"
-              aria-label={lang === "Cn" ? "订单阶段分布" : "Order stage distribution"}
-            >
-              {Object.entries(flowMeta).map(([flow, meta]) => (
-                <div className="admin-portfolio-pipeline-step" key={flow}>
-                  <span>0{meta.index + 1}</span>
-                  <div>
-                    <strong>{lang === "Cn" ? meta.cn : meta.en}</strong>
-                    <small>{meta.range}</small>
-                  </div>
-                  <b>{phaseCounts[flow] || 0}</b>
-                </div>
-              ))}
             </div>
           </section>
 
           <section className="admin-active-clients" aria-labelledby="admin-active-clients-title">
             <div className="admin-active-clients-header">
               <div>
-                <span className="admin-section-kicker">{lang === "Cn" ? "活跃客户" : "Active clients"}</span>
-                <h3 id="admin-active-clients-title">
-                  {lang === "Cn" ? "客户项目与下一步处理" : "Client projects and next actions"}
-                </h3>
+                <span className="admin-section-kicker">{lang === "Cn" ? "项目目录" : "Project directory"}</span>
+                <h3 id="admin-active-clients-title">{lang === "Cn" ? "客户与项目" : "Clients and projects"}</h3>
                 <p>
                   {lang === "Cn"
-                    ? "点击项目进入 S01-S17 自动化操作详情。"
-                    : "Open a project to work through its S01-S17 automation details."}
+                    ? "选择客户查看项目，再进入项目工作区。"
+                    : "Choose a client, review their projects, then open a workspace."}
                 </p>
               </div>
               <label className="admin-portfolio-search">
-                <span>{lang === "Cn" ? "搜索" : "Search"}</span>
+                <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <span className="sr-only">{lang === "Cn" ? "搜索" : "Search"}</span>
                 <input
                   type="search"
                   value={adminPortfolioSearch}
@@ -8448,97 +8720,157 @@ function App() {
                   className={adminPortfolioFilter === filter.id ? "active" : ""}
                   onClick={() => setAdminPortfolioFilter(filter.id)}
                 >
-                  {lang === "Cn" ? filter.cn : filter.en}
+                  <span>{lang === "Cn" ? filter.cn : filter.en}</span>
+                  <small>{filter.count}</small>
                 </button>
               ))}
             </div>
 
-            <div className="admin-client-portfolio-list">
+            <div className={`admin-client-browser ${adminPortfolioClientKey ? "has-selection" : ""}`}>
               {visibleClientGroups.length ? (
-                visibleClientGroups.map((clientGroup) => (
-                  <section className="admin-client-portfolio-group" key={clientGroup.key}>
-                    <header>
-                      <span className="admin-client-monogram" aria-hidden="true">
-                        {clientGroup.clientName.slice(0, 1).toUpperCase()}
-                      </span>
-                      <div>
-                        <h4>{clientGroup.clientName}</h4>
-                        <p>
-                          {lang === "Cn"
-                            ? `${clientGroup.portfolioProjects.length} 个活跃项目`
-                            : `${clientGroup.portfolioProjects.length} active project${clientGroup.portfolioProjects.length === 1 ? "" : "s"}`}
-                        </p>
-                      </div>
-                    </header>
+                <>
+                  <nav className="admin-client-index" aria-label={lang === "Cn" ? "客户列表" : "Client list"}>
+                    <div className="admin-client-index-heading">
+                      <span>{lang === "Cn" ? "客户" : "Clients"}</span>
+                      <small>{visibleClientGroups.length}</small>
+                    </div>
+                    {visibleClientGroups.map((clientGroup, clientIndex) => {
+                      const isSelected = adminPortfolioClientKey
+                        ? clientGroup.key === adminPortfolioClientKey
+                        : clientIndex === 0;
+                      const clientActionCount = clientGroup.portfolioProjects.filter(
+                        (project) => project.needsAction
+                      ).length;
+                      return (
+                        <button
+                          type="button"
+                          className={`admin-client-menu-item ${isSelected ? "active" : ""}`}
+                          aria-current={isSelected ? "true" : undefined}
+                          onClick={() => setAdminPortfolioClientKey(clientGroup.key)}
+                          key={clientGroup.key}
+                        >
+                          <span className="admin-client-monogram" aria-hidden="true">
+                            {clientGroup.clientName.slice(0, 1).toUpperCase()}
+                          </span>
+                          <span>
+                            <strong>{clientGroup.clientName}</strong>
+                            <small>
+                              {lang === "Cn"
+                                ? `${clientGroup.portfolioProjects.length} 个项目`
+                                : `${clientGroup.portfolioProjects.length} project${clientGroup.portfolioProjects.length === 1 ? "" : "s"}`}
+                            </small>
+                          </span>
+                          {clientActionCount > 0 && (
+                            <span
+                              className="admin-client-action-count"
+                              aria-label={`${clientActionCount} ${lang === "Cn" ? "个待处理" : "need action"}`}
+                            >
+                              {clientActionCount}
+                            </span>
+                          )}
+                          <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                        </button>
+                      );
+                    })}
+                  </nav>
 
-                    <div className="admin-client-project-rows">
-                      {clientGroup.portfolioProjects.map((project) => {
-                        const flow = flowMeta[project.flow];
-                        const stageLabel = stageLabels[project.stage - 1];
-                        return (
+                  <section className="admin-client-project-panel" aria-live="polite">
+                    {selectedClientGroup && (
+                      <>
+                        <header className="admin-client-project-heading">
                           <button
                             type="button"
-                            className="admin-portfolio-project-row"
-                            key={project.key}
-                            onClick={() => openAdminProjectWorkspace(project.latestJob)}
-                            aria-label={`${lang === "Cn" ? "打开项目" : "Open project"} ${project.projectName}`}
+                            className="admin-client-back"
+                            onClick={() => setAdminPortfolioClientKey("")}
                           >
-                            <span className="admin-project-identity">
-                              <span className="admin-project-stage-chip">
-                                S{String(project.stage).padStart(2, "0")}
-                              </span>
-                              <span>
-                                <strong>{project.projectName}</strong>
-                                <small>
-                                  {[
-                                    project.destination || (lang === "Cn" ? "目的地待确认" : "Destination pending"),
-                                    project.latestJob.quantityText
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" / ")}
-                                </small>
-                              </span>
-                            </span>
-
-                            <span className="admin-project-progress-block">
-                              <span className="admin-project-progress-meta">
-                                <strong>{lang === "Cn" ? flow.cn : flow.en}</strong>
-                                <small>{lang === "Cn" ? stageLabel[0] : stageLabel[1]}</small>
-                              </span>
-                              <span className="admin-project-phase-track" aria-hidden="true">
-                                {Object.values(flowMeta).map((phase) => (
-                                  <i
-                                    key={phase.index}
-                                    className={`${phase.index < flow.index ? "complete" : ""} ${phase.index === flow.index ? "current" : ""}`}
-                                  ></i>
-                                ))}
-                              </span>
-                            </span>
-
-                            <span className="admin-project-next-action">
-                              <span>{lang === "Cn" ? "下一步" : "Next action"}</span>
-                              <strong>{project.nextAction}</strong>
-                            </span>
-
-                            <span className="admin-project-row-end">
-                              <small>{formatAdminDate(project.latestJob.createdAt)}</small>
-                              <span className={`admin-project-action-state ${project.needsAction ? "attention" : ""}`}>
-                                {project.needsAction
-                                  ? lang === "Cn"
-                                    ? "需要处理"
-                                    : "Needs action"
-                                  : lang === "Cn"
-                                    ? "进行中"
-                                    : "In progress"}
-                              </span>
-                              <b aria-hidden="true">&rarr;</b>
-                            </span>
+                            <i className="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                            {lang === "Cn" ? "客户" : "Clients"}
                           </button>
-                        );
-                      })}
-                    </div>
+                          <span className="admin-client-monogram" aria-hidden="true">
+                            {selectedClientGroup.clientName.slice(0, 1).toUpperCase()}
+                          </span>
+                          <div>
+                            <span className="admin-section-kicker">
+                              {lang === "Cn" ? "当前客户" : "Selected client"}
+                            </span>
+                            <h4>{selectedClientGroup.clientName}</h4>
+                            <p>
+                              {lang === "Cn"
+                                ? `${selectedClientGroup.portfolioProjects.length} 个进行中项目`
+                                : `${selectedClientGroup.portfolioProjects.length} live project${selectedClientGroup.portfolioProjects.length === 1 ? "" : "s"}`}
+                            </p>
+                          </div>
+                        </header>
+
+                        <div className="admin-client-project-rows">
+                          {selectedClientGroup.portfolioProjects.map((project) => {
+                            const flow = flowMeta[project.flow];
+                            const stageLabel = stageLabels[project.stage - 1];
+                            return (
+                              <button
+                                type="button"
+                                className="admin-portfolio-project-row"
+                                key={project.key}
+                                onClick={() => openAdminProjectWorkspace(project.latestJob)}
+                                aria-label={`${lang === "Cn" ? "打开项目" : "Open project"} ${project.projectName}`}
+                              >
+                                <span className="admin-project-stage-chip">
+                                  S{String(project.stage).padStart(2, "0")}
+                                </span>
+                                <span className="admin-project-identity">
+                                  <span>
+                                    <strong>{project.projectName}</strong>
+                                    <small>
+                                      {[
+                                        project.destination || (lang === "Cn" ? "目的地待确认" : "Destination pending"),
+                                        project.latestJob.quantityText
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ")}
+                                    </small>
+                                  </span>
+                                </span>
+                                <span className="admin-project-stage-summary">
+                                  <strong>{lang === "Cn" ? flow.cn : flow.en}</strong>
+                                  <small>{lang === "Cn" ? stageLabel[0] : stageLabel[1]}</small>
+                                  <span className="admin-project-phase-track" aria-hidden="true">
+                                    {Object.entries(flowMeta).map(([phaseKey, phase]) => (
+                                      <i
+                                        key={phaseKey}
+                                        className={
+                                          phase.index < flow.index
+                                            ? "complete"
+                                            : phase.index === flow.index
+                                              ? "current"
+                                              : ""
+                                        }
+                                      ></i>
+                                    ))}
+                                  </span>
+                                </span>
+                                <span
+                                  className={`admin-project-action-state ${project.needsAction ? "attention" : ""}`}
+                                >
+                                  {project.needsAction
+                                    ? lang === "Cn"
+                                      ? "需要处理"
+                                      : "Needs action"
+                                    : lang === "Cn"
+                                      ? "进行中"
+                                      : "In progress"}
+                                </span>
+                                <span className="admin-project-row-date">
+                                  {formatAdminDate(project.latestJob.createdAt)}
+                                </span>
+                                <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
                   </section>
-                ))
+                </>
               ) : (
                 <div className="admin-portfolio-empty">
                   <strong>{lang === "Cn" ? "没有符合条件的活跃项目" : "No active projects match this view"}</strong>
@@ -8599,24 +8931,21 @@ function App() {
           project={activeAdminProject}
           supabaseClient={getSupabaseBrowserClient()}
           dbConnected={dbConnected}
-          onOpenLoadingAi={({ project }) => {
-            const sourceItems = reviewDraft?.projectId === project?.id ? reviewDraft.items : project?.items;
-            const palette = ["#a97c73", "#7a8775", "#607d8b", "#8b6f47", "#6f5b7b", "#4d7c78"];
-            const normalizedItems = (sourceItems || []).map((item, index) => ({
-              id: item.id || `project-item-${index + 1}`,
-              sku: item.typeCn || item.typeEn || item.itemType || `Item ${index + 1}`,
-              skuEn: item.typeEn || item.typeCn || item.itemType || `Item ${index + 1}`,
-              l: Number(item.length || item.l || 1000),
-              w: Number(item.width || item.depth || item.w || 800),
-              h: Number(item.height || item.h || 800),
-              qty: Math.max(1, Number(item.qty || item.quantity || 1)),
-              weight: Math.max(1, Number(item.weight || 25)),
-              stackingGrade: Number(item.stackingGrade || 2),
-              allowSide: item.allowSide !== false,
-              allowUpsideDown: item.allowUpsideDown === true,
-              color: item.color || palette[index % palette.length]
-            }));
-            setLoadingAiContext({ projectId: project.id, projectName: project.orderId, items: normalizedItems });
+          onOpenLoadingAi={({ project, specifications = [] }) => {
+            const draftItems = reviewDraft?.projectId === project?.id ? reviewDraft.items : project?.items;
+            const candidates = [
+              { label: "Supabase BOM", result: normalizeProjectItemsForLoading(specifications) },
+              { label: "Project BOM", result: normalizeProjectItemsForLoading(project?.items) },
+              { label: "Intake BOM", result: normalizeProjectItemsForLoading(draftItems) }
+            ];
+            const selected = candidates.sort((left, right) => right.result.items.length - left.result.items.length)[0];
+            setLoadingAiContext({
+              projectId: project.id,
+              projectName: project.orderId,
+              items: selected.result.items,
+              omittedItems: selected.result.omittedItems,
+              sourceLabel: selected.label
+            });
             setLoadingAiResult(null);
             setLoadingAiSaveStatus("");
             setShowVolumetricSimulation(true);
@@ -10281,7 +10610,10 @@ function App() {
               ) : (
                 <span
                   className={`nav-link ${currentView === "ClientPortal" ? "active" : ""}`}
-                  onClick={() => setCurrentStageView("ClientPortal")}
+                  onClick={() => {
+                    setCurrentStageView("ClientPortal");
+                    setClientPortalTab("Tracker");
+                  }}
                   style={{ fontSize: "0.85rem", cursor: "pointer" }}
                 >
                   {lang === "Cn" ? "客戶中心" : "Client Portal"}
@@ -14281,10 +14613,10 @@ function App() {
       {/* VIEW 3: Client Portal (Member Center) */}
       {currentView === "ClientPortal" && (
         <div
-          className={`crafton-client-view animate-fade-in ${clientPortalTab === "Tracker" ? "client-tracker-mode" : ""}`}
+          className={`crafton-client-view animate-fade-in ${clientPortalTab === "Tracker" ? "client-tracker-mode" : ""} ${clientPortalTab === "Intake" ? "client-intake-mode" : ""}`}
           style={{
-            padding: clientPortalTab === "Tracker" ? "0" : "2rem",
-            maxWidth: clientPortalTab === "Tracker" ? "none" : "1200px",
+            padding: ["Tracker", "Intake"].includes(clientPortalTab) ? "0" : "2rem",
+            maxWidth: ["Tracker", "Intake"].includes(clientPortalTab) ? "none" : "1200px",
             margin: "0 auto"
           }}
         >
@@ -14801,7 +15133,9 @@ function App() {
                 </div>
               )}
 
-              {clientPortalTab === "Intake" && (
+              {clientPortalTab === "Intake" && renderClientFfeIntake()}
+
+              {clientPortalTab === "LegacyIntake" && (
                 <div
                   className="dashboard-panels animate-fade-in"
                   style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginTop: "1.5rem" }}
@@ -15976,12 +16310,7 @@ function App() {
               >
                 {/* Open in New Tab Button */}
                 <button
-                  onClick={() =>
-                    window.open(
-                      `/loading-ai/index.html?lang=${lang === "Cn" ? "cn" : "en"}&projectId=${encodeURIComponent(loadingAiContext?.projectId || "")}`,
-                      "_blank"
-                    )
-                  }
+                  onClick={openLoadingAiPopup}
                   style={{
                     background: "none",
                     border: "1px solid var(--text-primary)",

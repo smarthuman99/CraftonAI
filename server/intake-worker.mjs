@@ -1,15 +1,28 @@
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { parseIntakeBrief } from "./lib/intakeProcessor.mjs";
+import { extractIntakeSource, getIntakeSourceKind, openPdfBatchReader } from "./lib/intakeSourceReader.mjs";
+import {
+  bindBatchSourcePages,
+  buildPdfCheckpoint,
+  createPageBatches,
+  mergeIntakeBatchResults,
+  readPdfCheckpoint
+} from "./lib/intakeBatchProcessor.mjs";
 
 const supabase = createSupabaseAdmin();
 const intervalMs = Number(process.env.INTAKE_WORKER_INTERVAL_MS || 8000);
 const batchSize = Number(process.env.INTAKE_WORKER_BATCH_SIZE || 1);
 const maxAttempts = Number(process.env.INTAKE_WORKER_MAX_ATTEMPTS || 3);
-const maxReadableFileChars = Number(process.env.INTAKE_WORKER_MAX_FILE_TEXT_CHARS || 12000);
+const maxReadableFileChars = Number(process.env.INTAKE_WORKER_MAX_FILE_TEXT_CHARS || 60000);
+const maxVisionFileBytes = Number(process.env.INTAKE_VISION_MAX_FILE_BYTES || 12 * 1024 * 1024);
+const maxDocumentFileBytes = Number(process.env.INTAKE_DOCUMENT_MAX_FILE_BYTES || 250 * 1024 * 1024);
+const pdfBatchSize = Number(process.env.INTAKE_PDF_BATCH_PAGES || 4);
+const pdfBatchRetries = Number(process.env.INTAKE_PDF_BATCH_RETRIES || 2);
+const staleJobMinutes = Number(process.env.INTAKE_WORKER_STALE_MINUTES || 30);
 const runOnce = process.argv.includes("--once");
 
 async function claimQueuedJobs() {
-  const { data: jobs, error } = await supabase
+  const { data: queuedJobs, error } = await supabase
     .from("intake_jobs")
     .select("*, intake_files(*)")
     .eq("status", "queued")
@@ -18,7 +31,21 @@ async function claimQueuedJobs() {
     .limit(batchSize);
 
   if (error) throw error;
-  if (!jobs || jobs.length === 0) return [];
+  let jobs = queuedJobs || [];
+  if (jobs.length < batchSize) {
+    const staleBefore = new Date(Date.now() - staleJobMinutes * 60 * 1000).toISOString();
+    const { data: staleJobs, error: staleError } = await supabase
+      .from("intake_jobs")
+      .select("*, intake_files(*)")
+      .eq("status", "processing")
+      .lt("attempts", maxAttempts)
+      .lt("updated_at", staleBefore)
+      .order("updated_at", { ascending: true })
+      .limit(batchSize - jobs.length);
+    if (staleError) throw staleError;
+    jobs = [...jobs, ...(staleJobs || [])];
+  }
+  if (!jobs.length) return [];
 
   const claimed = [];
   for (const job of jobs) {
@@ -32,7 +59,7 @@ async function claimQueuedJobs() {
         error_message: null
       })
       .eq("id", job.id)
-      .eq("status", "queued")
+      .eq("status", job.status)
       .select("*, intake_files(*)")
       .single();
 
@@ -54,8 +81,14 @@ async function processJob(job) {
     messageEn: "Intake Worker claimed the client material parsing job."
   });
 
-  const sourceText = await readUploadedFileText(file);
-  const result = await parseIntakeBrief({ job, file, sourceText });
+  let result;
+  if (getIntakeSourceKind(file) === "pdf") {
+    result = await parsePdfInBatches({ job, file, userId });
+  } else {
+    const { sourceText, sourceMedia, extractedImages, mediaIssue } = await readUploadedSource(file);
+    result = await parseIntakeBrief({ job, file, sourceText, sourceMedia, mediaIssue });
+    result = await attachExtractedProductImages({ job, result, images: extractedImages, userId });
+  }
   const project = await upsertProject(job, result);
   const ownerUserId = project.user_id || userId;
 
@@ -100,15 +133,99 @@ async function processJob(job) {
   console.log(`Processed intake job ${job.id} -> project ${project.name}`);
 }
 
+async function parsePdfInBatches({ job, file, userId }) {
+  const fileSize = Number(file?.file_size || 0);
+  if (fileSize > maxDocumentFileBytes) {
+    throw new Error(`PDF exceeds the configured ${Math.round(maxDocumentFileBytes / 1024 / 1024)}MB processing limit.`);
+  }
+  if (!file?.storage_bucket || !file?.storage_path) throw new Error("PDF storage location is missing.");
+
+  const { data: signed, error: signedError } = await supabase.storage
+    .from(file.storage_bucket)
+    .createSignedUrl(file.storage_path, 4 * 60 * 60);
+  if (signedError || !signed?.signedUrl) throw signedError || new Error("Could not create a signed PDF URL.");
+
+  const reader = await openPdfBatchReader({ url: signed.signedUrl, maxTextChars: maxReadableFileChars });
+  const fingerprint = reader.fingerprints[0] || `${file.storage_path}:${file.file_size || 0}`;
+  const previous = readPdfCheckpoint(job.result_json, { totalPages: reader.totalPages, fingerprint });
+  const completedPages = new Set(previous?.completedPages || []);
+  const batchEntries = [...(previous?.batches || [])];
+
+  try {
+    const pendingBatches = createPageBatches(reader.totalPages, pdfBatchSize, [...completedPages]);
+    for (const pages of pendingBatches) {
+      const result = await retryPdfBatch(
+        async () => {
+          const source = await reader.readPages(pages);
+          const batchJob = {
+            ...job,
+            brief_text: [
+              job.brief_text,
+              `PDF batch pages: ${pages.join(", ")}. Extract only furniture rows whose SOURCE PAGE is in this batch.`
+            ]
+              .filter(Boolean)
+              .join("\n")
+          };
+          let parsed = await parseIntakeBrief({ job: batchJob, file, sourceText: source.sourceText });
+          parsed = bindBatchSourcePages(parsed, pages);
+          return attachExtractedProductImages({ job, result: parsed, images: source.images, userId });
+        },
+        pdfBatchRetries
+      );
+
+      for (const page of pages) completedPages.add(page);
+      const existingIndex = batchEntries.findIndex((entry) => Number(entry.pages?.[0]) === Number(pages[0]));
+      const entry = { pages, result, completed_at: new Date().toISOString() };
+      if (existingIndex >= 0) batchEntries[existingIndex] = entry;
+      else batchEntries.push(entry);
+
+      await savePdfCheckpoint(job.id, {
+        totalPages: reader.totalPages,
+        batchSize: pdfBatchSize,
+        fingerprint,
+        completedPages: [...completedPages],
+        batches: batchEntries,
+        currentPages: pages
+      });
+      console.log(`Intake job ${job.id}: parsed PDF pages ${pages.join(", ")} (${completedPages.size}/${reader.totalPages})`);
+    }
+
+    return mergeIntakeBatchResults({ job, file, batchEntries, totalPages: reader.totalPages });
+  } finally {
+    await reader.destroy();
+  }
+}
+
+async function retryPdfBatch(task, retryCount) {
+  let lastError;
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+    try {
+      return await task();
+    } catch (error) {
+      lastError = error;
+      if (attempt < retryCount) await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
+async function savePdfCheckpoint(jobId, checkpoint) {
+  const { error } = await supabase
+    .from("intake_jobs")
+    .update({
+      status: "processing",
+      result_json: buildPdfCheckpoint(checkpoint),
+      locked_at: new Date().toISOString()
+    })
+    .eq("id", jobId);
+  if (error) throw error;
+}
+
 async function upsertProject(job, result) {
   const projectName = result.project.name || job.project_name || `CRAFT-${Date.now()}`;
   const userId = getJobUserId(job);
 
-  let existingQuery = supabase
-    .from("projects")
-    .select("*")
-    .eq("name", projectName)
-    .limit(1);
+  let existingQuery = supabase.from("projects").select("*").eq("name", projectName).limit(1);
 
   existingQuery = userId ? existingQuery.eq("user_id", userId) : existingQuery.is("user_id", null);
 
@@ -190,36 +307,94 @@ async function addWorkflowEvent({ projectId, jobId, userId, eventType, messageCn
   });
 }
 
-async function readUploadedFileText(file) {
-  if (!file?.storage_bucket || !file?.storage_path) return "";
-  if (!isReadableTextFile(file)) return "";
+async function readUploadedSource(file) {
+  const sourceKind = getIntakeSourceKind(file);
+  const empty = { sourceText: "", sourceMedia: null, mediaIssue: "", sourceKind };
+  if (!file?.storage_bucket || !file?.storage_path) return empty;
+  if (sourceKind === "unsupported") return { ...empty, mediaIssue: "unsupported_source_format" };
+  if (sourceKind === "image" && Number(file.file_size || 0) > maxVisionFileBytes) {
+    return { ...empty, mediaIssue: "image_exceeds_inline_limit" };
+  }
+  if (sourceKind !== "image" && Number(file.file_size || 0) > maxDocumentFileBytes) {
+    return { ...empty, mediaIssue: "document_exceeds_parse_limit" };
+  }
 
   const { data, error } = await supabase.storage.from(file.storage_bucket).download(file.storage_path);
   if (error) {
     console.warn(`Could not download intake file ${file.id || file.storage_path}:`, error.message || error);
-    return "";
+    return { ...empty, mediaIssue: sourceKind === "image" ? "image_download_failed" : "document_download_failed" };
   }
 
   try {
     const buffer = Buffer.from(await data.arrayBuffer());
-    return buffer.toString("utf8").replace(/\0/g, "").slice(0, maxReadableFileChars);
+    return await extractIntakeSource({
+      file,
+      buffer,
+      maxTextChars: maxReadableFileChars,
+      maxVisionBytes: maxVisionFileBytes,
+      maxDocumentBytes: maxDocumentFileBytes
+    });
   } catch (err) {
-    console.warn(`Could not read intake file ${file.id || file.storage_path} as text:`, err.message || err);
-    return "";
+    console.warn(`Could not read intake file ${file.id || file.storage_path}:`, err.message || err);
+    return { ...empty, mediaIssue: sourceKind === "image" ? "image_read_failed" : "document_parse_failed" };
   }
 }
 
-function isReadableTextFile(file) {
-  const mime = String(file.mime_type || "").toLowerCase();
-  const name = String(file.original_name || file.storage_path || "").toLowerCase();
-  return (
-    mime.startsWith("text/") ||
-    mime.includes("json") ||
-    mime.includes("csv") ||
-    name.endsWith(".txt") ||
-    name.endsWith(".csv") ||
-    name.endsWith(".json")
-  );
+async function attachExtractedProductImages({ job, result, images = [], userId }) {
+  if (!images.length || !Array.isArray(result.items) || !result.items.length) return result;
+
+  const imagesByPage = new Map(images.map((image) => [Number(image.page || 0), image]));
+  const uploadedItems = [];
+
+  for (const [index, item] of result.items.entries()) {
+    const sourcePage = Math.max(1, Number(item.source_page || index + 1));
+    const image = imagesByPage.get(sourcePage) || images[index];
+    if (!image?.data) {
+      uploadedItems.push(item);
+      continue;
+    }
+
+    const extension = imageFileExtension(image.mimeType);
+    const storagePath = `${userId || "unowned"}/derived/${job.id}/source-image-${String(sourcePage).padStart(4, "0")}.${extension}`;
+    const { error } = await supabase.storage.from("intake-files").upload(storagePath, image.data, {
+      contentType: image.mimeType || "image/png",
+      cacheControl: "3600",
+      upsert: true
+    });
+
+    if (error) {
+      console.warn(`Could not save extracted PDF image for intake job ${job.id}:`, error.message || error);
+      uploadedItems.push(item);
+      continue;
+    }
+
+    uploadedItems.push({
+      ...item,
+      source_page: sourcePage,
+      image_storage_bucket: "intake-files",
+      image_storage_path: storagePath,
+      image_mime_type: image.mimeType || "image/png",
+      image_width: Number(image.width || 0),
+      image_height: Number(image.height || 0)
+    });
+  }
+
+  return {
+    ...result,
+    items: uploadedItems,
+    source_notes: [
+      result.source_notes,
+      `Extracted ${uploadedItems.filter((item) => item.image_storage_path).length} product images from the PDF.`
+    ]
+      .filter(Boolean)
+      .join("\n")
+  };
+}
+
+function imageFileExtension(mimeType) {
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/webp") return "webp";
+  return "png";
 }
 
 function getJobUserId(job) {
@@ -228,7 +403,7 @@ function getJobUserId(job) {
 }
 
 async function markJobFailed(job, err) {
-  const nextStatus = Number(job.attempts || 0) + 1 >= maxAttempts ? "failed" : "queued";
+  const nextStatus = Number(job.attempts || 0) >= maxAttempts ? "failed" : "queued";
   await supabase
     .from("intake_jobs")
     .update({

@@ -8,6 +8,7 @@ import { parseSupplierRfqWorkbook } from "./rfqExcel";
 import { matchSupplierReturn, mergeImportedQuoteLines, quoteLinesForBatch, quoteTotalsFromLines } from "./quoteIntake";
 
 const PROJECT_TABLES = [
+  "specifications",
   "rfq_batches",
   "supplier_quotes",
   "approvals",
@@ -2265,7 +2266,10 @@ export default function AdminWorkflowWorkspace({
           description="Open Loading AI with this project's BOM dimensions and save its packing result back to Supabase."
           wide
           actions={
-            <button className="btn-premium" onClick={() => onOpenLoadingAi?.({ project, projectId })}>
+            <button
+              className="btn-premium"
+              onClick={() => onOpenLoadingAi?.({ project, projectId, specifications: data.specifications })}
+            >
               Open Loading AI
             </button>
           }
@@ -2279,7 +2283,7 @@ export default function AdminWorkflowWorkspace({
             productionUpdates={data.production_updates}
             shipmentDocuments={data.shipment_documents}
             onChanged={loadData}
-            onOpenLoadingAi={onOpenLoadingAi}
+            onOpenLoadingAi={(context) => onOpenLoadingAi?.({ ...context, specifications: data.specifications })}
           />
           {data.packing_plans.length ? (
             <div className="admin-table-wrap">

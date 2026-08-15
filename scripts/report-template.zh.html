@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Crafton 网站与制造管理平台开发进度汇报">
+  <title>Crafton 网站开发进度汇报 | 2026.07</title>
+  <style>
+    :root {
+      --ink: #24211f;
+      --muted: #6f6964;
+      --paper: #f6f3ee;
+      --surface: #fffdf9;
+      --line: #d9d2c9;
+      --dark: #2f2621;
+      --green: #466b50;
+      --green-soft: #e8eee8;
+      --gold: #a27b48;
+      --max: 1180px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--paper);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+      letter-spacing: 0;
+    }
+
+    button, a { font: inherit; }
+    img { display: block; max-width: 100%; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(36, 33, 31, 0.14);
+      background: rgba(246, 243, 238, 0.94);
+      backdrop-filter: blur(14px);
+    }
+
+    .topbar-inner {
+      width: min(calc(100% - 40px), var(--max));
+      min-height: 64px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 21px;
+      font-weight: 600;
+      letter-spacing: 4px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      gap: 26px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 30px;
+    }
+
+    nav a {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    nav a:hover { color: var(--ink); }
+
+    .language-switch {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .language-switch a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    .language-switch a:hover { color: var(--ink); }
+
+    .language-switch span {
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .hero {
+      min-height: 610px;
+      display: grid;
+      align-items: end;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(90deg, rgba(25, 21, 18, 0.90) 0%, rgba(25, 21, 18, 0.70) 45%, rgba(25, 21, 18, 0.16) 100%),
+        url("set furniture.png") center 26% / cover no-repeat;
+    }
+
+    .hero-inner {
+      width: min(calc(100% - 40px), var(--max));
+      margin: 0 auto;
+      padding: 130px 0 76px;
+      color: white;
+    }
+
+    .eyebrow {
+      margin: 0 0 18px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .hero h1 {
+      max-width: 800px;
+      margin: 0;
+      font-family: Georgia, "Times New Roman", "Songti SC", serif;
+      font-size: clamp(42px, 6vw, 76px);
+      font-weight: 400;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .hero-lead {
+      max-width: 650px;
+      margin: 25px 0 0;
+      color: rgba(255, 255, 255, 0.82);
+      font-size: 18px;
+    }
+
+    .hero-meta {
+      margin-top: 44px;
+      display: flex;
+      align-items: center;
+      gap: 12px 28px;
+      flex-wrap: wrap;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 13px;
+      border: 1px solid rgba(255, 255, 255, 0.36);
+      background: rgba(255, 255, 255, 0.10);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .status-badge::before {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #91c59d;
+      content: "";
+    }
+
+    .hero-date {
+      color: rgba(255, 255, 255, 0.70);
+      font-size: 13px;
+    }
+
+    main section {
+      padding: 96px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .container {
+      width: min(calc(100% - 40px), var(--max));
+      margin: 0 auto;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr);
+      gap: 40px;
+      margin-bottom: 54px;
+    }
+
+    .section-no {
+      color: var(--gold);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 14px;
+    }
+
+    .section-title h2 {
+      max-width: 760px;
+      margin: 0;
+      font-family: Georgia, "Times New Roman", "Songti SC", serif;
+      font-size: clamp(32px, 4.5vw, 54px);
+      font-weight: 400;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .section-title p {
+      max-width: 730px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border-top: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+    }
+
+    .summary-item {
+      min-height: 260px;
+      padding: 30px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 253, 249, 0.64);
+    }
+
+    .summary-index {
+      display: block;
+      margin-bottom: 54px;
+      color: var(--gold);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 13px;
+    }
+
+    .summary-item h3 {
+      margin: 0 0 12px;
+      font-family: Georgia, "Times New Roman", "Songti SC", serif;
+      font-size: 24px;
+      font-weight: 400;
+      line-height: 1.3;
+    }
+
+    .summary-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .feature-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+      gap: 28px;
+      align-items: start;
+    }
+
+    .shot {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      cursor: zoom-in;
+    }
+
+    .shot img {
+      width: 100%;
+      height: auto;
+      transition: transform 260ms ease;
+    }
+
+    .shot:hover img { transform: scale(1.012); }
+
+    .shot-label {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      padding: 7px 10px;
+      color: white;
+      background: rgba(31, 27, 24, 0.84);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .feature-copy {
+      position: sticky;
+      top: 94px;
+      padding: 28px 0 0;
+      border-top: 2px solid var(--ink);
+    }
+
+    .feature-copy h3 {
+      margin: 0 0 14px;
+      font-family: Georgia, "Times New Roman", "Songti SC", serif;
+      font-size: 30px;
+      font-weight: 400;
+      line-height: 1.25;
+    }
+
+    .feature-copy p {
+      margin: 0 0 25px;
+      color: var(--muted);
+    }
+
+    .detail-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      border-top: 1px solid var(--line);
+    }
+
+    .detail-list li {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 10px;
+      padding: 15px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }
+
+    .detail-list span { color: var(--gold); }
+
+    .safety-block {
+      margin-top: 32px;
+      display: grid;
+      grid-template-columns: minmax(0, 0.75fr) minmax(320px, 1.25fr);
+      gap: 28px;
+      align-items: center;
+    }
+
+    .safety-copy {
+      padding: 42px;
+      background: var(--dark);
+      color: white;
+    }
+
+    .safety-copy h3 {
+      margin: 0 0 15px;
+      font-family: Georgia, "Times New Roman", "Songti SC", serif;
+      font-size: 28px;
+      font-weight: 400;
+    }
+
+    .safety-copy p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.69);
+      font-size: 14px;
+    }
+
+    .workspace {
+      background: #ebe7e1;
+    }
+
+    .stage-map {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 34px;
+      border-top: 1px solid #cfc7bd;
+      border-left: 1px solid #cfc7bd;
+    }
+
+    .stage-map article {
+      min-height: 170px;
+      padding: 24px;
+      border-right: 1px solid #cfc7bd;
+      border-bottom: 1px solid #cfc7bd;
+    }
+
+    .stage-map small {
+      color: var(--gold);
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .stage-map h3 {
+      margin: 28px 0 8px;
+      font-family: Georgia, "Times New Roman", "Songti SC", serif;
+      font-size: 21px;
+      font-weight: 400;
+    }
+
+    .stage-map p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .screens-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 28px;
+      align-items: start;
+    }
+
+    .screen-card {
+      margin: 0;
+      background: var(--surface);
+      border: 1px solid #d5cec5;
+    }
+
+    .screen-card button {
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: zoom-in;
+    }
+
+    .screen-window {
+      max-height: 760px;
+      overflow: hidden;
+      border-bottom: 1px solid var(--line);
+      background: #faf8f4;
+    }
+
+    .screen-window img {
+      width: 100%;
+      height: auto;
+      transition: transform 260ms ease;
+    }
+
+    .screen-card:hover img { transform: scale(1.01); }
+
+    figcaption { padding: 22px 24px 25px; }
+
+    .caption-stage {
+      color: var(--gold);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+
+    figcaption h3 {
+      margin: 7px 0 6px;
+      font-family: Georgia, "Times New Roman", "Songti SC", serif;
+      font-size: 23px;
+      font-weight: 400;
+    }
+
+    figcaption p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .test-banner {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 28px;
+      align-items: center;
+      margin-top: 36px;
+      padding: 34px;
+      color: white;
+      background: var(--dark);
+    }
+
+    .test-banner h3 {
+      margin: 0 0 7px;
+      font-family: Georgia, "Times New Roman", "Songti SC", serif;
+      font-size: 26px;
+      font-weight: 400;
+    }
+
+    .test-banner p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.68);
+      font-size: 14px;
+    }
+
+    .test-pill {
+      padding: 10px 13px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      color: #b9d6c0;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      white-space: nowrap;
+    }
+
+    .next-steps {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 80px;
+      align-items: start;
+    }
+
+    .next-steps h2 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", "Songti SC", serif;
+      font-size: clamp(34px, 4vw, 50px);
+      font-weight: 400;
+      line-height: 1.16;
+    }
+
+    .next-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: next;
+      border-top: 1px solid var(--line);
+    }
+
+    .next-list li {
+      counter-increment: next;
+      display: grid;
+      grid-template-columns: 46px 1fr;
+      gap: 18px;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .next-list li::before {
+      color: var(--gold);
+      content: "0" counter(next);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 13px;
+    }
+
+    .next-list strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 15px;
+    }
+
+    .next-list span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    footer {
+      padding: 42px 0;
+      color: #bcb4ab;
+      background: #211d1a;
+      font-size: 12px;
+    }
+
+    .footer-inner {
+      width: min(calc(100% - 40px), var(--max));
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    dialog {
+      width: min(94vw, 1500px);
+      max-height: 94vh;
+      padding: 0;
+      border: 0;
+      background: #171513;
+      box-shadow: 0 30px 100px rgba(0, 0, 0, 0.42);
+    }
+
+    dialog::backdrop { background: rgba(20, 18, 16, 0.86); }
+
+    .lightbox-bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      color: white;
+      background: #171513;
+      font-size: 13px;
+    }
+
+    .lightbox-close {
+      width: 36px;
+      height: 36px;
+      border: 1px solid #5d5752;
+      color: white;
+      background: transparent;
+      cursor: pointer;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    #lightboxImage {
+      width: 100%;
+      height: auto;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 900px) {
+      nav { display: none; }
+      .top-actions { gap: 0; }
+      .hero { min-height: 560px; background-position: 47% center; }
+      main section { padding: 72px 0; }
+      .section-head { grid-template-columns: 1fr; gap: 10px; }
+      .summary-grid, .stage-map { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .feature-layout, .safety-block, .next-steps { grid-template-columns: 1fr; }
+      .feature-copy { position: static; }
+      .screens-grid { grid-template-columns: 1fr; }
+      .screen-window { max-height: 640px; }
+    }
+
+    @media (max-width: 560px) {
+      .topbar-inner, .container, .hero-inner, .footer-inner { width: min(calc(100% - 28px), var(--max)); }
+      .brand { font-size: 17px; letter-spacing: 3px; }
+      .hero { min-height: 530px; }
+      .hero-inner { padding-bottom: 54px; }
+      .hero-lead { font-size: 16px; }
+      .summary-grid, .stage-map { grid-template-columns: 1fr; }
+      .summary-item { min-height: 220px; }
+      .summary-index { margin-bottom: 34px; }
+      .safety-copy { padding: 28px; }
+      .screen-window { max-height: 500px; }
+      .test-banner { grid-template-columns: 1fr; }
+      .footer-inner { flex-direction: column; }
+    }
+
+    @media print {
+      .topbar { position: static; }
+      nav, dialog { display: none; }
+      .hero { min-height: 500px; print-color-adjust: exact; }
+      main section { padding: 58px 0; break-inside: avoid; }
+      .feature-copy { position: static; }
+      .screen-window { max-height: none; }
+      .screen-card { break-inside: avoid; }
+      .workspace, .test-banner, .safety-copy, footer { print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top">THE CRAFTON</a>
+      <div class="top-actions">
+        <nav aria-label="报告导航">
+          <a href="#overview">进度概览</a>
+          <a href="#website">主页更新</a>
+          <a href="#workspace">管理后台</a>
+          <a href="#next">下一阶段</a>
+        </nav>
+        <div class="language-switch" aria-label="语言切换">
+          <span>中文</span>
+          <span aria-hidden="true">/</span>
+          <a href="index-en.html">English</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero" id="top">
+    <div class="hero-inner">
+      <p class="eyebrow">Development Progress Report</p>
+      <h1>Crafton 网站与制造管理平台开发进度汇报</h1>
+      <p class="hero-lead">从品牌主页升级到覆盖 S01–S17 的订单运营工作台，项目已完成主要界面搭建，正式进入系统测试与流程验证阶段。</p>
+      <div class="hero-meta">
+        <span class="status-badge">Testing in progress</span>
+        <span class="hero-date">汇报日期：2026 年 7 月 16 日</span>
+      </div>
+    </div>
+  </section>
+
+  <main>
+    <section id="overview">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-no">01 / OVERVIEW</span>
+          <div class="section-title">
+            <h2>本阶段完成三项关键推进</h2>
+            <p>网站展示层与内部运营层同步演进。对外页面更聚焦家具产品与定制服务，对内管理控制台已经覆盖 17 阶段制造流程的主要业务界面。</p>
+          </div>
+        </div>
+
+        <div class="summary-grid">
+          <article class="summary-item">
+            <span class="summary-index">01</span>
+            <h3>新增 Set Furniture</h3>
+            <p>主页增加成套家具入口，以产品类别组织成熟家具款式，帮助客户更直接地浏览、选择并发起定制。</p>
+          </article>
+          <article class="summary-item">
+            <span class="summary-index">02</span>
+            <h3>调整主页品牌表达</h3>
+            <p>删除主页上有关 AI 的表述，将前台沟通重点回归高端定制家具、材料、工艺、合规与交付能力。</p>
+          </article>
+          <article class="summary-item">
+            <span class="summary-index">03</span>
+            <h3>管理后台进入测试</h3>
+            <p>管理员控制台主体已经基本搭建完成，现阶段重点转入数据联调、权限验证、异常流程和真实项目测试。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="website">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-no">02 / WEBSITE</span>
+          <div class="section-title">
+            <h2>主页内容更聚焦产品与客户决策</h2>
+            <p>新增产品分类展示后，客户可以从成熟家具形态出发，再进一步定制尺寸、材质、颜色及区域合规要求。主页的沟通语言也完成调整，减少技术概念对客户决策的干扰。</p>
+          </div>
+        </div>
+
+        <div class="feature-layout">
+          <button class="shot" type="button" data-full="self" data-title="主页新增 Set Furniture 区块" aria-label="放大查看 Set Furniture 截图">
+            <img src="set furniture.png" alt="Crafton 主页新增 Set Furniture 家具分类区块">
+            <span class="shot-label">Click to enlarge</span>
+          </button>
+          <aside class="feature-copy">
+            <h3>Set Furniture 产品入口</h3>
+            <p>首批页面展示六个核心家具类别，为后续产品详情、配置选项与询价流程建立统一入口。</p>
+            <ul class="detail-list">
+              <li><span>01</span>沙发与休闲座椅</li>
+              <li><span>02</span>边桌与餐桌</li>
+              <li><span>03</span>餐椅与媒体柜</li>
+              <li><span>04</span>支持尺寸、材料与颜色定制</li>
+            </ul>
+          </aside>
+        </div>
+
+        <div class="safety-block">
+          <div class="safety-copy">
+            <h3>合规要求前置</h3>
+            <p>订单提交表单已加入英国、美国、欧盟及澳新市场的家具防火与安全标准选项。客户需求从入口处结构化记录，为后续规格审核、询价和验收提供一致依据。</p>
+          </div>
+          <button class="shot" type="button" data-full="self" data-title="订单表单中的区域安全标准选项" aria-label="放大查看安全标准截图">
+            <img src="safty standard.png" alt="订单提交表单中的区域安全标准下拉选项">
+            <span class="shot-label">Regional compliance</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace" id="workspace">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-no">03 / OPERATIONS</span>
+          <div class="section-title">
+            <h2>管理员控制台已覆盖 17 阶段制造流程</h2>
+            <p>后台界面已经形成从客户订单接收到最终归档的完整工作区结构。各业务阶段已具备状态、数据区、审核动作与操作入口，目前正通过测试项目验证前后阶段的数据衔接。</p>
+          </div>
+        </div>
+
+        <div class="stage-map" aria-label="17 阶段管理后台模块">
+          <article>
+            <small>S01–S05</small>
+            <h3>订单接收与审核</h3>
+            <p>客户资料、缺失项检查、BOM 与双语规格草稿、最终审批。</p>
+          </article>
+          <article>
+            <small>S06–S08</small>
+            <h3>询价与供应商决策</h3>
+            <p>RFQ 生成与发送、报价标准化对比、最优供应商审批。</p>
+          </article>
+          <article>
+            <small>S09–S11</small>
+            <h3>生产与质量控制</h3>
+            <p>生产计划、延期风险、进度证据、视觉质检与放行。</p>
+          </article>
+          <article>
+            <small>S12–S17</small>
+            <h3>出货与交付归档</h3>
+            <p>装柜、单证、物流追踪、拆分交付、客户交接与审计归档。</p>
+          </article>
+        </div>
+
+        <div class="screens-grid">
+          <figure class="screen-card">
+            <button type="button" data-full="self" data-title="S01–S05 客户订单接收与审批" aria-label="放大查看订单接收与审批页面">
+              <div class="screen-window">
+                <img src="FireShot Capture 017 - Crafton AI - Premium Bespoke Furniture Engine - [129.121.98.185].png" alt="管理员控制台订单接收与审批页面">
+              </div>
+            </button>
+            <figcaption>
+              <span class="caption-stage">S01–S05</span>
+              <h3>客户订单接收与审批</h3>
+              <p>聚合客户资料、上传文件、规格缺口、BOM 草稿与 Cho 最终审批。</p>
+            </figcaption>
+          </figure>
+
+          <figure class="screen-card">
+            <button type="button" data-full="self" data-title="S06–S08 供应商询价与报价决策" aria-label="放大查看供应商询价与报价页面">
+              <div class="screen-window">
+                <img src="FireShot Capture 018 - Crafton AI - Premium Bespoke Furniture Engine - [129.121.98.185].png" alt="管理员控制台供应商询价和报价对比页面">
+              </div>
+            </button>
+            <figcaption>
+              <span class="caption-stage">S06–S08</span>
+              <h3>供应商询价与报价决策</h3>
+              <p>覆盖供应商目录、标准 RFQ、报价标准化比较与人工选择供应商。</p>
+            </figcaption>
+          </figure>
+
+          <figure class="screen-card">
+            <button type="button" data-full="self" data-title="S09–S11 生产进度与质量控制" aria-label="放大查看生产进度与质量控制页面">
+              <div class="screen-window">
+                <img src="FireShot Capture 019 - Crafton AI - Premium Bespoke Furniture Engine - [129.121.98.185].png" alt="管理员控制台生产进度和质量控制页面">
+              </div>
+            </button>
+            <figcaption>
+              <span class="caption-stage">S09–S11</span>
+              <h3>生产进度与质量控制</h3>
+              <p>包含生产计划、阶段节点、延期风险管理及视觉质量检查入口。</p>
+            </figcaption>
+          </figure>
+
+          <figure class="screen-card">
+            <button type="button" data-full="self" data-title="S12–S17 出货、交接与归档" aria-label="放大查看出货交接与归档页面">
+              <div class="screen-window">
+                <img src="FireShot Capture 020 - Crafton AI - Premium Bespoke Furniture Engine - [129.121.98.185].png" alt="管理员控制台出货交接和归档页面">
+              </div>
+            </button>
+            <figcaption>
+              <span class="caption-stage">S12–S17</span>
+              <h3>出货、交接与归档</h3>
+              <p>覆盖装柜计划、出口单证、运输追踪、数量调整、客户交接和审计归档。</p>
+            </figcaption>
+          </figure>
+        </div>
+
+        <div class="test-banner">
+          <div>
+            <h3>当前状态：基础搭建完成，进入测试阶段</h3>
+            <p>页面结构和主要业务入口已经具备；现阶段将重点验证真实数据、角色权限、跨阶段状态流转、异常处理与操作记录。</p>
+          </div>
+          <span class="test-pill">IN TESTING</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="next">
+      <div class="container next-steps">
+        <div>
+          <span class="section-no">04 / NEXT</span>
+          <h2>下一阶段工作重点</h2>
+        </div>
+        <ol class="next-list">
+          <li>
+            <div><strong>完成端到端流程测试</strong><span>使用真实测试订单验证上传、审核、询价、生产、质检到出货归档的数据闭环。</span></div>
+          </li>
+          <li>
+            <div><strong>完善权限与审批机制</strong><span>验证客户、管理员和供应商的角色边界，以及关键节点的人工确认与操作留痕。</span></div>
+          </li>
+          <li>
+            <div><strong>优化异常状态与提示</strong><span>补全资料缺失、报价异常、延期、质检不通过和单证缺失等业务分支。</span></div>
+          </li>
+          <li>
+            <div><strong>根据测试反馈优化体验</strong><span>调整后台信息密度、操作顺序、移动端表现，并准备下一轮内部验收。</span></div>
+          </li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <span>THE CRAFTON · DEVELOPMENT PROGRESS REPORT</span>
+      <span>Internal review · July 2026</span>
+    </div>
+  </footer>
+
+  <dialog id="lightbox" aria-label="截图放大预览">
+    <div class="lightbox-bar">
+      <span id="lightboxTitle">截图预览</span>
+      <button class="lightbox-close" type="button" aria-label="关闭预览">×</button>
+    </div>
+    <img id="lightboxImage" src="" alt="">
+  </dialog>
+
+  <script>
+    const lightbox = document.querySelector('#lightbox');
+    const lightboxImage = document.querySelector('#lightboxImage');
+    const lightboxTitle = document.querySelector('#lightboxTitle');
+
+    document.querySelectorAll('[data-full]').forEach((trigger) => {
+      trigger.addEventListener('click', () => {
+        const previewImage = trigger.querySelector('img');
+        lightboxImage.src = trigger.dataset.full === 'self' ? (previewImage?.src || '') : trigger.dataset.full;
+        lightboxImage.alt = trigger.dataset.title || '截图预览';
+        lightboxTitle.textContent = trigger.dataset.title || '截图预览';
+        lightbox.showModal();
+      });
+    });
+
+    document.querySelector('.lightbox-close').addEventListener('click', () => lightbox.close());
+    lightbox.addEventListener('click', (event) => {
+      if (event.target === lightbox) lightbox.close();
+    });
+  </script>
+</body>
+</html>

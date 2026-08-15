@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "report:build": "node scripts/build-self-contained-report.mjs",
     "lint": "eslint src/app.jsx src/main.jsx src/components --report-unused-disable-directives --max-warnings 0",
-    "test:intake": "node --test server/lib/intakeProcessor.test.mjs",
+    "test:intake": "node --test server/lib/intakeProcessor.test.mjs server/lib/intakeSourceReader.test.mjs server/lib/intakeBatchProcessor.test.mjs",
     "test:rfq": "node --test server/lib/rfqGenerator.test.mjs",
     "test:rfq-excel": "node --test server/lib/rfqExcel.test.mjs",
     "test:workflow-ai": "node --test server/lib/quoteAnalyzer.test.mjs server/lib/operationsAutomation.test.mjs",
@@ -19,10 +20,15 @@
     "prepare": "husky install"
   },
   "dependencies": {
+    "@eredzik/calaminejs": "^0.2.0",
     "@supabase/supabase-js": "^2.43.4",
     "exceljs": "^4.4.0",
+    "lucide-react": "^0.468.0",
+    "mammoth": "^1.12.1",
+    "pdf-parse": "^2.4.5",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "tus-js-client": "^4.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",

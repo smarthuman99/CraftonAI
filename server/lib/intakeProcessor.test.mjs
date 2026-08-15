@@ -1,10 +1,27 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 
 import { parseIntakeBrief } from "./intakeProcessor.mjs";
 
+const originalFetch = globalThis.fetch;
+const originalEnv = {
+  DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  GEMINI_BASE_URL: process.env.GEMINI_BASE_URL,
+  GEMINI_VISION_MODEL: process.env.GEMINI_VISION_MODEL
+};
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  for (const [key, value] of Object.entries(originalEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+});
+
 test("deterministic parser turns quantity text into itemized requirements", async () => {
   process.env.DEEPSEEK_API_KEY = "";
+  process.env.GEMINI_API_KEY = "";
 
   const result = await parseIntakeBrief({
     job: {
@@ -23,6 +40,7 @@ test("deterministic parser turns quantity text into itemized requirements", asyn
   assert.equal(result.items[0].quantity, 40);
   assert.match(result.items[0].item_type_en, /Lobby Armchairs/i);
   assert.equal(result.items[0].material_en, "Linen (to confirm)");
+  assert.match(result.items[0].dimensions_text, /W:65cm, D:60cm, H:85cm/);
   assert.equal(result.items[1].quantity, 20);
   assert.equal(result.items[1].material_en, "Velvet (to confirm)");
   assert.ok(result.questions.every((question) => !/Crib 5/.test(question)));
@@ -30,6 +48,7 @@ test("deterministic parser turns quantity text into itemized requirements", asyn
 
 test("deterministic parser uses readable uploaded text when form fields are sparse", async () => {
   process.env.DEEPSEEK_API_KEY = "";
+  process.env.GEMINI_API_KEY = "";
 
   const result = await parseIntakeBrief({
     job: {
@@ -51,7 +70,149 @@ test("deterministic parser uses readable uploaded text when form fields are spar
   assert.equal(result.items.length, 2);
   assert.equal(result.items[0].quantity, 12);
   assert.equal(result.items[0].material_en, "Oak (to confirm)");
+  assert.match(result.items[0].dimensions_text, /W:900mm, D:600mm, H:420mm/);
   assert.equal(result.items[1].quantity, 48);
   assert.equal(result.items[1].material_en, "Leather (to confirm)");
   assert.ok(result.questions.some((question) => /fire-safety/i.test(question)));
+});
+
+test("image intake sends bytes to Gemini and preserves structured visual evidence", async () => {
+  process.env.DEEPSEEK_API_KEY = "";
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  process.env.GEMINI_BASE_URL = "https://gemini.test/v1beta";
+  process.env.GEMINI_VISION_MODEL = "gemini-vision-test";
+
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url, options, body: JSON.parse(options.body) };
+    const output = {
+      project: {
+        name: "Harbour Hotel Lounge",
+        client_name: "Portal Intake Client",
+        destination: "Singapore"
+      },
+      items: [
+        {
+          item_type_cn: "弧形休闲椅",
+          item_type_en: "Curved lounge chair",
+          quantity: 24,
+          material_cn: "米色织物",
+          material_en: "Beige woven upholstery",
+          original_unit_price: 100,
+          unit_price: 120,
+          dimensions_text: "To confirm",
+          style_cn: "现代有机",
+          style_en: "Modern organic",
+          color_cn: "暖米色",
+          color_en: "Warm beige",
+          finish_cn: "哑光黑色椅脚",
+          finish_en: "Matte black legs",
+          visible_features_cn: ["弧形靠背", "软包座面"],
+          visible_features_en: ["Curved back", "Upholstered seat"],
+          confidence: 0.88,
+          notes_cn: "图片显示单把参考椅。",
+          notes_en: "The image shows one reference chair."
+        }
+      ],
+      questions: [],
+      summary_cn: "已从图片识别休闲椅参考款。",
+      summary_en: "A lounge-chair reference was identified from the image.",
+      source_notes: "Visual analysis of lounge-chair.jpg",
+      visual_analysis: {
+        image_summary_cn: "酒店休闲椅产品参考图。",
+        image_summary_en: "Reference image of a hotel lounge chair.",
+        detected_text: [],
+        limitations: ["Dimensions are not visible."]
+      }
+    };
+    return new Response(
+      JSON.stringify({
+        id: "int_test",
+        steps: [{ type: "model_output", content: [{ type: "text", text: JSON.stringify(output) }] }]
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  };
+
+  const result = await parseIntakeBrief({
+    job: {
+      project_name: "Harbour Hotel Lounge",
+      destination: "Singapore",
+      quantity_text: "24 lounge chairs",
+      brief_text: "Use the uploaded chair as the visual direction."
+    },
+    file: { original_name: "lounge-chair.jpg", mime_type: "image/jpeg" },
+    sourceMedia: {
+      mimeType: "image/jpeg",
+      dataBase64: "ZmFrZS1pbWFnZS1ieXRlcw==",
+      byteLength: 16
+    }
+  });
+
+  assert.equal(request.url, "https://gemini.test/v1beta/interactions");
+  assert.equal(request.options.headers["x-goog-api-key"], "test-gemini-key");
+  assert.equal(request.body.model, "gemini-vision-test");
+  assert.equal(request.body.input[1].type, "image");
+  assert.equal(request.body.input[1].data, "ZmFrZS1pbWFnZS1ieXRlcw==");
+  assert.equal(request.body.response_format.mime_type, "application/json");
+  assert.equal(result.visual_analysis.status, "completed");
+  assert.equal(result.visual_analysis.model, "gemini-vision-test");
+  assert.equal(result.items[0].style_en, "Modern organic");
+  assert.match(result.items[0].material_en, /visual estimate; to confirm/i);
+  assert.equal(result.items[0].unit_price, 0);
+  assert.match(result.items[0].notes_en, /visual confidence: 88%/i);
+  assert.ok(result.questions.some((question) => /width, depth, and height/i.test(question)));
+  assert.ok(result.questions.some((question) => /physical sample or specification sheet/i.test(question)));
+});
+
+test("image intake requires manual review when no vision key is configured", async () => {
+  process.env.DEEPSEEK_API_KEY = "";
+  process.env.GEMINI_API_KEY = "";
+
+  const result = await parseIntakeBrief({
+    job: {
+      project_name: "Reference Chair",
+      destination: "London, UK",
+      quantity_text: "",
+      brief_text: "Please quote this chair."
+    },
+    file: { original_name: "chair.webp", mime_type: "image/webp" },
+    sourceMedia: {
+      mimeType: "image/webp",
+      dataBase64: "ZmFrZQ==",
+      byteLength: 4
+    }
+  });
+
+  assert.equal(result.visual_analysis.status, "manual_review_required");
+  assert.equal(result.visual_analysis.reason, "vision_not_configured");
+  assert.equal(result.items[0].quantity, 0);
+  assert.ok(result.questions.some((question) => /must review the uploaded image manually/i.test(question)));
+});
+
+test("image intake fails closed to manual review when the vision service errors", async () => {
+  process.env.DEEPSEEK_API_KEY = "";
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  globalThis.fetch = async () => {
+    throw new Error("temporary upstream failure");
+  };
+
+  const result = await parseIntakeBrief({
+    job: {
+      project_name: "Dining Room Reference",
+      destination: "Paris, France",
+      quantity_text: "18 dining chairs",
+      brief_text: "Use this image as reference."
+    },
+    file: { original_name: "dining-chair.png", mime_type: "image/png" },
+    sourceMedia: {
+      mimeType: "image/png",
+      dataBase64: "ZmFrZQ==",
+      byteLength: 4
+    }
+  });
+
+  assert.equal(result.visual_analysis.status, "manual_review_required");
+  assert.equal(result.visual_analysis.reason, "vision_service_error");
+  assert.equal(result.items[0].quantity, 18);
 });

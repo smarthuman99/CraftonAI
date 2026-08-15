@@ -12,7 +12,9 @@ export default function App() {
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const [projectContext, setProjectContext] = useState({
     projectId: queryParams.get('projectId') || '',
-    projectName: ''
+    projectName: '',
+    sourceLabel: '',
+    omittedItems: []
   });
   const [lang, setLang] = useState(() => {
     return new URLSearchParams(window.location.search).get('lang') || 'en';
@@ -68,6 +70,7 @@ export default function App() {
     };
 
     const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'CRAFTON_SET_LANG') {
         setLang(event.data.lang?.toLowerCase() === 'cn' ? 'cn' : 'en');
       }
@@ -78,13 +81,16 @@ export default function App() {
               (item) => Number(item.l) > 0 && Number(item.w) > 0 && Number(item.h) > 0 && Number(item.qty) > 0
             )
           : [];
-        setProjectContext({ projectId: payload.projectId || '', projectName: payload.projectName || '' });
-        if (incomingItems.length) {
-          setItems(incomingItems);
-          setMaxModeResult(null);
-          setCurrentStep(null);
-          setActiveContainerIndex(0);
-        }
+        setProjectContext({
+          projectId: payload.projectId || '',
+          projectName: payload.projectName || '',
+          sourceLabel: payload.sourceLabel || '',
+          omittedItems: Array.isArray(payload.omittedItems) ? payload.omittedItems : []
+        });
+        setItems(incomingItems);
+        setMaxModeResult(null);
+        setCurrentStep(null);
+        setActiveContainerIndex(0);
       }
     };
 
@@ -97,9 +103,8 @@ export default function App() {
   }, [lang]);
 
   useEffect(() => {
-    if (window.parent !== window) {
-      window.parent.postMessage({ type: 'CRAFTON_LOADING_READY' }, window.location.origin);
-    }
+    const host = window.parent !== window ? window.parent : window.opener;
+    host?.postMessage({ type: 'CRAFTON_LOADING_READY' }, window.location.origin);
   }, []);
 
   const triggerMaxModeOptimization = useCallback((targetItems = items, targetContainer = containerType) => {
@@ -266,9 +271,20 @@ export default function App() {
             <h1 className="logo-title">{t('title')}</h1>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('subtitle')}</span>
             {projectContext.projectName && (
-              <span style={{ display: 'block', marginTop: '2px', fontSize: '0.68rem', color: 'var(--color-primary)' }}>
-                {projectContext.projectName}
-              </span>
+              <>
+                <span style={{ display: 'block', marginTop: '2px', fontSize: '0.68rem', color: 'var(--color-primary)' }}>
+                  {projectContext.projectName}
+                </span>
+                <span style={{ display: 'block', marginTop: '2px', fontSize: '0.65rem', color: 'var(--color-success)' }}>
+                  {lang === 'cn' ? '已载入订单 BOM' : 'Order BOM loaded'}: {items.length} SKU / {items.reduce((sum, item) => sum + Number(item.qty || 0), 0)} pcs
+                  {projectContext.sourceLabel ? ` · ${projectContext.sourceLabel}` : ''}
+                </span>
+                {projectContext.omittedItems.length > 0 && (
+                  <span style={{ display: 'block', marginTop: '2px', fontSize: '0.62rem', color: 'var(--color-warning)' }}>
+                    {lang === 'cn' ? '缺少尺寸，未装载' : 'Skipped for missing dimensions'}: {projectContext.omittedItems.length}
+                  </span>
+                )}
+              </>
             )}
           </div>
           <span className="logo-badge">V1.2 Premium</span>
