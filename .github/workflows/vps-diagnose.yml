@@ -62,8 +62,16 @@ jobs:
               edge_id="$(docker ps --filter publish=80 --format "{{.ID}}" | head -n 1)"
               if [ -n "$edge_id" ]; then
                 echo "-- edge container $edge_id"
-                docker inspect --format "name={{.Name}} image={{.Config.Image}} labels={{json .Config.Labels}} mounts={{json .Mounts}}" "$edge_id" || true
+                docker inspect --format "name={{.Name}} image={{.Config.Image}} labels={{json .Config.Labels}} mounts={{json .Mounts}} networks={{json .NetworkSettings.Networks}}" "$edge_id" || true
               fi
+              echo "-- container routing labels and networks"
+              for container_id in $(docker ps -q); do
+                docker inspect --format "name={{.Name}} labels={{json .Config.Labels}} networks={{json .NetworkSettings.Networks}}" "$container_id" || true
+              done
+              echo "-- Traefik entrypoints and providers"
+              grep -E "^\[|address|endpoint|exposedByDefault|watch|directory" /opt/hostedapps/traefik.toml 2>/dev/null || true
+              echo "-- Traefik compose routing configuration"
+              grep -E "^[[:space:]]*(services:|traefik:|networks:|- .*:|- --|ports:|labels:|command:|image:)" /opt/hostedapps/docker-compose.traefik.yaml 2>/dev/null || true
               echo "-- candidate proxy configuration"
               find /etc /opt /var/lib/docker/volumes -maxdepth 6 -type f \( -iname "*traefik*.yml" -o -iname "*traefik*.yaml" -o -iname "Caddyfile" -o -iname "*dynamic*.yml" -o -iname "*dynamic*.yaml" \) 2>/dev/null | head -n 100
             fi
