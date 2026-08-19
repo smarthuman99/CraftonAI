@@ -1,0 +1,134 @@
+name: Repair Crafton VPS edge routing
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Install isolated Crafton edge route
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 22 -H "${{ secrets.VPS_IP }}" >> ~/.ssh/known_hosts
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          install_dir=/opt/crafton-edge
+          compose_file="$install_dir/docker-compose.yml"
+          nginx_file="$install_dir/default.conf"
+          backup_dir="$install_dir/backups/$(date -u +%Y%m%dT%H%M%SZ)"
+
+          if ! docker network inspect hostedapps_default >/dev/null 2>&1; then
+            echo "Required Traefik network hostedapps_default is missing" >&2
+            exit 1
+          fi
+
+          mkdir -p "$install_dir" "$backup_dir"
+          for file in "$compose_file" "$nginx_file"; do
+            if [ -f "$file" ]; then
+              cp -a "$file" "$backup_dir/"
+            fi
+          done
+
+          cat > "$nginx_file" <<'NGINX'
+          server {
+            listen 80;
+            server_name _;
+
+            root /usr/share/nginx/html;
+            index index.html;
+
+            location /api/ {
+              proxy_pass https://host.docker.internal:8443;
+              proxy_ssl_verify off;
+              proxy_http_version 1.1;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_read_timeout 120s;
+            }
+
+            location /assets/ {
+              try_files $uri =404;
+              add_header Cache-Control "public, max-age=31536000, immutable";
+            }
+
+            location / {
+              try_files $uri $uri/ /index.html;
+            }
+          }
+          NGINX
+
+          cat > "$compose_file" <<'COMPOSE'
+          services:
+            web:
+              image: nginx:1.27-alpine
+              container_name: crafton-edge
+              restart: unless-stopped
+              extra_hosts:
+                - "host.docker.internal:host-gateway"
+              volumes:
+                - /var/www/html:/usr/share/nginx/html:ro
+                - /opt/crafton-edge/default.conf:/etc/nginx/conf.d/default.conf:ro
+              labels:
+                - "traefik.enable=true"
+                - "traefik.docker.network=hostedapps_default"
+                - "traefik.http.routers.crafton-web.entrypoints=web"
+                - "traefik.http.routers.crafton-web.rule=Host(`129.121.98.185`)"
+                - "traefik.http.routers.crafton-web.priority=1000"
+                - "traefik.http.routers.crafton-web.service=crafton-edge"
+                - "traefik.http.routers.crafton-websecure.entrypoints=websecure"
+                - "traefik.http.routers.crafton-websecure.rule=Host(`129.121.98.185`)"
+                - "traefik.http.routers.crafton-websecure.priority=1000"
+                - "traefik.http.routers.crafton-websecure.service=crafton-edge"
+                - "traefik.http.routers.crafton-websecure.tls=true"
+                - "traefik.http.services.crafton-edge.loadbalancer.server.port=80"
+              networks:
+                - hostedapps
+
+          networks:
+            hostedapps:
+              external: true
+              name: hostedapps_default
+          COMPOSE
+
+          docker compose -p crafton-edge -f "$compose_file" config --quiet
+          docker compose -p crafton-edge -f "$compose_file" up -d
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error -H "Host: 129.121.98.185" http://127.0.0.1/ -o /tmp/crafton-edge-index.html; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker compose -p crafton-edge -f "$compose_file" logs --tail=100
+              exit 1
+            fi
+            sleep 1
+          done
+
+          grep -q 'assets/index-BVMPF636.js' /tmp/crafton-edge-index.html
+          curl --insecure --fail --silent --show-error -H "Host: 129.121.98.185" https://127.0.0.1/ -o /tmp/crafton-edge-index-https.html
+          grep -q 'assets/index-BVMPF636.js' /tmp/crafton-edge-index-https.html
+          docker compose -p crafton-edge -f "$compose_file" ps
+          REMOTE
+
+      - name: Verify public Crafton route
+        run: |
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error "http://${{ secrets.VPS_IP }}/" -o /tmp/crafton-public-index.html; then
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              exit 1
+            fi
+            sleep 2
+          done
+          grep -q 'assets/index-BVMPF636.js' /tmp/crafton-public-index.html
+          curl --fail --silent --show-error "http://${{ secrets.VPS_IP }}/assets/index-Cdfew1Xv.css" -o /dev/null
