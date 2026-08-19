@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { QRCodeSVG } from "qrcode.react";
 import { deriveProjectLifecycle } from "../projectLifecycle.js";
 
 const copy = (lang, cn, en) => (lang === "Cn" ? cn : en);
@@ -169,10 +170,212 @@ const getProjectDeliveryDate = (project) => {
   return [...shipmentDates, ...requestedDates].sort()[0] || "";
 };
 
+const stableIdentityToken = (value, length = 8) => {
+  let hash = 2166136261;
+  for (const character of String(value || "")) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36).toUpperCase().padStart(length, "0").slice(-length);
+};
+
+const getItemIdentityKey = (project, job, item) =>
+  [project.projectId || project.key || project.projectName, job.id, item.id].filter(Boolean).join("|");
+
+const getItemSku = (project, job, item) => {
+  const savedSku = item.sku || item.skuCode || item.itemNo || item.item_code;
+  if (savedSku) return String(savedSku).trim().toUpperCase();
+
+  const projectInitials = String(project.projectName || "Project")
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .trim()
+    .split(/\s+/)
+    .map((word) => word[0])
+    .join("")
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toUpperCase()
+    .slice(0, 3);
+  const identity = getItemIdentityKey(project, job, item);
+  return `CRF-${projectInitials || "PRJ"}-${stableIdentityToken(`${identity}|sku`, 5)}-R01`;
+};
+
+const getItemTrackingId = (project, job, item) => {
+  const savedTrackingId = item.trackingId || item.tracking_id || item.qrTrackingId || item.qr_tracking_id;
+  if (savedTrackingId) return String(savedTrackingId).trim().toUpperCase();
+  const identity = getItemIdentityKey(project, job, item);
+  return `TRK-${stableIdentityToken(`${identity}|tracking`, 7)}${stableIdentityToken(`tracking|${identity}`, 5)}`;
+};
+
+const getItemTrackingUrl = (trackingId, item) => {
+  const savedUrl = item.trackingUrl || item.tracking_url || item.qrUrl || item.qr_url;
+  if (savedUrl) return savedUrl;
+  if (typeof window === "undefined") return `?view=item-tracking&tracking=${encodeURIComponent(trackingId)}`;
+  const url = new URL(window.location.origin + window.location.pathname);
+  url.searchParams.set("view", "item-tracking");
+  url.searchParams.set("tracking", trackingId);
+  return url.toString();
+};
+
 function ProductImage({ src, alt, className = "" }) {
   if (src) return <img className={className} src={src} alt={alt} loading="lazy" />;
   return (
     <span className={`cho-client-image-placeholder ${className}`}>{copy("En", "图片待上传", "Reference pending")}</span>
+  );
+}
+
+function ItemTrackingSheet({ lang, project, job, item, onClose }) {
+  const [copyState, setCopyState] = useState("");
+  const sku = getItemSku(project, job, item);
+  const trackingId = getItemTrackingId(project, job, item);
+  const trackingUrl = getItemTrackingUrl(trackingId, item);
+  const itemName = lang === "Cn" ? item.typeCn : item.typeEn;
+  const stage = getOrderStage(job);
+  const status = getOrderStatus(job, lang);
+  const qrElementId = `cho-item-qr-${trackingId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+  const stages =
+    lang === "Cn"
+      ? ["下单", "规格", "生产", "质检", "交付"]
+      : ["Order", "Specify", "Production", "Inspect", "Delivery"];
+
+  const handleCopy = async () => {
+    try {
+      await window.navigator.clipboard.writeText(trackingUrl);
+      setCopyState(copy(lang, "追踪链接已复制", "Tracking link copied"));
+    } catch {
+      setCopyState(copy(lang, "无法自动复制，请手动扫描二维码", "Copy unavailable — scan the QR code instead"));
+    }
+  };
+
+  const handleDownload = () => {
+    const qrElement = document.getElementById(qrElementId);
+    if (!qrElement) return;
+    const source = new window.XMLSerializer().serializeToString(qrElement);
+    const blobUrl = URL.createObjectURL(new window.Blob([source], { type: "image/svg+xml;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = `${sku}-QR.svg`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(blobUrl);
+  };
+
+  return (
+    <div
+      className="cho-project-action-sheet-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="cho-project-action-sheet cho-item-tracking-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cho-item-tracking-title"
+      >
+        <header className="cho-project-action-sheet-header">
+          <span className="cho-client-kicker">{copy(lang, "单项追踪", "ITEM TRACEABILITY")}</span>
+          <button
+            type="button"
+            className="cho-project-action-sheet-close"
+            onClick={onClose}
+            aria-label={copy(lang, "关闭追踪资料", "Close tracking details")}
+          >
+            <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </header>
+
+        <div className="cho-project-action-sheet-identity cho-item-tracking-identity">
+          <ProductImage src={item.imageUrl || job.previewUrl} alt={itemName} />
+          <div>
+            <h2 id="cho-item-tracking-title">{itemName}</h2>
+            <p>{sku}</p>
+          </div>
+        </div>
+
+        <div className="cho-item-tracking-qr-card">
+          <QRCodeSVG
+            id={qrElementId}
+            value={trackingUrl}
+            size={176}
+            level="H"
+            marginSize={2}
+            bgColor="#fbf6ec"
+            fgColor="#232220"
+            title={`${sku} ${copy(lang, "追踪二维码", "tracking QR code")}`}
+          />
+          <div>
+            <span>{copy(lang, "扫描查看最新记录", "SCAN FOR LIVE RECORD")}</span>
+            <strong>{trackingId}</strong>
+            <p>
+              {copy(
+                lang,
+                "二维码只保存追踪编号；项目资料仍受账号权限保护。",
+                "The QR stores only the tracking identity. Project details remain access-controlled."
+              )}
+            </p>
+          </div>
+        </div>
+
+        <dl className="cho-item-tracking-facts">
+          <div>
+            <dt>{copy(lang, "项目", "Project")}</dt>
+            <dd>{project.projectName}</dd>
+          </div>
+          <div>
+            <dt>{copy(lang, "数量", "Quantity")}</dt>
+            <dd>{item.qtyDisplay || item.qty || job.quantityText || "-"}</dd>
+          </div>
+          <div>
+            <dt>{copy(lang, "当前状态", "Current status")}</dt>
+            <dd>{status.label}</dd>
+          </div>
+        </dl>
+
+        <div className="cho-item-tracking-timeline" aria-label={copy(lang, "追踪阶段", "Tracking stages")}>
+          {stages.map((label, index) => (
+            <div className={index < stage ? "complete" : index === stage ? "current" : "upcoming"} key={label}>
+              <span aria-hidden="true">{index < stage ? <i className="fa-solid fa-check"></i> : index + 1}</span>
+              <div>
+                <strong>{label}</strong>
+                <small>
+                  {index < stage
+                    ? copy(lang, "已验证", "Verified")
+                    : index === stage
+                      ? getStageDetail(job, lang)
+                      : copy(lang, "等待前序阶段", "Awaiting prior stage")}
+                </small>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="cho-item-tracking-note">
+          <i className="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
+          <p>
+            {copy(
+              lang,
+              "SKU 定义这一款规格；正式生产后，可在同一 SKU 下继续加入批次号或单件序列号。",
+              "The SKU identifies this specification. Batch or unit serial numbers can be added beneath it once production begins."
+            )}
+          </p>
+        </div>
+
+        <footer className="cho-project-action-sheet-footer cho-item-tracking-actions">
+          {copyState && <p role="status">{copyState}</p>}
+          <button type="button" className="cho-client-button primary" onClick={handleDownload}>
+            <i className="fa-solid fa-download" aria-hidden="true"></i>
+            {copy(lang, "下载二维码标签", "Download QR label")}
+          </button>
+          <button type="button" className="cho-client-button secondary" onClick={handleCopy}>
+            <i className="fa-solid fa-link" aria-hidden="true"></i>
+            {copy(lang, "复制追踪链接", "Copy tracking link")}
+          </button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -197,6 +400,7 @@ function ProjectActionSheet({
   const isSubmitting = submitState.status === "submitting";
   const itemName = sheet.item ? (lang === "Cn" ? sheet.item.typeCn : sheet.item.typeEn) : project.projectName;
   const itemImage = sheet.item ? sheet.item.imageUrl || action.job.previewUrl : getProjectImage(project);
+  const itemSku = sheet.item ? getItemSku(project, action.job, sheet.item) : "";
 
   return (
     <div
@@ -235,7 +439,7 @@ function ProjectActionSheet({
             <p>
               {sheet.scope === "item" && sheet.item
                 ? [
-                    sheet.item.id ? `#${String(sheet.item.id).slice(0, 12).toUpperCase()}` : "",
+                    itemSku,
                     `${copy(lang, "数量", "Qty")} ${sheet.item.qtyDisplay || sheet.item.qty || action.job.quantityText || "-"}`
                   ]
                     .filter(Boolean)
@@ -326,10 +530,13 @@ function ClientProjectDetail({
   onSubmitAnswers,
   onBack,
   onBrowseFurniture,
-  onMessageProject
+  onMessageProject,
+  initialTrackingId,
+  onTrackingDeepLinkHandled
 }) {
   const [drawingPreview, setDrawingPreview] = useState(null);
   const [actionSheet, setActionSheet] = useState(null);
+  const [trackingSheet, setTrackingSheet] = useState(null);
   const [actionQuestionCursor, setActionQuestionCursor] = useState(0);
   const [secondaryPanel, setSecondaryPanel] = useState("");
   const projectItems = useMemo(() => getProjectItems(project), [project]);
@@ -489,6 +696,29 @@ function ClientProjectDetail({
     };
   }, [actionSheet]);
 
+  useEffect(() => {
+    if (!initialTrackingId) return;
+    const match = projectItems.find(
+      ({ job, item }) => getItemTrackingId(project, job, item) === String(initialTrackingId).toUpperCase()
+    );
+    if (match) setTrackingSheet(match);
+    onTrackingDeepLinkHandled?.();
+  }, [initialTrackingId, onTrackingDeepLinkHandled, project, projectItems]);
+
+  useEffect(() => {
+    if (!trackingSheet) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setTrackingSheet(null);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [trackingSheet]);
+
   return (
     <main className="cho-project-page" aria-labelledby="cho-project-title">
       <div className="cho-client-wrap">
@@ -592,6 +822,7 @@ function ClientProjectDetail({
               const itemKey = `${job.id}-${item.id}`;
               const itemActions = actionMap.itemEntries.get(itemKey) || [];
               const itemName = lang === "Cn" ? item.typeCn : item.typeEn;
+              const itemSku = getItemSku(project, job, item);
               const itemStatus = getOrderStatus(job, lang);
               const material = lang === "Cn" ? item.materialCn : item.materialEn;
               const drawing = item.technicalDrawing || {};
@@ -606,12 +837,23 @@ function ClientProjectDetail({
                 >
                   <div className="cho-project-item" role="cell" data-label={copy(lang, "产品", "Item")}>
                     <ProductImage src={item.imageUrl || job.previewUrl} alt={itemName} />
-                    <span>
+                    <span className="cho-project-item-copy">
                       <strong>{itemName}</strong>
                       <small>
                         {[item.fabricCode, item.color, item.finish].filter(Boolean).join(" · ") ||
                           copy(lang, "规格整理中", "Specification in review")}
                       </small>
+                      <span className="cho-project-item-identity">
+                        <code>{itemSku}</code>
+                        <button
+                          type="button"
+                          onClick={() => setTrackingSheet({ job, item })}
+                          aria-label={`${copy(lang, "打开二维码追踪", "Open QR tracking for")} ${itemName}`}
+                        >
+                          <i className="fa-solid fa-qrcode" aria-hidden="true"></i>
+                          {copy(lang, "追踪", "Track")}
+                        </button>
+                      </span>
                     </span>
                   </div>
                   <span className="cho-project-mono" role="cell" data-label={copy(lang, "数量", "Qty")}>
@@ -868,6 +1110,17 @@ function ClientProjectDetail({
           />,
           document.body
         )}
+      {trackingSheet &&
+        createPortal(
+          <ItemTrackingSheet
+            lang={lang}
+            project={project}
+            job={trackingSheet.job}
+            item={trackingSheet.item}
+            onClose={() => setTrackingSheet(null)}
+          />,
+          document.body
+        )}
     </main>
   );
 }
@@ -887,12 +1140,29 @@ function ClientOrderDashboard({
   onMessageProject
 }) {
   const [projectPageKey, setProjectPageKey] = useState("");
+  const [deepLinkTrackingId, setDeepLinkTrackingId] = useState("");
 
   useEffect(() => {
     if (projectPageKey && !projectGroups.some((project) => String(project.key) === String(projectPageKey))) {
       setProjectPageKey("");
     }
   }, [projectGroups, projectPageKey]);
+
+  useEffect(() => {
+    if (!projectGroups.length || typeof window === "undefined") return;
+    const params = new window.URLSearchParams(window.location.search);
+    const trackingId = params.get("view") === "item-tracking" ? params.get("tracking") : "";
+    if (!trackingId) return;
+
+    const targetProject = projectGroups.find((project) =>
+      getProjectItems(project).some(
+        ({ job, item }) => getItemTrackingId(project, job, item) === String(trackingId).toUpperCase()
+      )
+    );
+    if (!targetProject) return;
+    setProjectPageKey(targetProject.key);
+    setDeepLinkTrackingId(String(trackingId).toUpperCase());
+  }, [projectGroups]);
 
   const dashboardData = useMemo(() => {
     const jobs = projectGroups.flatMap((project) => project.jobs);
@@ -969,6 +1239,14 @@ function ClientOrderDashboard({
         }}
         onBrowseFurniture={onBrowseFurniture}
         onMessageProject={onMessageProject || onNewOrder}
+        initialTrackingId={deepLinkTrackingId}
+        onTrackingDeepLinkHandled={() => {
+          setDeepLinkTrackingId("");
+          const url = new URL(window.location.href);
+          url.searchParams.delete("view");
+          url.searchParams.delete("tracking");
+          window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+        }}
       />
     );
   }

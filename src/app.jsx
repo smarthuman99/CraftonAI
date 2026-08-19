@@ -510,6 +510,9 @@ const normalizeReviewJob = (job = {}) => {
     rfqDraft,
     items: items.map((item, idx) => ({
       id: item.id || `DRAFT-ITEM-${idx + 1}`,
+      sku: item.sku || item.sku_code || item.item_no || item.itemNo || "",
+      trackingId: item.tracking_id || item.trackingId || item.qr_tracking_id || item.qrTrackingId || "",
+      trackingUrl: item.tracking_url || item.trackingUrl || item.qr_url || item.qrUrl || "",
       typeCn: item.item_type_cn || item.typeCn || "Customer bespoke item",
       typeEn: item.item_type_en || item.typeEn || "Submitted Bespoke Item",
       qty: Number(item.quantity || item.qty || 0),
