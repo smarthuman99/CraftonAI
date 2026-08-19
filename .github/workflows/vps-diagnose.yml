@@ -1,0 +1,55 @@
+name: Diagnose Crafton VPS routing
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Inspect static roots and HTTP routing
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 22 -H "${{ secrets.VPS_IP }}" >> ~/.ssh/known_hosts
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}" '
+            set -u
+            echo "=== host ==="
+            hostname
+            date -u
+            echo "=== listeners ==="
+            ss -ltnp 2>/dev/null | head -n 40 || true
+            echo "=== services ==="
+            for service in nginx apache2 httpd caddy; do
+              printf "%s: " "$service"
+              systemctl is-active "$service" 2>/dev/null || true
+            done
+            echo "=== static roots ==="
+            for dir in /var/www/crafton-ai /var/www/html; do
+              echo "-- $dir"
+              if [ -d "$dir" ]; then
+                ls -la "$dir" | head -n 30
+                grep -o "assets/index-[^\"[:space:]]*\.[jc][ss]" "$dir/index.html" 2>/dev/null || true
+              else
+                echo "missing"
+              fi
+            done
+            echo "=== local HTTP probes ==="
+            for host in 127.0.0.1 129.121.98.185 localhost; do
+              echo "-- Host: $host"
+              curl --silent --show-error --max-time 8 -H "Host: $host" -D - http://127.0.0.1/ -o /tmp/crafton-http-body.txt || true
+              head -c 160 /tmp/crafton-http-body.txt 2>/dev/null || true
+              echo
+            done
+            echo "=== web configuration ==="
+            if command -v nginx >/dev/null 2>&1; then
+              nginx -T 2>/dev/null | grep -E "^[[:space:]]*(listen|server_name|root|proxy_pass|try_files)" | head -n 120 || true
+            fi
+            if command -v caddy >/dev/null 2>&1; then
+              caddy adapt --config /etc/caddy/Caddyfile --pretty 2>/dev/null | grep -E "listen|host|root|reverse_proxy" | head -n 120 || true
+            fi
+          '
