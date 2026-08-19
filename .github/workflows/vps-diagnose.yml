@@ -45,6 +45,28 @@ jobs:
               head -c 160 /tmp/crafton-http-body.txt 2>/dev/null || true
               echo
             done
+            echo "=== direct nginx probes ==="
+            for port in 8080 8443; do
+              echo "-- port $port"
+              if [ "$port" = "8443" ]; then
+                curl --insecure --silent --show-error --max-time 8 -D - "https://127.0.0.1:$port/" -o /tmp/crafton-nginx-body.txt || true
+              else
+                curl --silent --show-error --max-time 8 -D - "http://127.0.0.1:$port/" -o /tmp/crafton-nginx-body.txt || true
+              fi
+              head -c 160 /tmp/crafton-nginx-body.txt 2>/dev/null || true
+              echo
+            done
+            echo "=== docker edge proxy ==="
+            if command -v docker >/dev/null 2>&1; then
+              docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}"
+              edge_id="$(docker ps --filter publish=80 --format "{{.ID}}" | head -n 1)"
+              if [ -n "$edge_id" ]; then
+                echo "-- edge container $edge_id"
+                docker inspect --format "name={{.Name}} image={{.Config.Image}} labels={{json .Config.Labels}} mounts={{json .Mounts}}" "$edge_id" || true
+              fi
+              echo "-- candidate proxy configuration"
+              find /etc /opt /var/lib/docker/volumes -maxdepth 6 -type f \( -iname "*traefik*.yml" -o -iname "*traefik*.yaml" -o -iname "Caddyfile" -o -iname "*dynamic*.yml" -o -iname "*dynamic*.yaml" \) 2>/dev/null | head -n 100
+            fi
             echo "=== web configuration ==="
             if command -v nginx >/dev/null 2>&1; then
               nginx -T 2>/dev/null | grep -E "^[[:space:]]*(listen|server_name|root|proxy_pass|try_files)" | head -n 120 || true
