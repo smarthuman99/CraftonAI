@@ -424,6 +424,30 @@ const formatDimensionPayload = (dimensions = {}) => {
   return parts.length ? `${parts.join(" x ")} ${unit}` : "";
 };
 
+const normalizeTechnicalDrawing = (item = {}) => {
+  const drawing = safeJsonObject(item.technical_drawing || item.technicalDrawing, {});
+  return {
+    status: drawing.status || "not_started",
+    reviewStatus: drawing.review_status || drawing.reviewStatus || "pending_admin",
+    url: drawing.drawing_url || drawing.url || "",
+    draftUrl: drawing.draft_url || drawing.draftUrl || "",
+    formalUrl: drawing.formal_url || drawing.formalUrl || "",
+    storageBucket: drawing.storage_bucket || drawing.storageBucket || "",
+    storagePath: drawing.drawing_storage_path || drawing.storagePath || "",
+    draftStoragePath: drawing.draft_storage_path || drawing.draftStoragePath || "",
+    formalStoragePath: drawing.formal_storage_path || drawing.formalStoragePath || "",
+    generatedAt: drawing.generated_at || drawing.generatedAt || "",
+    approvedAt: drawing.approved_at || drawing.approvedAt || "",
+    approvedBy: drawing.approved_by || drawing.approvedBy || "",
+    sourceCount: Number(drawing.source_count || drawing.sourceCount || 0),
+    model: drawing.model || "",
+    promptVersion: drawing.prompt_version || drawing.promptVersion || "",
+    itemIndex: Number.isInteger(Number(drawing.item_index)) ? Number(drawing.item_index) : null,
+    intakeJobId: drawing.intake_job_id || drawing.intakeJobId || "",
+    attempts: Number(drawing.attempts || 0)
+  };
+};
+
 const normalizeReviewJob = (job = {}) => {
   const result = safeJsonObject(job.result_json, {});
   const project = result.project || {};
@@ -513,7 +537,8 @@ const normalizeReviewJob = (job = {}) => {
       currency: item.currency || result.currency || project.currency || "USD",
       notesCn: item.notes_cn || item.notesCn || "",
       notesEn: item.notes_en || item.notesEn || item.note || "",
-      imageUrl: item.image_url || item.imageUrl || item.preview_url || ""
+      imageUrl: item.image_url || item.imageUrl || item.preview_url || "",
+      technicalDrawing: normalizeTechnicalDrawing(item)
     })),
     payments: payments.map((payment, idx) => ({
       id: payment.id || `DRAFT-PAYMENT-${idx + 1}`,
@@ -1008,6 +1033,7 @@ function App() {
   const [intakeBomDraftGenerated, setIntakeBomDraftGenerated] = useState(false);
   const [intakeBomDraftSaving, setIntakeBomDraftSaving] = useState(false);
   const [intakeBomDraftMessage, setIntakeBomDraftMessage] = useState("");
+  const [technicalDrawingAction, setTechnicalDrawingAction] = useState({ itemKey: "", status: "", message: "" });
   const [adminIntakePreview, setAdminIntakePreview] = useState({
     jobId: "",
     url: "",
@@ -5280,16 +5306,34 @@ function App() {
   const addSignedIntakeItemImages = async (client, row) => {
     const result = safeJsonObject(row?.result_json, {});
     const items = Array.isArray(result.items) ? result.items : [];
-    const entries = items
-      .map((item, index) => ({
-        index,
-        bucket: item.image_storage_bucket,
-        path: item.image_storage_path
-      }))
-      .filter((entry) => entry.bucket && entry.path);
+    const entries = items.flatMap((item, index) => {
+      const drawing = safeJsonObject(item.technical_drawing || item.technicalDrawing, {});
+      return [
+        {
+          key: `${index}:image`,
+          bucket: item.image_storage_bucket,
+          path: item.image_storage_path
+        },
+        {
+          key: `${index}:drawing`,
+          bucket: drawing.storage_bucket,
+          path: drawing.drawing_storage_path
+        },
+        {
+          key: `${index}:draft`,
+          bucket: drawing.storage_bucket,
+          path: drawing.draft_storage_path
+        },
+        {
+          key: `${index}:formal`,
+          bucket: drawing.storage_bucket,
+          path: drawing.formal_storage_path
+        }
+      ].filter((entry) => entry.bucket && entry.path);
+    });
     if (!entries.length) return row;
 
-    const signedByIndex = new Map();
+    const signedByKey = new Map();
     const grouped = entries.reduce((groups, entry) => {
       const current = groups.get(entry.bucket) || [];
       current.push(entry);
@@ -5307,7 +5351,7 @@ function App() {
           if (error) throw error;
           bucketEntries.forEach((entry, index) => {
             const signedUrl = data?.[index]?.signedUrl || "";
-            if (signedUrl) signedByIndex.set(entry.index, signedUrl);
+            if (signedUrl) signedByKey.set(entry.key, signedUrl);
           });
         } catch (error) {
           console.warn("Extracted furniture image previews could not be signed:", error.message || error);
@@ -5315,15 +5359,26 @@ function App() {
       })
     );
 
-    if (!signedByIndex.size) return row;
+    if (!signedByKey.size) return row;
     return {
       ...row,
       result_json: {
         ...result,
-        items: items.map((item, index) => ({
-          ...item,
-          image_url: signedByIndex.get(index) || item.image_url || ""
-        }))
+        items: items.map((item, index) => {
+          const drawing = safeJsonObject(item.technical_drawing || item.technicalDrawing, {});
+          return {
+            ...item,
+            image_url: signedByKey.get(`${index}:image`) || item.image_url || "",
+            technical_drawing: Object.keys(drawing).length
+              ? {
+                  ...drawing,
+                  drawing_url: signedByKey.get(`${index}:drawing`) || drawing.drawing_url || "",
+                  draft_url: signedByKey.get(`${index}:draft`) || drawing.draft_url || "",
+                  formal_url: signedByKey.get(`${index}:formal`) || drawing.formal_url || ""
+                }
+              : drawing
+          };
+        })
       }
     };
   };
@@ -5602,6 +5657,79 @@ function App() {
       const items = prev.items.map((item, itemIdx) => (itemIdx === idx ? { ...item, [field]: value } : item));
       return { ...prev, items };
     });
+  };
+
+  const handleConfirmTechnicalDrawing = async (item, fallbackIndex = 0) => {
+    const drawing = item?.technicalDrawing || normalizeTechnicalDrawing(item);
+    const jobId = drawing.intakeJobId || item?.sourceJobIds?.[0] || reviewDraft?.jobIds?.[0] || reviewDraft?.id;
+    const sourceJob = getAdminWorkspaceJobs().find((job) => String(job.id) === String(jobId));
+    const itemKey = `${jobId || "job"}-${item?.id || fallbackIndex}`;
+
+    if (!sourceJob || !drawing.formalStoragePath) {
+      setTechnicalDrawingAction({
+        itemKey,
+        status: "error",
+        message: "The generated formal drawing asset is not available yet."
+      });
+      return;
+    }
+
+    setTechnicalDrawingAction({ itemKey, status: "saving", message: "Confirming formal drawing..." });
+    try {
+      const result = safeJsonObject(sourceJob.result_json, {});
+      const items = Array.isArray(result.items) ? [...result.items] : [];
+      let itemIndex = Number.isInteger(drawing.itemIndex) ? drawing.itemIndex : -1;
+      if (itemIndex < 0 || !items[itemIndex]) {
+        itemIndex = items.findIndex((candidate) => String(candidate.id || "") === String(item?.id || ""));
+      }
+      if (itemIndex < 0 || !items[itemIndex]) throw new Error("The source furniture line could not be matched.");
+
+      const storedDrawing = { ...safeJsonObject(items[itemIndex].technical_drawing, {}) };
+      delete storedDrawing.drawing_url;
+      delete storedDrawing.draft_url;
+      delete storedDrawing.formal_url;
+      const approvedAt = new Date().toISOString();
+      const formalDrawing = {
+        ...storedDrawing,
+        status: "formal",
+        review_status: "approved",
+        drawing_storage_path: storedDrawing.formal_storage_path || drawing.formalStoragePath,
+        approved_by: user?.name || user?.email || "Cho",
+        approved_by_id: supabaseSessionUser?.id || null,
+        approved_at: approvedAt
+      };
+      items[itemIndex] = { ...items[itemIndex], technical_drawing: formalDrawing };
+      await persistIntakeJobUpdate(sourceJob, { result_json: { ...result, items } });
+
+      setReviewDraft((previous) =>
+        previous
+          ? {
+              ...previous,
+              items: previous.items.map((candidate, index) =>
+                candidate.id === item.id || index === fallbackIndex
+                  ? {
+                      ...candidate,
+                      technicalDrawing: {
+                        ...candidate.technicalDrawing,
+                        status: "formal",
+                        reviewStatus: "approved",
+                        url: candidate.technicalDrawing?.formalUrl || drawing.formalUrl,
+                        storagePath: drawing.formalStoragePath,
+                        approvedAt,
+                        approvedBy: user?.name || user?.email || "Cho"
+                      }
+                    }
+                  : candidate
+              )
+            }
+          : previous
+      );
+      setTechnicalDrawingAction({ itemKey, status: "success", message: "Formal drawing confirmed and published." });
+      await loadPrequoteWorkspace();
+    } catch (error) {
+      console.error("Technical drawing confirmation failed:", error);
+      setTechnicalDrawingAction({ itemKey, status: "error", message: error.message || "Drawing confirmation failed." });
+    }
   };
 
   const ensureIntakeProject = async (job, draft, stage = 4, relatedJobs = []) => {
@@ -8006,6 +8134,70 @@ function App() {
                     ["Item", "Qty", "Dimensions", "Material", "Finish / color / hardware", "Target / Unit", "Notes"],
                     bomRows
                   )}
+                  <div className="intake-drawing-review-grid">
+                    {bomItems.map((item, index) => {
+                      const drawing = item.technicalDrawing || normalizeTechnicalDrawing(item);
+                      const drawingUrl =
+                        drawing.status === "formal"
+                          ? drawing.formalUrl || drawing.url
+                          : drawing.draftUrl || drawing.url;
+                      const actionKey = `${drawing.intakeJobId || item.sourceJobIds?.[0] || "job"}-${item.id || index}`;
+                      const actionState = technicalDrawingAction.itemKey === actionKey ? technicalDrawingAction : null;
+                      return (
+                        <article className="intake-drawing-review-card" key={`drawing-${item.id || index}`}>
+                          <div className="intake-drawing-review-preview">
+                            {drawingUrl ? (
+                              <a href={drawingUrl} target="_blank" rel="noreferrer" title="Open full-size drawing">
+                                <img src={drawingUrl} alt={`${item.typeEn || item.typeCn || "Furniture"} three-view`} />
+                              </a>
+                            ) : (
+                              <div>
+                                <i className="fa-regular fa-image" aria-hidden="true"></i>
+                                <span>
+                                  {drawing.status === "generating"
+                                    ? "Generating three-view"
+                                    : drawing.status === "generation_failed"
+                                      ? "Generation will retry"
+                                      : "Waiting for drawing worker"}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="intake-drawing-review-copy">
+                            <span className={`intake-drawing-status status-${drawing.status}`}>
+                              {drawing.status === "formal"
+                                ? "Formal drawing"
+                                : drawing.status === "system_generated"
+                                  ? "System auto-generated"
+                                  : drawing.status === "generating"
+                                    ? "Generating"
+                                    : "Pending"}
+                            </span>
+                            <strong>{item.typeEn || item.typeCn || `Furniture item ${index + 1}`}</strong>
+                            <small>{item.dimensionsText || "Dimensions pending"}</small>
+                            <small>
+                              {drawing.sourceCount ? `${drawing.sourceCount} source image(s)` : "Source image pending"}
+                            </small>
+                            {drawing.status === "system_generated" && (
+                              <button
+                                type="button"
+                                className="btn-premium"
+                                onClick={() => handleConfirmTechnicalDrawing(item, index)}
+                                disabled={actionState?.status === "saving"}
+                              >
+                                {actionState?.status === "saving" ? "Confirming..." : "Confirm as formal drawing"}
+                              </button>
+                            )}
+                            {actionState?.message && (
+                              <small className={`intake-drawing-action-message ${actionState.status}`} role="status">
+                                {actionState.message}
+                              </small>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
                 </>
               ) : (
                 renderAdminEmptyState(
