@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@supabase/supabase-js";
 import * as tus from "tus-js-client";
 import mockData from "./mockData";
@@ -1041,6 +1042,9 @@ function App() {
   const [intakeBomDraftSaving, setIntakeBomDraftSaving] = useState(false);
   const [intakeBomDraftMessage, setIntakeBomDraftMessage] = useState("");
   const [technicalDrawingAction, setTechnicalDrawingAction] = useState({ itemKey: "", status: "", message: "" });
+  const [intakeItemFilter, setIntakeItemFilter] = useState("all");
+  const [intakeDetailKey, setIntakeDetailKey] = useState("");
+  const [intakeDisclosure, setIntakeDisclosure] = useState("");
   const [adminIntakePreview, setAdminIntakePreview] = useState({
     jobId: "",
     url: "",
@@ -7761,6 +7765,754 @@ function App() {
         setIntakeBomDraftSaving(false);
       }
     };
+
+    const normalizeIntakeQuestion = (value) =>
+      String(value || "")
+        .toLocaleLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim();
+    const questionStopWords = new Set([
+      "the",
+      "a",
+      "an",
+      "and",
+      "or",
+      "for",
+      "of",
+      "to",
+      "please",
+      "confirm",
+      "clarify",
+      "item",
+      "items",
+      "furniture"
+    ]);
+    const getQuestionMatchScore = (question, item) => {
+      const normalizedQuestion = normalizeIntakeQuestion(question);
+      const itemNames = [
+        item.typeEn,
+        item.typeCn,
+        item.item_type_en,
+        item.item_type_cn,
+        item.id,
+        item.sku,
+        item.skuCode
+      ]
+        .map(normalizeIntakeQuestion)
+        .filter(Boolean);
+
+      if (itemNames.some((name) => name.length > 1 && normalizedQuestion.includes(name))) return 100;
+
+      return itemNames.reduce((bestScore, name) => {
+        const nameTokens = name.split(" ").filter((token) => token.length > 1 && !questionStopWords.has(token));
+        const questionTokens = new Set(
+          normalizedQuestion.split(" ").filter((token) => token.length > 1 && !questionStopWords.has(token))
+        );
+        const sharedTokens = nameTokens.filter((token) => questionTokens.has(token));
+        const minimumSharedTokens = nameTokens.length === 1 ? 1 : 2;
+        if (sharedTokens.length < minimumSharedTokens) return bestScore;
+        return Math.max(bestScore, sharedTokens.length / nameTokens.length);
+      }, 0);
+    };
+    const parseIntakeQuantity = (item) => {
+      const directQuantity = Number(item.qty || item.quantity || 0);
+      if (directQuantity) return directQuantity;
+      const quantityMatch = String(item.qtyDisplay || "").match(/\d+(?:\.\d+)?/);
+      return quantityMatch ? Number(quantityMatch[0]) : 0;
+    };
+    const intakeItemRecords = bomItems.map((item, index) => {
+      const drawing = item.technicalDrawing || normalizeTechnicalDrawing(item);
+      const drawingUrl =
+        drawing.status === "formal" ? drawing.formalUrl || drawing.url : drawing.draftUrl || drawing.url;
+      const key = String(item.id || item.sku || item.skuCode || `${item.typeEn || item.typeCn || "item"}-${index}`);
+      const drawingActionKey = `${drawing.intakeJobId || item.sourceJobIds?.[0] || "job"}-${item.id || index}`;
+      return { item, index, key, drawing, drawingUrl, drawingActionKey };
+    });
+    const itemQuestionMap = new Map(intakeItemRecords.map((record) => [record.key, []]));
+    const projectQuestions = [];
+
+    missingQuestions.forEach((question, questionIndex) => {
+      const scoredMatches = intakeItemRecords
+        .map((record) => ({ record, score: getQuestionMatchScore(question, record.item) }))
+        .filter(({ score }) => score > 0)
+        .sort((left, right) => right.score - left.score);
+      const uniqueMatch =
+        scoredMatches.length > 0 && (scoredMatches.length === 1 || scoredMatches[0].score > scoredMatches[1].score)
+          ? scoredMatches[0].record
+          : null;
+      const entry = { question, questionIndex };
+
+      if (uniqueMatch) itemQuestionMap.set(uniqueMatch.key, [...(itemQuestionMap.get(uniqueMatch.key) || []), entry]);
+      else projectQuestions.push(entry);
+    });
+
+    const enrichedIntakeItems = intakeItemRecords.map((record) => {
+      const questions = [...(itemQuestionMap.get(record.key) || [])];
+      const itemName =
+        record.item.typeEn ||
+        record.item.typeCn ||
+        record.item.item_type_en ||
+        record.item.item_type_cn ||
+        `Furniture item ${record.index + 1}`;
+      const itemDimensions =
+        record.item.dimensionsText ||
+        record.item.dimensions_text ||
+        formatDimensionPayload(record.item.dimensions || {});
+      const itemMaterial =
+        record.item.materialEn || record.item.materialCn || record.item.material_en || record.item.material_cn || "";
+      const dimensionsNeedConfirmation =
+        !itemDimensions || /^(to confirm|pending|tbc|待确认|待確認)$/i.test(itemDimensions.trim());
+      const materialNeedsConfirmation =
+        !itemMaterial || /^(to confirm|pending|tbc|待确认|待確認)$/i.test(itemMaterial.trim());
+
+      if (dimensionsNeedConfirmation && !questions.some(({ question }) => /dimension|尺寸/i.test(question))) {
+        questions.push({
+          question: `Please confirm the finished dimensions for ${itemName}.`,
+          questionIndex: `derived-dimensions-${record.index}`
+        });
+      }
+      if (materialNeedsConfirmation && !questions.some(({ question }) => /material|材质|材質/i.test(question))) {
+        questions.push({
+          question: `Please confirm the material and construction specification for ${itemName}.`,
+          questionIndex: `derived-material-${record.index}`
+        });
+      }
+      const drawingNeedsConfirmation = record.drawing.status === "system_generated";
+      return {
+        ...record,
+        questions,
+        actionCount: questions.length + (drawingNeedsConfirmation ? 1 : 0),
+        drawingNeedsConfirmation
+      };
+    });
+    const filteredIntakeItems = enrichedIntakeItems.filter((record) => {
+      if (intakeItemFilter === "action") return record.actionCount > 0;
+      if (intakeItemFilter === "ready") return record.actionCount === 0;
+      return true;
+    });
+    const itemActionCount = enrichedIntakeItems.reduce((total, record) => total + record.actionCount, 0);
+    const totalActionCount = projectQuestions.length + itemActionCount;
+    const readyItemCount = enrichedIntakeItems.filter((record) => record.actionCount === 0).length;
+    const totalPieces = bomItems.reduce((total, item) => total + parseIntakeQuantity(item), 0);
+    const completenessDone = completenessItems.filter((item) => item.state === "done").length;
+    const selectedIntakeItem = enrichedIntakeItems.find((record) => record.key === intakeDetailKey) || null;
+    const selectedDrawingAction = selectedIntakeItem
+      ? technicalDrawingAction.itemKey === selectedIntakeItem.drawingActionKey
+        ? technicalDrawingAction
+        : null
+      : null;
+    const isProjectDetailOpen = intakeDetailKey === "project";
+    const currentProjectName =
+      draft?.projectName || (!dbConnected ? order.orderId : "") || (lang === "Cn" ? "当前客户项目" : "Client project");
+    const currentClientName = draft?.clientName || order.clientName || "Client pending";
+    const currentDestination = draft?.destination || order.projectLocation || "Destination pending";
+    const currentOrderCount = draft?.orderCount || projectJobs.length || 1;
+    const intakeProgressIndex = liveRfqPackage ? 4 : isIntakeApproved ? 3 : intakeBomDraftGenerated ? 2 : 1;
+    const intakeStages = [
+      { code: "S01", label: "Order brief", detail: "Source received" },
+      {
+        code: "S02",
+        label: "Gap review",
+        detail: hasMissingInfo
+          ? `${missingQuestions.length} clarification${missingQuestions.length === 1 ? "" : "s"}`
+          : "Review complete"
+      },
+      {
+        code: "S03",
+        label: "BOM & drawings",
+        detail: intakeBomDraftGenerated ? "Draft generated" : "Ready after review"
+      },
+      { code: "S04", label: "Approval", detail: isIntakeApproved ? "Approved by Cho" : "Awaiting approval" },
+      { code: "S05", label: "RFQ", detail: liveRfqPackage ? "Package ready" : "Not started" }
+    ];
+    const primaryWorkflowAction = liveRfqPackage
+      ? {
+          label: "Open RFQ workspace",
+          onClick: () => setActiveAdminFlow("sourcing"),
+          disabled: false
+        }
+      : hasMissingInfo
+        ? { label: "Request clarification", onClick: handleAskClientForRevision, disabled: false }
+        : !bomRows.length
+          ? { label: "Waiting for parsed items", onClick: () => {}, disabled: true }
+          : isIntakeApproved
+            ? { label: "Create RFQ package", onClick: handleCreateRfqDraft, disabled: intakeApprovalSaving }
+            : !intakeBomDraftGenerated
+              ? {
+                  label: intakeBomDraftSaving ? "Saving project BOM..." : "Generate BOM & spec",
+                  onClick: handleGenerateBomDraft,
+                  disabled: intakeBomDraftSaving
+                }
+              : {
+                  label: intakeApprovalSaving ? "Saving approval..." : "Approve checked package",
+                  onClick: handleApproveIntakeReview,
+                  disabled: intakeApprovalSaving
+                };
+
+    if (hasVerifiedAdminAccess && hasActiveIntake) {
+      return (
+        <div className="intake-next-workspace">
+          {adminWorkspaceMode === "overview" && clientGroups.length > 0 && (
+            <details className="intake-next-project-switcher">
+              <summary>
+                <span>
+                  <small>Project directory</small>
+                  <strong>{currentProjectName}</strong>
+                </span>
+                <span>{clientGroups.length} clients</span>
+              </summary>
+              <div>
+                {clientGroups.flatMap((clientGroup) =>
+                  clientGroup.projects.map((project) => {
+                    const latestProjectJob = project.jobs[0];
+                    const isActive = project.jobs.some((job) => job.id === selectedJob?.id);
+                    return (
+                      <button
+                        type="button"
+                        className={isActive ? "active" : ""}
+                        key={`${clientGroup.key}-${project.key}`}
+                        onClick={() => setSelectedReviewJobId(latestProjectJob.id)}
+                      >
+                        <span>
+                          <strong>{project.projectName}</strong>
+                          <small>{clientGroup.clientName}</small>
+                        </span>
+                        <span>{project.destination || "Destination pending"}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </details>
+          )}
+
+          <section className="intake-next-hero" aria-labelledby="intake-next-project-title">
+            <div className="intake-next-hero-copy">
+              <span className="intake-next-kicker">Active project · S01–S05</span>
+              <h2 id="intake-next-project-title">{currentProjectName}</h2>
+              <p>
+                {currentClientName} <span aria-hidden="true">·</span> {currentDestination}{" "}
+                <span aria-hidden="true">·</span> {currentOrderCount} order{currentOrderCount === 1 ? "" : "s"}
+              </p>
+            </div>
+            <div className="intake-next-hero-action">
+              <span className={`intake-next-status ${totalActionCount ? "attention" : "ready"}`}>
+                {totalActionCount
+                  ? `${totalActionCount} action${totalActionCount === 1 ? "" : "s"} needed`
+                  : "Ready for next step"}
+              </span>
+              <button
+                type="button"
+                className="intake-next-primary"
+                onClick={primaryWorkflowAction.onClick}
+                disabled={primaryWorkflowAction.disabled}
+              >
+                {primaryWorkflowAction.label}
+                <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div className="intake-next-metrics" aria-label="Project summary">
+              <div>
+                <strong>{totalPieces || "—"}</strong>
+                <span>Pieces</span>
+              </div>
+              <div>
+                <strong>{bomItems.length}</strong>
+                <span>Line items</span>
+              </div>
+              <div>
+                <strong>
+                  {completenessDone}/{completenessItems.length}
+                </strong>
+                <span>Brief complete</span>
+              </div>
+              <div className={totalActionCount ? "attention" : ""}>
+                <strong>{totalActionCount}</strong>
+                <span>Need action</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="intake-next-stage-card" aria-labelledby="intake-next-stage-title">
+            <div className="intake-next-section-title">
+              <div>
+                <span className="intake-next-kicker">Workflow</span>
+                <h3 id="intake-next-stage-title">Project stage</h3>
+              </div>
+              <span>Current · {intakeStages[intakeProgressIndex].label}</span>
+            </div>
+            <div className="intake-next-stage-track">
+              {intakeStages.map((stage, index) => (
+                <div
+                  className={
+                    index < intakeProgressIndex ? "complete" : index === intakeProgressIndex ? "current" : "upcoming"
+                  }
+                  key={stage.code}
+                >
+                  <span className="intake-next-stage-line"></span>
+                  <small>{stage.code}</small>
+                  <strong>{stage.label}</strong>
+                  <p>{stage.detail}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {projectQuestions.length > 0 && (
+            <section className="intake-next-project-action" aria-label="Project-level actions">
+              <div>
+                <span className="intake-next-action-icon" aria-hidden="true">
+                  !
+                </span>
+                <div>
+                  <strong>Project information needs attention</strong>
+                  <p>
+                    {projectQuestions.length} question{projectQuestions.length === 1 ? " affects" : "s affect"} the
+                    whole order rather than one line item.
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setIntakeDetailKey("project")}>
+                Review project action
+                <span>{projectQuestions.length}</span>
+              </button>
+            </section>
+          )}
+
+          <section className="intake-next-items-card" aria-labelledby="intake-next-items-title">
+            <div className="intake-next-items-header">
+              <div>
+                <span className="intake-next-kicker">Order workspace</span>
+                <h3 id="intake-next-items-title">Line items</h3>
+                <p>Specifications, drawings and outstanding decisions are organised on the product they belong to.</p>
+              </div>
+              <div className="intake-next-item-filters" role="group" aria-label="Filter line items">
+                {[
+                  ["all", `All ${enrichedIntakeItems.length}`],
+                  ["action", `Need action ${enrichedIntakeItems.length - readyItemCount}`],
+                  ["ready", `Ready ${readyItemCount}`]
+                ].map(([value, label]) => (
+                  <button
+                    type="button"
+                    className={intakeItemFilter === value ? "active" : ""}
+                    aria-pressed={intakeItemFilter === value}
+                    onClick={() => setIntakeItemFilter(value)}
+                    key={value}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {filteredIntakeItems.length ? (
+              <div className="intake-next-items-table">
+                <div className="intake-next-items-labels" aria-hidden="true">
+                  <span>Item</span>
+                  <span>Qty</span>
+                  <span>Specification</span>
+                  <span>Drawing</span>
+                  <span>Decision</span>
+                </div>
+                {filteredIntakeItems.map((record) => {
+                  const { item, index, drawing, drawingUrl, actionCount, drawingActionKey } = record;
+                  const itemImageUrl = item.imageUrl || item.image_url || "";
+                  const itemName =
+                    item.typeEn ||
+                    item.typeCn ||
+                    item.item_type_en ||
+                    item.item_type_cn ||
+                    `Furniture item ${index + 1}`;
+                  const itemCode =
+                    item.sku || item.skuCode || item.itemNo || item.id || `ITEM ${String(index + 1).padStart(2, "0")}`;
+                  const material =
+                    item.materialEn || item.materialCn || item.material_en || item.material_cn || "Material to confirm";
+                  const dimensions =
+                    item.dimensionsText ||
+                    item.dimensions_text ||
+                    formatDimensionPayload(item.dimensions || {}) ||
+                    "Dimensions pending";
+                  const rowDrawingAction =
+                    technicalDrawingAction.itemKey === drawingActionKey ? technicalDrawingAction : null;
+                  return (
+                    <article className={`intake-next-item-row ${actionCount ? "needs-action" : ""}`} key={record.key}>
+                      <div className="intake-next-item-identity">
+                        <div className="intake-next-item-thumb">
+                          {itemImageUrl ? (
+                            <img src={itemImageUrl} alt="" />
+                          ) : drawingUrl ? (
+                            <img src={drawingUrl} alt="" />
+                          ) : (
+                            <span>{String(index + 1).padStart(2, "0")}</span>
+                          )}
+                        </div>
+                        <div>
+                          <strong>{itemName}</strong>
+                          <small>{itemCode}</small>
+                        </div>
+                      </div>
+                      <div className="intake-next-item-qty" data-label="Qty">
+                        {item.qtyDisplay || item.qty || item.quantity || "—"}
+                      </div>
+                      <div className="intake-next-item-spec" data-label="Specification">
+                        <strong>{material}</strong>
+                        <small>{dimensions}</small>
+                      </div>
+                      <div className="intake-next-item-drawing" data-label="Drawing">
+                        {drawingUrl ? (
+                          <a href={drawingUrl} target="_blank" rel="noreferrer" title={`Open ${itemName} drawing`}>
+                            <img src={drawingUrl} alt={`${itemName} drawing`} />
+                          </a>
+                        ) : (
+                          <span className="intake-next-drawing-placeholder">
+                            <i className="fa-regular fa-image" aria-hidden="true"></i>
+                          </span>
+                        )}
+                        <small>
+                          {drawing.status === "formal"
+                            ? "Formal"
+                            : drawing.status === "system_generated"
+                              ? "Review"
+                              : drawing.status === "generating"
+                                ? "Generating"
+                                : "Pending"}
+                        </small>
+                      </div>
+                      <div className="intake-next-item-decision" data-label="Decision">
+                        <button
+                          type="button"
+                          className={actionCount ? "action" : "review"}
+                          onClick={() => setIntakeDetailKey(record.key)}
+                        >
+                          {actionCount ? `Need action · ${actionCount}` : "View details"}
+                          <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                        </button>
+                        {rowDrawingAction?.message && <small>{rowDrawingAction.message}</small>}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="intake-next-filter-empty">No line items match this filter.</div>
+            )}
+          </section>
+
+          <section className="intake-next-disclosures" aria-label="Secondary project information">
+            <button
+              type="button"
+              className={intakeDisclosure === "source" ? "active" : ""}
+              onClick={() => setIntakeDisclosure((current) => (current === "source" ? "" : "source"))}
+              aria-expanded={intakeDisclosure === "source"}
+            >
+              <span>
+                <strong>Source order & documents</strong>
+                <small>
+                  {referenceAssets.length} attached reference{referenceAssets.length === 1 ? "" : "s"}
+                </small>
+              </span>
+              <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
+            </button>
+            {intakeDisclosure === "source" && (
+              <div className="intake-next-disclosure-panel intake-next-source-panel">
+                <div className="intake-next-source-summary">
+                  <div>
+                    <span>Client</span>
+                    <strong>{currentClientName}</strong>
+                  </div>
+                  <div>
+                    <span>Destination</span>
+                    <strong>{currentDestination}</strong>
+                  </div>
+                  <div>
+                    <span>Target delivery</span>
+                    <strong>{draft?.desiredDeliveryDate || draft?.deliveryWindow || "Pending"}</strong>
+                  </div>
+                  <div>
+                    <span>Submitted</span>
+                    <strong>{formatAdminDate(draft?.createdAt || selectedJob?.created_at || order.createdDate)}</strong>
+                  </div>
+                </div>
+                <div className="intake-next-document-list">
+                  {referenceAssets.length ? (
+                    referenceAssets.map((asset) => (
+                      <div key={asset.id}>
+                        <span>
+                          {String(asset.type || "FILE")
+                            .toUpperCase()
+                            .slice(0, 12)}
+                        </span>
+                        <strong>{asset.name}</strong>
+                      </div>
+                    ))
+                  ) : (
+                    <p>No source file is attached to this intake yet.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className={intakeDisclosure === "drawings" ? "active" : ""}
+              onClick={() => setIntakeDisclosure((current) => (current === "drawings" ? "" : "drawings"))}
+              aria-expanded={intakeDisclosure === "drawings"}
+            >
+              <span>
+                <strong>BOM & drawing review</strong>
+                <small>
+                  {enrichedIntakeItems.length} item drawing{enrichedIntakeItems.length === 1 ? "" : "s"}
+                </small>
+              </span>
+              <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
+            </button>
+            {intakeDisclosure === "drawings" && (
+              <div className="intake-next-disclosure-panel intake-next-drawing-grid">
+                {enrichedIntakeItems.map((record) => {
+                  const itemName = record.item.typeEn || record.item.typeCn || `Furniture item ${record.index + 1}`;
+                  return (
+                    <button type="button" key={record.key} onClick={() => setIntakeDetailKey(record.key)}>
+                      <span>
+                        {record.drawingUrl ? (
+                          <img src={record.drawingUrl} alt="" />
+                        ) : (
+                          <i className="fa-regular fa-image" aria-hidden="true"></i>
+                        )}
+                      </span>
+                      <strong>{itemName}</strong>
+                      <small>
+                        {record.drawing.status === "formal"
+                          ? "Formal drawing"
+                          : record.drawing.status === "system_generated"
+                            ? "Awaiting confirmation"
+                            : "Drawing pending"}
+                      </small>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className={intakeDisclosure === "approval" ? "active" : ""}
+              onClick={() => setIntakeDisclosure((current) => (current === "approval" ? "" : "approval"))}
+              aria-expanded={intakeDisclosure === "approval"}
+            >
+              <span>
+                <strong>Approval & review note</strong>
+                <small>{isIntakeApproved ? "Approved" : "Cho review pending"}</small>
+              </span>
+              <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
+            </button>
+            {intakeDisclosure === "approval" && (
+              <div className="intake-next-disclosure-panel intake-next-approval-panel">
+                {approvalRows.length
+                  ? renderAdminMiniTable(["Approval", "Status", "Reviewer", "Date"], approvalRows)
+                  : null}
+                <label>
+                  <span>Internal review note</span>
+                  <textarea
+                    value={reviewNote}
+                    onChange={(event) => setReviewNote(event.target.value)}
+                    disabled={intakeApprovalSaving}
+                    placeholder="Note drawing, material, dimensions, tolerance or RFQ readiness..."
+                  />
+                </label>
+                <div>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleAskClientForRevision}
+                    disabled={!hasMissingInfo}
+                  >
+                    Request clarification
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-premium"
+                    onClick={handleApproveIntakeReview}
+                    disabled={
+                      hasMissingInfo ||
+                      !bomRows.length ||
+                      intakeApprovalSaving ||
+                      (isIntakeApproved && Boolean(draft?.projectId))
+                    }
+                  >
+                    {intakeApprovalSaving
+                      ? "Saving approval..."
+                      : isIntakeApproved
+                        ? "Approved"
+                        : "Approve checked package"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {(intakeBomDraftMessage || prequoteNotice) && (
+            <div className="intake-next-notice" role="status">
+              {intakeBomDraftMessage || prequoteNotice}
+            </div>
+          )}
+
+          {(isProjectDetailOpen || selectedIntakeItem) &&
+            createPortal(
+              <div
+                className="intake-next-sheet-backdrop"
+                role="presentation"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) setIntakeDetailKey("");
+                }}
+              >
+                <aside
+                  className="intake-next-sheet"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="intake-next-sheet-title"
+                >
+                  <header>
+                    <div>
+                      <span className="intake-next-kicker">
+                        {isProjectDetailOpen ? "Project action" : "Line item detail"}
+                      </span>
+                      <h2 id="intake-next-sheet-title">
+                        {isProjectDetailOpen
+                          ? currentProjectName
+                          : selectedIntakeItem?.item.typeEn || selectedIntakeItem?.item.typeCn || "Furniture item"}
+                      </h2>
+                    </div>
+                    <button type="button" onClick={() => setIntakeDetailKey("")} aria-label="Close detail panel">
+                      <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                  </header>
+
+                  {isProjectDetailOpen ? (
+                    <div className="intake-next-sheet-body">
+                      <div className="intake-next-sheet-summary">
+                        <span>
+                          {projectQuestions.length} open project question{projectQuestions.length === 1 ? "" : "s"}
+                        </span>
+                        <p>
+                          These decisions affect the order as a whole, so they stay at project level instead of being
+                          repeated on every item.
+                        </p>
+                      </div>
+                      <ol className="intake-next-question-list">
+                        {projectQuestions.map(({ question, questionIndex }) => (
+                          <li key={`${question}-${questionIndex}`}>{question}</li>
+                        ))}
+                      </ol>
+                      <button type="button" className="intake-next-primary" onClick={handleAskClientForRevision}>
+                        Send clarification request
+                        <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                  ) : selectedIntakeItem ? (
+                    <div className="intake-next-sheet-body">
+                      <div className="intake-next-sheet-item-preview">
+                        {selectedIntakeItem.drawingUrl ? (
+                          <a href={selectedIntakeItem.drawingUrl} target="_blank" rel="noreferrer">
+                            <img src={selectedIntakeItem.drawingUrl} alt="Open item drawing" />
+                          </a>
+                        ) : selectedIntakeItem.item.imageUrl || selectedIntakeItem.item.image_url ? (
+                          <img src={selectedIntakeItem.item.imageUrl || selectedIntakeItem.item.image_url} alt="" />
+                        ) : (
+                          <span>
+                            <i className="fa-regular fa-image" aria-hidden="true"></i> Drawing pending
+                          </span>
+                        )}
+                      </div>
+                      <div className="intake-next-sheet-specs">
+                        <div>
+                          <span>Quantity</span>
+                          <strong>
+                            {selectedIntakeItem.item.qtyDisplay ||
+                              selectedIntakeItem.item.qty ||
+                              selectedIntakeItem.item.quantity ||
+                              "—"}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Dimensions</span>
+                          <strong>
+                            {selectedIntakeItem.item.dimensionsText ||
+                              selectedIntakeItem.item.dimensions_text ||
+                              "Pending"}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Material</span>
+                          <strong>
+                            {selectedIntakeItem.item.materialEn ||
+                              selectedIntakeItem.item.materialCn ||
+                              selectedIntakeItem.item.material_en ||
+                              selectedIntakeItem.item.material_cn ||
+                              "To confirm"}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Finish / colour</span>
+                          <strong>
+                            {[selectedIntakeItem.item.finish, selectedIntakeItem.item.color]
+                              .filter(Boolean)
+                              .join(" / ") || "Pending"}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {selectedIntakeItem.questions.length > 0 && (
+                        <section className="intake-next-sheet-questions">
+                          <span className="intake-next-kicker">Need action</span>
+                          <h3>Clarifications for this item</h3>
+                          <ol className="intake-next-question-list">
+                            {selectedIntakeItem.questions.map(({ question, questionIndex }) => (
+                              <li key={`${question}-${questionIndex}`}>{question}</li>
+                            ))}
+                          </ol>
+                          <button type="button" className="intake-next-primary" onClick={handleAskClientForRevision}>
+                            Request item clarification
+                            <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                          </button>
+                        </section>
+                      )}
+
+                      <section className="intake-next-sheet-drawing-status">
+                        <div>
+                          <span>Drawing status</span>
+                          <strong>
+                            {selectedIntakeItem.drawing.status === "formal"
+                              ? "Formal drawing"
+                              : selectedIntakeItem.drawing.status === "system_generated"
+                                ? "System-generated · review required"
+                                : selectedIntakeItem.drawing.status === "generating"
+                                  ? "Generating"
+                                  : "Pending"}
+                          </strong>
+                        </div>
+                        {selectedIntakeItem.drawingNeedsConfirmation && (
+                          <button
+                            type="button"
+                            className="btn-premium"
+                            onClick={() =>
+                              handleConfirmTechnicalDrawing(selectedIntakeItem.item, selectedIntakeItem.index)
+                            }
+                            disabled={selectedDrawingAction?.status === "saving"}
+                          >
+                            {selectedDrawingAction?.status === "saving" ? "Confirming..." : "Confirm as formal drawing"}
+                          </button>
+                        )}
+                        {selectedDrawingAction?.message && <small role="status">{selectedDrawingAction.message}</small>}
+                      </section>
+                    </div>
+                  ) : null}
+                </aside>
+              </div>,
+              document.body
+            )}
+        </div>
+      );
+    }
 
     return (
       <div className="intake-command-workspace">
