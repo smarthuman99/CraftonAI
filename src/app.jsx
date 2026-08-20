@@ -442,6 +442,10 @@ const normalizeTechnicalDrawing = (item = {}) => {
     sourceCount: Number(drawing.source_count || drawing.sourceCount || 0),
     model: drawing.model || "",
     promptVersion: drawing.prompt_version || drawing.promptVersion || "",
+    trackingEmbedded: Boolean(drawing.traceability_embedded || drawing.trackingEmbedded),
+    sku: drawing.sku || "",
+    trackingId: drawing.tracking_id || drawing.trackingId || "",
+    trackingUrl: drawing.tracking_url || drawing.trackingUrl || "",
     itemIndex: Number.isInteger(Number(drawing.item_index)) ? Number(drawing.item_index) : null,
     intakeJobId: drawing.intake_job_id || drawing.intakeJobId || "",
     attempts: Number(drawing.attempts || 0)

@@ -13085,7 +13085,17 @@ select:focus,
   background: #d9d5ce;
 }
 
-.cho-drawing-canvas img {
+.cho-drawing-sheet {
+  position: relative;
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  flex-direction: column;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16);
+}
+
+.cho-drawing-sheet > img {
   display: block;
   width: auto;
   max-width: 100%;
@@ -13093,7 +13103,96 @@ select:focus,
   max-height: calc(92vh - 220px);
   object-fit: contain;
   background: #fff;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16);
+}
+
+.cho-drawing-tracking-panel {
+  position: absolute;
+  top: 58%;
+  left: 73.5%;
+  box-sizing: border-box;
+  display: grid;
+  width: 23.5%;
+  height: 17.4%;
+  grid-template-columns: minmax(0, 1fr) 46%;
+  align-items: center;
+  gap: 2%;
+  padding: 1.2%;
+  overflow: hidden;
+  color: var(--cho-ink);
+  background: #f7f5f0;
+  border: 1px solid #d8d2c8;
+  container-type: inline-size;
+}
+
+.cho-drawing-tracking-panel div,
+.cho-drawing-tracking-panel span,
+.cho-drawing-tracking-panel strong,
+.cho-drawing-tracking-panel small,
+.cho-drawing-tracking-panel code {
+  display: block;
+  min-width: 0;
+}
+
+.cho-drawing-tracking-panel span,
+.cho-drawing-tracking-panel small {
+  overflow: hidden;
+  color: var(--cho-stone);
+  font: 600 clamp(4px, 3.4cqw, 11px) / 1.2 "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cho-drawing-tracking-panel strong {
+  margin: 0.45em 0 0.7em;
+  overflow: hidden;
+  font: 700 clamp(5px, 4.6cqw, 15px) / 1.15 Inter, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cho-drawing-tracking-panel code {
+  margin-top: 0.45em;
+  overflow: hidden;
+  color: var(--cho-walnut);
+  font: 600 clamp(4px, 3.7cqw, 12px) / 1.2 "JetBrains Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cho-drawing-tracking-panel svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 3%;
+  background: #fff;
+  border: 1px solid #d8d2c8;
+}
+
+.cho-drawing-tracking-panel.is-legacy {
+  position: static;
+  width: 100%;
+  height: auto;
+  min-height: 112px;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, 11%);
+  gap: 24px;
+  padding: 18px 22px;
+  border-width: 1px 0 0;
+  container-type: normal;
+}
+
+.cho-drawing-tracking-panel.is-legacy span,
+.cho-drawing-tracking-panel.is-legacy small {
+  font-size: 9px;
+}
+
+.cho-drawing-tracking-panel.is-legacy strong {
+  font-size: 14px;
+}
+
+.cho-drawing-tracking-panel.is-legacy code {
+  font-size: 10px;
 }
 
 .cho-drawing-dialog footer {
@@ -13102,11 +13201,47 @@ select:focus,
 }
 
 .cho-drawing-dialog footer p {
-  max-width: 850px;
   margin: 0;
   color: var(--cho-body);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.cho-drawing-footer-copy {
+  max-width: 760px;
+}
+
+.cho-drawing-download-status {
+  display: block;
+  min-height: 16px;
+  margin-top: 5px;
+  color: var(--cho-stone);
+  font: 500 10px/1.4 "JetBrains Mono", monospace;
+  letter-spacing: 0.03em;
+}
+
+.cho-drawing-download-status.is-success {
+  color: var(--cho-walnut);
+}
+
+.cho-drawing-download-status.is-error {
+  color: var(--cho-ink);
+}
+
+.cho-drawing-footer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.cho-drawing-footer-actions .cho-client-button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.cho-drawing-footer-actions .cho-client-button i {
+  margin-right: 8px;
 }
 
 .cho-project-approval-card article {
@@ -13610,7 +13745,14 @@ select:focus,
     flex-direction: column;
   }
 
-  .cho-drawing-dialog footer .cho-client-button {
+  .cho-drawing-footer-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cho-drawing-dialog footer .cho-client-button,
+  .cho-drawing-footer-actions {
     width: 100%;
   }
 

@@ -217,6 +217,97 @@ const getItemTrackingUrl = (trackingId, item) => {
   return url.toString();
 };
 
+const getDrawingQrElementId = (trackingId) =>
+  `cho-drawing-qr-${String(trackingId || "item").replace(/[^A-Za-z0-9_-]/g, "-")}`;
+
+const safeDownloadName = (value, fallback = "Crafton-three-view") =>
+  String(value || fallback)
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 120) || fallback;
+
+const loadBrowserImage = (src) =>
+  new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("The drawing image could not be prepared for download."));
+    image.src = src;
+  });
+
+const triggerBlobDownload = (blob, filename) => {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+};
+
+const drawTrackingPanel = (context, { x, y, width, height, qrImage, sku, trackingId, legacy = false }) => {
+  const scale = legacy ? width / 2000 : width / 470;
+  const inset = (legacy ? 80 : 26) * scale;
+  const qrSize = 168 * scale;
+  const qrX = x + width - (legacy ? 70 : 15) * scale - qrSize;
+  const qrY = y + Math.max((height - qrSize) / 2, 5 * scale);
+  const textX = x + inset;
+
+  context.save();
+  context.fillStyle = "#f7f5f0";
+  context.fillRect(x, y, width, height);
+  context.strokeStyle = "#d8d2c8";
+  context.lineWidth = Math.max(1, scale);
+  context.strokeRect(x, y, width, height);
+  context.fillStyle = "#73695f";
+  context.font = `700 ${14 * scale}px Arial, sans-serif`;
+  context.fillText("ITEM TRACEABILITY", textX, y + 40 * scale);
+  context.fillStyle = "#211f1b";
+  context.font = `700 ${18 * scale}px Arial, sans-serif`;
+  context.fillText(sku, textX, y + 80 * scale);
+  context.fillStyle = "#82786e";
+  context.font = `600 ${12 * scale}px Arial, sans-serif`;
+  context.fillText("SCAN FOR LIVE RECORD", textX, y + 119 * scale);
+  context.fillStyle = "#4a3525";
+  context.font = `600 ${14 * scale}px Arial, sans-serif`;
+  context.fillText(trackingId, textX, y + 153 * scale);
+  context.fillStyle = "#82786e";
+  context.font = `600 ${12 * scale}px Arial, sans-serif`;
+  context.fillText("QR ID · ACCESS CONTROLLED", textX, y + 196 * scale);
+  context.fillStyle = "#ffffff";
+  context.fillRect(qrX - 5 * scale, qrY - 5 * scale, qrSize + 10 * scale, qrSize + 10 * scale);
+  context.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+  context.restore();
+};
+
+function DrawingTrackingPanel({ lang, preview, legacy = false }) {
+  return (
+    <div
+      className={`cho-drawing-tracking-panel${legacy ? " is-legacy" : ""}`}
+      aria-label={copy(lang, "家具追踪二维码", "Item tracking QR code")}
+    >
+      <div>
+        <span>{copy(lang, "单项追踪", "ITEM TRACEABILITY")}</span>
+        <strong>{preview.sku}</strong>
+        <small>{copy(lang, "扫描查看最新记录", "SCAN FOR LIVE RECORD")}</small>
+        <code>{preview.trackingId}</code>
+      </div>
+      <QRCodeSVG
+        id={getDrawingQrElementId(preview.trackingId)}
+        value={preview.trackingUrl}
+        size={168}
+        level="H"
+        marginSize={2}
+        bgColor="#ffffff"
+        fgColor="#211f1b"
+        title={`${preview.sku} ${copy(lang, "追踪二维码", "tracking QR code")}`}
+      />
+    </div>
+  );
+}
+
 function ProductImage({ src, alt, className = "" }) {
   if (src) return <img className={className} src={src} alt={alt} loading="lazy" />;
   return (
@@ -535,6 +626,7 @@ function ClientProjectDetail({
   onTrackingDeepLinkHandled
 }) {
   const [drawingPreview, setDrawingPreview] = useState(null);
+  const [drawingDownloadState, setDrawingDownloadState] = useState({ status: "", message: "" });
   const [actionSheet, setActionSheet] = useState(null);
   const [trackingSheet, setTrackingSheet] = useState(null);
   const [actionQuestionCursor, setActionQuestionCursor] = useState(0);
@@ -668,6 +760,96 @@ function ClientProjectDetail({
     setActionSheet(nextSheet);
   };
 
+  const handleDownloadDrawing = async () => {
+    if (!drawingPreview || drawingDownloadState.status === "downloading") return;
+    setDrawingDownloadState({
+      status: "downloading",
+      message: copy(lang, "正在准备带追踪二维码的三视图…", "Preparing the three-view with tracking QR…")
+    });
+
+    let sourceObjectUrl = "";
+    let qrObjectUrl = "";
+    try {
+      const response = await window.fetch(drawingPreview.url);
+      if (!response.ok) throw new Error(`Drawing download failed (${response.status}).`);
+      const sourceBlob = await response.blob();
+      const filename = `${safeDownloadName(`${drawingPreview.sku}-${drawingPreview.itemName}`)}-three-view.png`;
+
+      if (drawingPreview.drawing.trackingEmbedded) {
+        triggerBlobDownload(sourceBlob, filename);
+      } else {
+        const qrElement = document.getElementById(getDrawingQrElementId(drawingPreview.trackingId));
+        if (!qrElement) throw new Error("The tracking QR code is not ready yet.");
+
+        sourceObjectUrl = URL.createObjectURL(sourceBlob);
+        const sourceImage = await loadBrowserImage(sourceObjectUrl);
+        const qrMarkup = new window.XMLSerializer().serializeToString(qrElement);
+        qrObjectUrl = URL.createObjectURL(new window.Blob([qrMarkup], { type: "image/svg+xml;charset=utf-8" }));
+        const qrImage = await loadBrowserImage(qrObjectUrl);
+        const usesCurrentSheetLayout = drawingPreview.drawing.promptVersion === "three-view-v1";
+        const sourceWidth = sourceImage.naturalWidth || sourceImage.width;
+        const sourceHeight = sourceImage.naturalHeight || sourceImage.height;
+        const exportScale = Math.max(1, 2000 / sourceWidth);
+        const exportWidth = Math.round(sourceWidth * exportScale);
+        const exportHeight = Math.round(sourceHeight * exportScale);
+        const legacyStripHeight = usesCurrentSheetLayout ? 0 : Math.round(exportWidth * 0.113);
+        const canvas = document.createElement("canvas");
+        canvas.width = exportWidth;
+        canvas.height = exportHeight + legacyStripHeight;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas export is not supported in this browser.");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(sourceImage, 0, 0, exportWidth, exportHeight);
+
+        if (usesCurrentSheetLayout) {
+          drawTrackingPanel(context, {
+            x: exportWidth * (1470 / 2000),
+            y: exportHeight * (754 / 1300),
+            width: exportWidth * (470 / 2000),
+            height: exportHeight * (226 / 1300),
+            qrImage,
+            sku: drawingPreview.sku,
+            trackingId: drawingPreview.trackingId
+          });
+        } else {
+          drawTrackingPanel(context, {
+            x: 0,
+            y: exportHeight,
+            width: exportWidth,
+            height: legacyStripHeight,
+            qrImage,
+            sku: drawingPreview.sku,
+            trackingId: drawingPreview.trackingId,
+            legacy: true
+          });
+        }
+
+        const downloadBlob = await new Promise((resolve, reject) => {
+          canvas.toBlob(
+            (blob) => (blob ? resolve(blob) : reject(new Error("The drawing export could not be created."))),
+            "image/png",
+            1
+          );
+        });
+        triggerBlobDownload(downloadBlob, filename);
+      }
+
+      setDrawingDownloadState({
+        status: "success",
+        message: copy(lang, "三视图已下载到本地。", "Three-view downloaded to your computer.")
+      });
+    } catch (error) {
+      setDrawingDownloadState({
+        status: "error",
+        message: error.message || copy(lang, "三视图下载失败，请稍后重试。", "Download failed. Please try again.")
+      });
+    } finally {
+      if (sourceObjectUrl) URL.revokeObjectURL(sourceObjectUrl);
+      if (qrObjectUrl) URL.revokeObjectURL(qrObjectUrl);
+    }
+  };
+
   useEffect(() => {
     if (!drawingPreview) return undefined;
     const previousOverflow = document.body.style.overflow;
@@ -681,6 +863,10 @@ function ClientProjectDetail({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [drawingPreview]);
+
+  useEffect(() => {
+    setDrawingDownloadState({ status: "", message: "" });
+  }, [drawingPreview?.url]);
 
   useEffect(() => {
     if (!actionSheet) return undefined;
@@ -870,7 +1056,17 @@ function ClientProjectDetail({
                       <button
                         type="button"
                         className="cho-project-drawing-thumb"
-                        onClick={() => setDrawingPreview({ url: drawingUrl, itemName, drawing })}
+                        onClick={() => {
+                          const trackingId = getItemTrackingId(project, job, item);
+                          setDrawingPreview({
+                            url: drawingUrl,
+                            itemName,
+                            drawing,
+                            sku: itemSku,
+                            trackingId,
+                            trackingUrl: getItemTrackingUrl(trackingId, item)
+                          });
+                        }}
                         title={copy(lang, "打开家具三视图", "Open furniture three-view")}
                       >
                         <img src={drawingUrl} alt="" aria-hidden="true" />
@@ -1073,21 +1269,48 @@ function ClientProjectDetail({
                 </button>
               </header>
               <div className="cho-drawing-canvas">
-                <img src={drawingPreview.url} alt={`${drawingPreview.itemName} three-view`} />
+                <div className="cho-drawing-sheet">
+                  <img src={drawingPreview.url} alt={`${drawingPreview.itemName} three-view`} />
+                  {!drawingPreview.drawing.trackingEmbedded && (
+                    <DrawingTrackingPanel
+                      lang={lang}
+                      preview={drawingPreview}
+                      legacy={drawingPreview.drawing.promptVersion !== "three-view-v1"}
+                    />
+                  )}
+                </div>
               </div>
               <footer>
-                <p>
-                  {drawingPreview.drawing.status === "formal"
-                    ? copy(lang, "该图纸已由 Crafton 管理员确认。", "This drawing has been confirmed by Crafton.")
-                    : copy(
-                        lang,
-                        "此为系统根据客户 FF&E 图片与尺寸生成的概念图，管理员确认后会自动更新为正式图纸。",
-                        "This concept drawing was generated from the submitted FF&E images and dimensions. It will update to a formal drawing after administrator confirmation."
-                      )}
-                </p>
-                <a href={drawingPreview.url} target="_blank" rel="noreferrer" className="cho-client-button secondary">
-                  {copy(lang, "在新窗口打开", "Open full size")}
-                </a>
+                <div className="cho-drawing-footer-copy">
+                  <p>
+                    {drawingPreview.drawing.status === "formal"
+                      ? copy(lang, "该图纸已由 Crafton 管理员确认。", "This drawing has been confirmed by Crafton.")
+                      : copy(
+                          lang,
+                          "此为系统根据客户 FF&E 图片与尺寸生成的概念图，管理员确认后会自动更新为正式图纸。",
+                          "This concept drawing was generated from the submitted FF&E images and dimensions. It will update to a formal drawing after administrator confirmation."
+                        )}
+                  </p>
+                  <span className={`cho-drawing-download-status is-${drawingDownloadState.status}`} aria-live="polite">
+                    {drawingDownloadState.message}
+                  </span>
+                </div>
+                <div className="cho-drawing-footer-actions">
+                  <button
+                    type="button"
+                    className="cho-client-button primary"
+                    onClick={handleDownloadDrawing}
+                    disabled={drawingDownloadState.status === "downloading"}
+                  >
+                    <i className="fa-solid fa-download" aria-hidden="true"></i>
+                    {drawingDownloadState.status === "downloading"
+                      ? copy(lang, "准备中…", "Preparing…")
+                      : copy(lang, "下载三视图", "Download drawing")}
+                  </button>
+                  <a href={drawingPreview.url} target="_blank" rel="noreferrer" className="cho-client-button secondary">
+                    {copy(lang, "在新窗口打开", "Open full size")}
+                  </a>
+                </div>
               </footer>
             </section>
           </div>,
