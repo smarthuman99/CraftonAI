@@ -1,6 +1,7 @@
 import { extractIntakeSource, getIntakeSourceKind } from "./intakeSourceReader.mjs";
 
-const MODEL_TIMEOUT_MS = Math.max(10_000, Number(process.env.INTAKE_REANALYSIS_TIMEOUT_MS || 60_000));
+const MODEL_TIMEOUT_MS = Math.max(10_000, Number(process.env.INTAKE_REANALYSIS_TIMEOUT_MS || 120_000));
+const MODEL_MAX_TOKENS = Math.max(6_000, Number(process.env.INTAKE_REANALYSIS_MAX_TOKENS || 8_000));
 const MAX_SOURCE_BYTES = Math.max(
   1_000_000,
   Number(process.env.INTAKE_REANALYSIS_MAX_SOURCE_BYTES || 30 * 1024 * 1024)
@@ -432,8 +433,9 @@ async function requestClarificationReanalysis({ job, result, request, answeredQu
           { role: "user", content: userPrompt }
         ],
         response_format: { type: "json_object" },
+        thinking: { type: "disabled" },
         temperature: 0.05,
-        max_tokens: 5000,
+        max_tokens: MODEL_MAX_TOKENS,
         stream: false
       })
     });
@@ -442,8 +444,15 @@ async function requestClarificationReanalysis({ job, result, request, answeredQu
       throw new Error(`Intake re-analysis request failed: ${response.status} ${body}`);
     }
     const payload = await response.json();
-    const content = payload.choices?.[0]?.message?.content;
-    if (!content) throw new Error("Intake re-analysis did not return structured output.");
+    const choice = payload.choices?.[0];
+    const content = choice?.message?.content;
+    if (!content) {
+      const finishReason = clean(choice?.finish_reason) || "unknown";
+      const reasoningTokens = Number(payload.usage?.completion_tokens_details?.reasoning_tokens || 0);
+      throw new Error(
+        `Intake re-analysis did not return structured output (finish_reason=${finishReason}, reasoning_tokens=${reasoningTokens}).`
+      );
+    }
     return { ...JSON.parse(stripJsonFence(content)), model: payload.model || "" };
   } finally {
     clearTimeout(timeout);
