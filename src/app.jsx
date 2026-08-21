@@ -28,6 +28,7 @@ import SupplierProductionPortal from "./components/SupplierProductionPortal";
 import { AdminLocalized, adminText } from "./adminI18n";
 import { deriveProjectLifecycle, mergeProjectJobSources } from "./projectLifecycle.js";
 import { normalizeProjectItemsForLoading } from "./loadingAiProjectItems.js";
+import { callWorkflowAi } from "./components/workflowAiClient.js";
 
 const IMAGES = {
   heroChair: "/hero_chair.jpg", // 侘寂奢華皮質單椅 (取代 image1)
@@ -368,6 +369,54 @@ const normalizeClarificationQuestions = (...sources) => {
   return Array.from(new Set(questions));
 };
 
+const isPendingIntakeValue = (value) =>
+  /^(?:|to confirm|pending|unknown|n\/?a|待确认|待確認|未确认|未確認)$/i.test(String(value || "").trim());
+
+const isClientFacingClarification = (question) =>
+  !/(?:confirm as formal drawing|system[- ]generated drawing|manual image review|cho (?:must|needs to) review|internal review)/i.test(
+    String(question || "")
+  );
+
+const buildClientClarificationQuestions = ({ draft = {}, order = {}, hasUploadedEvidence = false } = {}) => {
+  const items = Array.isArray(draft.items) ? draft.items : [];
+  const derived = [
+    draft.clientName || order.clientName ? "" : "Please confirm the customer or company name.",
+    draft.destination || draft.deliveryAddress || order.projectLocation
+      ? ""
+      : "Please confirm the delivery destination and full receiving address.",
+    items.length ? "" : "Please confirm the furniture items and quantities required for this project.",
+    draft.desiredDeliveryDate || draft.deliveryWindow ? "" : "Please confirm the target delivery or installation date.",
+    items.some((item) => !isPendingIntakeValue(item.dimensionsText || formatDimensionPayload(item.dimensions || {})))
+      ? ""
+      : "Please confirm the width, depth, and height required for each furniture item.",
+    hasUploadedEvidence || draft.sourceMode === "set_furniture"
+      ? ""
+      : "Please upload or confirm the furniture drawing, photo, or source file."
+  ].filter(Boolean);
+
+  return normalizeClarificationQuestions(draft.questions || [], derived).filter(isClientFacingClarification);
+};
+
+const buildClarificationRequest = ({ questions = [], scope = "project", item = null } = {}) => {
+  const requestId = `CLR-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const normalized = normalizeClarificationQuestions(questions).filter(isClientFacingClarification);
+  return {
+    id: requestId,
+    version: 2,
+    status: "sent",
+    scope,
+    sent_at: new Date().toISOString(),
+    questions: normalized,
+    items: normalized.map((question, index) => ({
+      id: `${requestId}-Q${String(index + 1).padStart(2, "0")}`,
+      question,
+      scope,
+      item_id: item?.id || "",
+      item_index: Number.isInteger(Number(item?.index)) ? Number(item.index) : null
+    }))
+  };
+};
+
 const buildSpecificClarificationFallback = ({ job = {}, project = {}, result = {}, items = [] } = {}) => {
   if (
     !project.desired_delivery_date &&
@@ -461,7 +510,10 @@ const normalizeReviewJob = (job = {}) => {
   const firstItem = items[0] || {};
   const payments = Array.isArray(result.payments) ? result.payments : [];
   const reviewStatus = job.review_status || (job.status === "completed" ? "approved" : "pending");
+  const clarificationRequest = safeJsonObject(result.clarification_request, {});
+  const clarificationWorkflow = safeJsonObject(result.clarification_workflow, {});
   const savedQuestions = normalizeClarificationQuestions(
+    result.open_questions,
     result.questions,
     result.client_questions,
     result.clarification_questions
@@ -472,6 +524,12 @@ const normalizeReviewJob = (job = {}) => {
   if (reviewStatus === "revision_requested" && questions.length === 0) {
     questions.push(buildSpecificClarificationFallback({ job, project, result, items }));
   }
+  const requestedQuestions = normalizeClarificationQuestions(
+    clarificationRequest.items,
+    clarificationRequest.questions
+  );
+  const activeQuestions =
+    reviewStatus === "revision_requested" ? (requestedQuestions.length ? requestedQuestions : questions) : [];
   const rfqDraft = safeJsonObject(job.rfq_draft_json, null);
   const intakeFile = getIntakeFileFromJob(job);
   const dimensionsText =
@@ -497,7 +555,11 @@ const normalizeReviewJob = (job = {}) => {
     reviewStatus,
     rfqStatus: job.rfq_status || "not_started",
     reviewNotes: job.review_notes || "",
-    clientAnswers: safeJsonObject(job.client_answers, {}),
+    clientAnswers: safeJsonObject(job.client_answers, safeJsonObject(result.client_answers, {})),
+    activeQuestions,
+    clarificationRequest,
+    clarificationWorkflow,
+    clarificationHistory: Array.isArray(result.clarification_history) ? result.clarification_history : [],
     sourceNotes: result.source_notes || job.brief_text || "",
     summaryEn: result.summary_en || "Intake draft parsed from client materials.",
     visualAnalysis: safeJsonObject(result.visual_analysis, null),
@@ -637,6 +699,9 @@ const mergeNormalizedProjectJobs = (jobs = [], preferredJobId = "", projectKey =
 
   const items = Array.from(itemMap.values());
   const totalQuantity = items.reduce((total, item) => total + Number(item.qty || 0), 0);
+  const clarificationWorkflows = normalizedJobs
+    .map((job) => job.clarificationWorkflow)
+    .filter((workflow) => workflow && Object.keys(workflow).length > 0);
   const reviewStatuses = normalizedJobs.map((job) => job.reviewStatus);
   const reviewStatus = reviewStatuses.includes("revision_requested")
     ? "revision_requested"
@@ -662,6 +727,11 @@ const mergeNormalizedProjectJobs = (jobs = [], preferredJobId = "", projectKey =
     quantityText: `${totalQuantity} pcs / ${items.length} designs`,
     reviewStatus,
     questions: Array.from(new Set(normalizedJobs.flatMap((job) => job.questions || []))),
+    clarificationWorkflow:
+      (base.clarificationWorkflow && Object.keys(base.clarificationWorkflow).length
+        ? base.clarificationWorkflow
+        : clarificationWorkflows[0]) || {},
+    clarificationHistory: normalizedJobs.flatMap((job) => job.clarificationHistory || []).slice(-20),
     desiredDeliveryDate: normalizedJobs.find((job) => job.desiredDeliveryDate)?.desiredDeliveryDate || "",
     deliveryWindow: normalizedJobs.find((job) => job.deliveryWindow)?.deliveryWindow || "",
     targetBudget: normalizedJobs.find((job) => job.targetBudget)?.targetBudget || "",
@@ -931,6 +1001,42 @@ const denormalizeReviewDraft = (draft) => ({
   summary_en: draft.summaryEn || "Cho reviewed the intake draft and prepared it for pre-quote handling.",
   source_notes: draft.sourceNotes || ""
 });
+
+const mergeReviewDraftIntoResult = (job = {}, draft = {}) => {
+  const original = safeJsonObject(job.result_json, {});
+  const reviewed = denormalizeReviewDraft(draft);
+  const originalItems = Array.isArray(original.items) ? original.items : [];
+  const reviewedItems = Array.isArray(reviewed.items) ? reviewed.items : [];
+
+  return {
+    ...original,
+    ...reviewed,
+    project: { ...safeJsonObject(original.project, {}), ...safeJsonObject(reviewed.project, {}) },
+    items: reviewedItems.map((item, index) => {
+      const source =
+        originalItems.find(
+          (candidate) =>
+            (item.id && String(candidate.id || "") === String(item.id)) ||
+            (draft.items?.[index]?.sku &&
+              String(candidate.sku || candidate.sku_code || "") === String(draft.items[index].sku))
+        ) ||
+        originalItems[index] ||
+        {};
+      return {
+        ...source,
+        ...item,
+        id: source.id || item.id || "",
+        sku: source.sku || source.sku_code || draft.items?.[index]?.sku || "",
+        tracking_id: source.tracking_id || source.trackingId || draft.items?.[index]?.trackingId || "",
+        tracking_url: source.tracking_url || source.trackingUrl || draft.items?.[index]?.trackingUrl || "",
+        technical_drawing: source.technical_drawing || source.technicalDrawing || undefined,
+        image_storage_bucket: source.image_storage_bucket,
+        image_storage_path: source.image_storage_path,
+        image_storage_paths: source.image_storage_paths
+      };
+    })
+  };
+};
 
 const buildRfqDraft = (draft) => {
   const items = draft.items || [];
@@ -5672,10 +5778,18 @@ function App() {
     setReviewDraft(merged);
     setReviewNote(merged.reviewNotes || "");
     setPrequoteNotice(
-      merged.reviewStatus === "approved" ? "Intake draft approved. Specs are ready for RFQ package preparation." : ""
+      merged.reviewStatus === "approved"
+        ? "Intake draft approved. Specs are ready for RFQ package preparation."
+        : merged.clarificationWorkflow?.status === "ready_for_approval"
+          ? merged.clarificationWorkflow.summaryEn || "AI updated the intake draft. It is ready for Cho approval."
+          : ""
     );
     setIntakeApprovalSaving(false);
-    setIntakeBomDraftGenerated(false);
+    setIntakeBomDraftGenerated(
+      Boolean(
+        merged.clarificationWorkflow?.bom_draft_ready || merged.clarificationWorkflow?.status === "ready_for_approval"
+      )
+    );
     setIntakeBomDraftSaving(false);
     setIntakeBomDraftMessage("");
     setOrder(buildOrderFromReviewDraft(merged));
@@ -5886,6 +6000,18 @@ function App() {
   const handleApproveIntakeReview = async () => {
     const { selectedJob: job, draft, projectJobs } = getAdminDraftContext();
     if (!job || !draft) return;
+    const blockingQuestions = normalizeClarificationQuestions(draft.questions).filter(isClientFacingClarification);
+    if (blockingQuestions.length > 0) {
+      setPrequoteNotice(`Approval is blocked: ${blockingQuestions.length} client clarification(s) remain.`);
+      return;
+    }
+    const pendingDrawings = (draft.items || []).filter((item) => item.technicalDrawing?.status === "system_generated");
+    if (pendingDrawings.length > 0) {
+      setPrequoteNotice(
+        `Approval is blocked: confirm ${pendingDrawings.length} system-generated drawing${pendingDrawings.length === 1 ? "" : "s"} first.`
+      );
+      return;
+    }
 
     const updates = {
       status: "completed",
@@ -5949,29 +6075,54 @@ function App() {
     }
   };
 
-  const handleAskClientForRevision = async () => {
+  const handleAskClientForRevision = async (requestOptions = {}) => {
     if (clarificationRequestSavingRef.current) return;
     const job = intakeReviewJobs.find((item) => item.id === selectedReviewJobId) || intakeReviewJobs[0];
     if (!job || !reviewDraft) return;
 
-    const resultJson = denormalizeReviewDraft(reviewDraft);
-    const clarificationQuestions = normalizeClarificationQuestions(reviewNote, reviewDraft.questions);
-    if (clarificationQuestions.length === 0) {
-      clarificationQuestions.push(
-        buildSpecificClarificationFallback({
-          job,
-          project: resultJson.project || {},
-          result: resultJson,
-          items: resultJson.items || []
-        })
-      );
+    const options = requestOptions?.preventDefault ? {} : requestOptions || {};
+    const resultJson = mergeReviewDraftIntoResult(job, reviewDraft);
+    const hasUploadedEvidence = Boolean(
+      reviewDraft.fileName ||
+      getIntakeFileFromJob(job) ||
+      reviewDraft.sourceMode === "set_furniture" ||
+      reviewDraft.items?.some((item) => item.imageUrl || item.technicalDrawing?.url)
+    );
+    const allOpenQuestions = buildClientClarificationQuestions({
+      draft: reviewDraft,
+      order,
+      hasUploadedEvidence
+    });
+    if (allOpenQuestions.length === 0) {
+      setPrequoteNotice("No client-facing clarification remains. Review the internal drawing and approval actions.");
+      return;
     }
-    resultJson.questions = clarificationQuestions;
+    const scopedQuestions = normalizeClarificationQuestions(options.questions).filter(isClientFacingClarification);
+    const clarificationQuestions = scopedQuestions.length ? scopedQuestions : allOpenQuestions;
+    const clarificationRequest = buildClarificationRequest({
+      questions: clarificationQuestions,
+      scope: options.scope || "project",
+      item: options.item || null
+    });
+    resultJson.questions = allOpenQuestions;
+    resultJson.open_questions = allOpenQuestions;
+    resultJson.client_answers = {};
+    resultJson.clarification_request = clarificationRequest;
+    resultJson.clarification_workflow = {
+      version: 2,
+      status: "awaiting_client",
+      request_id: clarificationRequest.id,
+      sent_at: clarificationRequest.sent_at,
+      sent_question_count: clarificationQuestions.length,
+      open_question_count: allOpenQuestions.length,
+      bom_draft_ready: false
+    };
     const updates = {
       status: "needs_review",
       step: "client_clarification_requested",
       review_status: "revision_requested",
       review_notes: clarificationQuestions[0],
+      client_answers: {},
       result_json: resultJson
     };
 
@@ -5979,7 +6130,9 @@ function App() {
     setClarificationRequestSaving(true);
     try {
       await persistIntakeJobUpdate(job, updates);
-      setPrequoteNotice("Clarification request sent to the client portal.");
+      setPrequoteNotice(
+        `${clarificationQuestions.length} clarification question${clarificationQuestions.length === 1 ? "" : "s"} sent to the client portal.`
+      );
       addLog("Cho", "Requested client clarification before RFQ.", "Requested client clarification before RFQ.");
     } catch (err) {
       console.error("Client clarification request failed:", err);
@@ -6109,47 +6262,124 @@ function App() {
       return;
     }
 
-    const resultJson = {
-      ...safeJsonObject(job.result_json, {}),
-      client_answers: answers
-    };
-
+    let fallbackAnswerSaved = false;
     try {
       setClientAnswerSubmitState((prev) => ({
         ...prev,
         [job.id]: {
           status: "submitting",
-          message: "Submitting answers to Cho..."
+          message: "Saving answers and asking AI to re-check the project..."
         }
       }));
-      await persistIntakeJobUpdate(job, {
-        status: "needs_review",
-        step: "client_answers_submitted",
-        review_status: "pending",
-        review_notes: "Client submitted clarification answers.",
-        client_answers: answers,
-        result_json: resultJson
-      });
+      let response;
+      if (window.supabase && getSupabaseUrl() && getSupabaseKey() && !String(job.id).startsWith("LOCAL-")) {
+        const context = await getPortalSupabaseContext({ requireAuth: true });
+        if (!context?.client)
+          throw new Error("A signed-in client session is required to submit clarification answers.");
+        response = await callWorkflowAi(context.client, {
+          action: "reanalyze_intake_clarifications",
+          jobId: job.id,
+          answers
+        });
+        if (response?.job) updateLocalReviewJob(job.id, response.job);
+      } else {
+        const resultJson = {
+          ...safeJsonObject(job.result_json, {}),
+          client_answers: answers,
+          clarification_request: {
+            ...safeJsonObject(safeJsonObject(job.result_json, {}).clarification_request, {}),
+            status: "answered",
+            answered_at: new Date().toISOString()
+          },
+          clarification_workflow: {
+            version: 2,
+            status: "manual_review_required",
+            submitted_at: new Date().toISOString(),
+            bom_draft_ready: false,
+            summary_en: "Client answers were saved locally and require Cho review.",
+            summary_cn: "客户答案已在本地保存，需要 Cho 人工复核。"
+          }
+        };
+        const localJob = await persistIntakeJobUpdate(job, {
+          status: "needs_review",
+          step: "client_answers_submitted",
+          review_status: "pending",
+          review_notes: "Client submitted clarification answers for Cho review.",
+          client_answers: answers,
+          result_json: resultJson
+        });
+        response = { job: localJob, reanalysis: resultJson.clarification_workflow, questions: normalized.questions };
+      }
+      const reanalysis = response?.reanalysis || {};
+      const remainingCount = Number(reanalysis.remaining_question_count ?? response?.questions?.length ?? 0);
+      const successMessage =
+        reanalysis.status === "ready_for_approval"
+          ? "Answers saved. AI updated the project draft; it is now waiting for Cho approval."
+          : reanalysis.continue_client_clarification
+            ? `Answer saved. AI updated the project; ${remainingCount} clarification${remainingCount === 1 ? "" : "s"} remain for you to complete.`
+            : reanalysis.status === "clarification_required"
+              ? `Answers saved. AI re-checked the project and found ${remainingCount} item${remainingCount === 1 ? "" : "s"} for Cho to review.`
+              : "Answers saved. Cho will review the project update.";
+      setClientAnswerDrafts((prev) => ({ ...prev, [job.id]: {} }));
       setClientAnswerSubmitState((prev) => ({
         ...prev,
         [job.id]: {
           status: "success",
-          message: "Answers submitted successfully. Cho can now see your updates."
+          message: successMessage.trim()
         }
       }));
-      setPrequoteNotice(`${normalized.projectName}: answers submitted back to Cho.`);
+      setPrequoteNotice(`${normalized.projectName}: ${successMessage.trim()}`);
       await loadPrequoteWorkspace();
       await loadAdminOperationalData();
     } catch (err) {
       console.error("Client answer submission failed:", err);
+      const resultJson = {
+        ...safeJsonObject(job.result_json, {}),
+        client_answers: answers,
+        clarification_request: {
+          ...safeJsonObject(safeJsonObject(job.result_json, {}).clarification_request, {}),
+          status: "answered",
+          answered_at: new Date().toISOString()
+        },
+        clarification_workflow: {
+          version: 2,
+          status: "failed",
+          submitted_at: new Date().toISOString(),
+          bom_draft_ready: false,
+          error: String(err.message || err),
+          summary_en: "Client answers were saved, but AI re-analysis needs manual Cho review.",
+          summary_cn: "客户答案已保存，但 AI 重新分析未完成，需要 Cho 人工复核。"
+        }
+      };
+      try {
+        await persistIntakeJobUpdate(job, {
+          status: "needs_review",
+          step: "ai_reanalysis_failed",
+          review_status: "pending",
+          review_notes: "Client answers saved. AI re-analysis requires manual Cho review.",
+          client_answers: answers,
+          result_json: resultJson
+        });
+        fallbackAnswerSaved = true;
+      } catch (saveError) {
+        console.error("Clarification answer fallback save failed:", saveError);
+      }
       setClientAnswerSubmitState((prev) => ({
         ...prev,
         [job.id]: {
-          status: "error",
-          message: `Answers could not be saved: ${err.message || err}`
+          status: fallbackAnswerSaved ? "success" : "error",
+          message: fallbackAnswerSaved
+            ? "Answers were sent to Cho. AI re-analysis needs manual review."
+            : `Answers could not be saved: ${err.message || err}`
         }
       }));
-      setPrequoteNotice(`Answers could not be saved: ${err.message || err}`);
+      setPrequoteNotice(
+        fallbackAnswerSaved
+          ? "Answers were sent to Cho. AI re-analysis needs manual review."
+          : `Answers could not be saved: ${err.message || err}`
+      );
+      await loadPrequoteWorkspace().catch(() => {});
+      await loadAdminOperationalData().catch(() => {});
     }
   };
 
@@ -7346,7 +7576,7 @@ function App() {
         }
         onSubmitAnswers={(jobId) => {
           const sourceJob = jobs.find((job) => String(job.id) === String(jobId));
-          if (sourceJob) handleSubmitClientAnswers(sourceJob);
+          return sourceJob ? handleSubmitClientAnswers(sourceJob) : Promise.resolve();
         }}
       />
     );
@@ -7691,7 +7921,9 @@ function App() {
         ].filter(Boolean)
       : [
           draft?.clientName || order.clientName ? null : "Customer name is missing.",
-          draft?.destination || order.projectLocation ? null : "Delivery destination is missing.",
+          draft?.destination || draft?.deliveryAddress || order.projectLocation
+            ? null
+            : "Delivery destination is missing.",
           bomItems.length ? null : "Furniture item, quantity, or material rows are missing.",
           draft?.desiredDeliveryDate || draft?.deliveryWindow ? null : "Desired delivery date is missing.",
           draft?.dimensions || bomItems.some((item) => item.dimensionsText)
@@ -7701,7 +7933,7 @@ function App() {
         ].filter(Boolean);
     const missingQuestions = Array.from(
       new Set([...(isSetFurnitureIntake ? [] : draft?.questions || []), ...derivedMissingQuestions])
-    );
+    ).filter(isClientFacingClarification);
     const hasMissingInfo = missingQuestions.length > 0;
     const isIntakeApproved = ["approved", "rfq_ready"].includes(draft?.reviewStatus);
     const liveRfqPackage = adminRfqBatches.find(
@@ -7931,6 +8163,7 @@ function App() {
     });
     const itemActionCount = enrichedIntakeItems.reduce((total, record) => total + record.actionCount, 0);
     const totalActionCount = projectQuestions.length + itemActionCount;
+    const pendingDrawingCount = enrichedIntakeItems.filter((record) => record.drawingNeedsConfirmation).length;
     const readyItemCount = enrichedIntakeItems.filter((record) => record.actionCount === 0).length;
     const totalPieces = bomItems.reduce((total, item) => total + parseIntakeQuantity(item), 0);
     const completenessDone = completenessItems.filter((item) => item.state === "done").length;
@@ -7946,6 +8179,15 @@ function App() {
     const currentClientName = draft?.clientName || order.clientName || "Client pending";
     const currentDestination = draft?.destination || order.projectLocation || "Destination pending";
     const currentOrderCount = draft?.orderCount || projectJobs.length || 1;
+    const clarificationWorkflow = draft?.clarificationWorkflow || {};
+    const latestClarificationHistory = (draft?.clarificationHistory || []).slice(-1)[0] || {};
+    const hasClarificationAnalysis = [
+      "analyzing",
+      "ready_for_approval",
+      "clarification_required",
+      "failed",
+      "manual_review_required"
+    ].includes(clarificationWorkflow.status);
     const intakeProgressIndex = liveRfqPackage ? 4 : isIntakeApproved ? 3 : intakeBomDraftGenerated ? 2 : 1;
     const intakeStages = [
       { code: "S01", label: "Order brief", detail: "Source received" },
@@ -7978,19 +8220,25 @@ function App() {
           }
         : !bomRows.length
           ? { label: "Waiting for parsed items", onClick: () => {}, disabled: true }
-          : isIntakeApproved
+          : isIntakeApproved && pendingDrawingCount === 0
             ? { label: "Create RFQ package", onClick: handleCreateRfqDraft, disabled: intakeApprovalSaving }
-            : !intakeBomDraftGenerated
+            : !intakeBomDraftGenerated && !isIntakeApproved
               ? {
                   label: intakeBomDraftSaving ? "Saving project BOM..." : "Generate BOM & spec",
                   onClick: handleGenerateBomDraft,
                   disabled: intakeBomDraftSaving
                 }
-              : {
-                  label: intakeApprovalSaving ? "Saving approval..." : "Approve checked package",
-                  onClick: handleApproveIntakeReview,
-                  disabled: intakeApprovalSaving
-                };
+              : pendingDrawingCount > 0
+                ? {
+                    label: `Review ${pendingDrawingCount} drawing${pendingDrawingCount === 1 ? "" : "s"}`,
+                    onClick: () => setIntakeDisclosure("drawings"),
+                    disabled: false
+                  }
+                : {
+                    label: intakeApprovalSaving ? "Saving approval..." : "Approve checked package",
+                    onClick: handleApproveIntakeReview,
+                    disabled: intakeApprovalSaving
+                  };
 
     if (hasVerifiedAdminAccess && hasActiveIntake) {
       return (
@@ -8100,6 +8348,39 @@ function App() {
               ))}
             </div>
           </section>
+
+          {hasClarificationAnalysis && (
+            <section
+              className={`intake-next-project-action ai-${clarificationWorkflow.status}`}
+              aria-label="Client answer re-analysis status"
+            >
+              <div>
+                <span className="intake-next-action-icon" aria-hidden="true">
+                  AI
+                </span>
+                <div>
+                  <strong>
+                    {clarificationWorkflow.status === "ready_for_approval"
+                      ? "AI update ready for Cho approval"
+                      : clarificationWorkflow.status === "analyzing"
+                        ? "AI is re-analysing the client answers"
+                        : clarificationWorkflow.status === "clarification_required"
+                          ? "AI update needs Cho review"
+                          : "Client answers need manual review"}
+                  </strong>
+                  <p>
+                    {clarificationWorkflow.summary_en ||
+                      clarificationWorkflow.summaryEn ||
+                      "Client answers and the latest project draft are available for review."}
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setIntakeDisclosure("clarification")}>
+                Review AI update
+                <span>{Number(clarificationWorkflow.remaining_question_count || 0)}</span>
+              </button>
+            </section>
+          )}
 
           {projectQuestions.length > 0 && (
             <section className="intake-next-project-action" aria-label="Project-level actions">
@@ -8336,6 +8617,70 @@ function App() {
               </div>
             )}
 
+            {hasClarificationAnalysis && (
+              <>
+                <button
+                  type="button"
+                  className={intakeDisclosure === "clarification" ? "active" : ""}
+                  onClick={() => setIntakeDisclosure((current) => (current === "clarification" ? "" : "clarification"))}
+                  aria-expanded={intakeDisclosure === "clarification"}
+                >
+                  <span>
+                    <strong>Client answers & AI re-analysis</strong>
+                    <small>
+                      {clarificationWorkflow.status === "ready_for_approval"
+                        ? "Ready for Cho approval"
+                        : `${Number(clarificationWorkflow.remaining_question_count || 0)} clarification(s) remain`}
+                    </small>
+                  </span>
+                  <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                </button>
+                {intakeDisclosure === "clarification" && (
+                  <div className="intake-next-disclosure-panel intake-next-source-panel">
+                    <div className="intake-next-source-summary">
+                      <div>
+                        <span>Status</span>
+                        <strong>{String(clarificationWorkflow.status || "pending").replaceAll("_", " ")}</strong>
+                      </div>
+                      <div>
+                        <span>Answered</span>
+                        <strong>{Number(clarificationWorkflow.answered_question_count || 0)}</strong>
+                      </div>
+                      <div>
+                        <span>Resolved</span>
+                        <strong>{Number(clarificationWorkflow.resolved_question_count || 0)}</strong>
+                      </div>
+                      <div>
+                        <span>Remaining</span>
+                        <strong>{Number(clarificationWorkflow.remaining_question_count || 0)}</strong>
+                      </div>
+                    </div>
+                    {(latestClarificationHistory.answers || []).length > 0 && (
+                      <div className="intake-next-document-list">
+                        {latestClarificationHistory.answers.map((entry, index) => (
+                          <div key={entry.id || `${entry.question}-${index}`}>
+                            <span>{entry.answer ? "ANSWERED" : "NO ANSWER"}</span>
+                            <strong>{entry.question}</strong>
+                            <small>{entry.answer || "No client answer was submitted."}</small>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(clarificationWorkflow.change_summary || []).length > 0 && (
+                      <div className="intake-next-sheet-questions">
+                        <span className="intake-next-kicker">AI draft updates</span>
+                        <ol className="intake-next-question-list">
+                          {clarificationWorkflow.change_summary.map((change, index) => (
+                            <li key={`${change}-${index}`}>{change}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
             <button
               type="button"
               className={intakeDisclosure === "approval" ? "active" : ""}
@@ -8377,6 +8722,7 @@ function App() {
                     onClick={handleApproveIntakeReview}
                     disabled={
                       hasMissingInfo ||
+                      pendingDrawingCount > 0 ||
                       !bomRows.length ||
                       intakeApprovalSaving ||
                       (isIntakeApproved && Boolean(draft?.projectId))
@@ -8449,7 +8795,12 @@ function App() {
                       <button
                         type="button"
                         className="intake-next-primary"
-                        onClick={handleAskClientForRevision}
+                        onClick={() =>
+                          handleAskClientForRevision({
+                            questions: projectQuestions.map((entry) => entry.question),
+                            scope: "project"
+                          })
+                        }
                         disabled={clarificationRequestSaving}
                       >
                         {clarificationRequestSaving ? "Sending request..." : "Send clarification request"}
@@ -8521,7 +8872,16 @@ function App() {
                           <button
                             type="button"
                             className="intake-next-primary"
-                            onClick={handleAskClientForRevision}
+                            onClick={() =>
+                              handleAskClientForRevision({
+                                questions: selectedIntakeItem.questions.map((entry) => entry.question),
+                                scope: "item",
+                                item: {
+                                  id: selectedIntakeItem.item.id,
+                                  index: selectedIntakeItem.index
+                                }
+                              })
+                            }
                             disabled={clarificationRequestSaving}
                           >
                             {clarificationRequestSaving ? "Sending request..." : "Request item clarification"}

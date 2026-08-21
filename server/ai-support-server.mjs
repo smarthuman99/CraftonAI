@@ -9,6 +9,7 @@ import { dispatchRfqEmails, getRfqDispatchStatus } from "./lib/rfqDispatch.mjs";
 import { buildEmailAttachmentsFromSupabase, enrichRfqContextFromSupabase } from "./lib/rfqSourceData.mjs";
 import { createQuoteAnalysis } from "./lib/quoteAnalyzer.mjs";
 import { createOperationsPlan } from "./lib/operationsAutomation.mjs";
+import { reanalyzeIntakeClarifications } from "./lib/intakeClarificationReanalysis.mjs";
 import {
   analyzeProductionProject,
   approveSupplierProductionPlan,
@@ -111,6 +112,14 @@ const server = http.createServer(async (req, res) => {
       } else if (body.action === "analyze_production_progress") {
         const { supabase } = await requireCraftonStaff(req);
         result = await analyzeProductionProject({ supabase, projectId: body.projectId });
+      } else if (body.action === "reanalyze_intake_clarifications") {
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        result = await reanalyzeIntakeClarifications({
+          supabase,
+          user,
+          jobId: body.jobId,
+          answers: body.answers
+        });
       } else if (body.action === "review_production_evidence") {
         const { supabase, user } = await requireCraftonStaff(req);
         result = await reviewSupplierProductionEvidence({ supabase, user, body });

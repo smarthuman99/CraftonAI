@@ -18540,6 +18540,30 @@ select:focus,
   font-size: 0.62rem;
 }
 
+.intake-next-project-action.ai-ready_for_approval {
+  border-color: rgba(63, 104, 66, 0.3);
+  background: #edf3e8;
+}
+
+.intake-next-project-action[class*=" ai-"] .intake-next-action-icon {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.67rem;
+  font-style: normal;
+}
+
+.intake-next-project-action.ai-ready_for_approval .intake-next-action-icon {
+  background: #496b47;
+}
+
+.intake-next-project-action.ai-analyzing {
+  background: #f0eee6;
+}
+
+.intake-next-project-action.ai-failed,
+.intake-next-project-action.ai-manual_review_required {
+  border-style: dashed;
+}
+
 .intake-next-items-card {
   margin-top: 18px;
   padding: 26px 28px 12px;
@@ -18881,6 +18905,14 @@ select:focus,
 
 .intake-next-document-list strong {
   font-size: 0.77rem;
+  overflow-wrap: anywhere;
+}
+
+.intake-next-document-list small {
+  grid-column: 2;
+  color: var(--intake-body);
+  font-size: 0.72rem;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 

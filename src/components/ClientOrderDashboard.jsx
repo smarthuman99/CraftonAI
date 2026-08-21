@@ -78,10 +78,10 @@ const getStageDetail = (job, lang) => {
   return details[getOrderStage(job)];
 };
 
-const isActionNeeded = (job) =>
-  job.reviewStatus === "revision_requested" || ((job.questions || []).length > 0 && job.reviewStatus !== "approved");
+const isActionNeeded = (job) => job.reviewStatus === "revision_requested";
 
 const getActionQuestions = (job, lang) => {
+  if ((job.activeQuestions || []).length) return job.activeQuestions;
   if ((job.questions || []).length) return job.questions;
   if (job.reviewStatus === "revision_requested") {
     return [
@@ -592,7 +592,10 @@ function ProjectActionSheet({
           <button
             type="button"
             className="cho-client-button primary"
-            onClick={() => onSubmitAnswers(action.job.id)}
+            onClick={async () => {
+              await onSubmitAnswers(action.job.id);
+              onClose();
+            }}
             disabled={isSubmitting || !String(answers[action.questionIndex] || "").trim()}
           >
             {isSubmitting
