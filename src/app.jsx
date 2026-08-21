@@ -1038,6 +1038,7 @@ function App() {
   const [reviewNote, setReviewNote] = useState("");
   const [prequoteNotice, setPrequoteNotice] = useState("");
   const [intakeApprovalSaving, setIntakeApprovalSaving] = useState(false);
+  const [clarificationRequestSaving, setClarificationRequestSaving] = useState(false);
   const [intakeBomDraftGenerated, setIntakeBomDraftGenerated] = useState(false);
   const [intakeBomDraftSaving, setIntakeBomDraftSaving] = useState(false);
   const [intakeBomDraftMessage, setIntakeBomDraftMessage] = useState("");
@@ -1105,6 +1106,9 @@ function App() {
   const supportConversationIdRef = useRef(null);
   const intakeFileInputRef = useRef(null);
   const lastProfileSyncRef = useRef("");
+  const clarificationRequestSavingRef = useRef(false);
+  const prequoteWorkspaceLoadRef = useRef(null);
+  const prequoteWorkspaceLoadedRef = useRef(false);
 
   // Material Studio Swatch Configurator States
   const [selectedFabric, setSelectedFabric] = useState("FAB-02"); // default Navy Classic Linen
@@ -5394,151 +5398,167 @@ function App() {
     };
   };
 
-  const loadPrequoteWorkspace = async () => {
-    setClientProjectsLoading(true);
-    const localJobs = getLocalReviewJobs();
+  const loadPrequoteWorkspace = (options = {}) => {
+    if (prequoteWorkspaceLoadRef.current) return prequoteWorkspaceLoadRef.current;
 
-    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
-      setIntakeReviewJobs(localJobs);
-      setClientProjectJobs(localJobs);
-      setClientProjectsLoading(false);
-      return;
-    }
+    const shouldShowBlockingLoading = !prequoteWorkspaceLoadedRef.current && !options.background;
+    const loadPromise = (async () => {
+      if (shouldShowBlockingLoading) setClientProjectsLoading(true);
+      const localJobs = getLocalReviewJobs();
 
-    const context = await getPortalSupabaseContext({ requireAuth: false });
-    if (!context?.client) {
-      setIntakeReviewJobs(localJobs);
-      setClientProjectJobs(localJobs);
-      setClientProjectsLoading(false);
-      return;
-    }
-
-    try {
-      const { client, supabaseUser } = context;
-      const authenticatedUser = supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null;
-
-      if (!supabaseUser) {
-        setAdminAccessStatus("unauthenticated");
-        setIntakeReviewJobs([]);
-        setClientProjectJobs([]);
+      if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
+        setIntakeReviewJobs(localJobs);
+        setClientProjectJobs(localJobs);
+        setClientProjectsLoading(false);
         return;
       }
 
-      if (authenticatedUser?.isStaff) {
-        setAdminAccessStatus("loading");
-        const { data: reviewData, error: reviewError } = await client
-          .from("intake_jobs")
-          .select("*, intake_files(*), projects(*)")
-          .in("status", ["queued", "processing", "needs_review", "completed"])
-          .order("created_at", { ascending: false })
-          .limit(24);
-
-        if (reviewError) throw reviewError;
-        const reviewRowsWithPreviews = await Promise.all(
-          (reviewData || []).map((row) => addSignedIntakeItemImages(client, row))
-        );
-        setIntakeReviewJobs(reviewRowsWithPreviews);
-        setAdminAccessStatus("ready");
-      } else {
-        setAdminAccessStatus("forbidden");
-        setIntakeReviewJobs([]);
+      const context = await getPortalSupabaseContext({ requireAuth: false });
+      if (!context?.client) {
+        setIntakeReviewJobs(localJobs);
+        setClientProjectJobs(localJobs);
+        setClientProjectsLoading(false);
+        return;
       }
 
-      if (supabaseUser) {
-        const { data: clientData, error: clientError } = await client
-          .from("intake_jobs")
-          .select("*, intake_files(*), projects(*)")
-          .eq("user_id", supabaseUser.id)
-          .order("created_at", { ascending: false })
-          .limit(24);
+      try {
+        const { client, supabaseUser } = context;
+        const authenticatedUser = supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null;
 
-        if (clientError) throw clientError;
-        const clientRows = clientData && clientData.length > 0 ? clientData : [];
-        const clientRowsWithPreviews = await Promise.all(
-          clientRows.map(async (row) => {
-            const rowWithItemImages = await addSignedIntakeItemImages(client, row);
-            const file = getIntakeFileFromJob(row);
-            if (!file?.mime_type?.startsWith("image/") || !file.storage_bucket || !file.storage_path) {
-              return rowWithItemImages;
-            }
+        if (!supabaseUser) {
+          setAdminAccessStatus("unauthenticated");
+          setIntakeReviewJobs([]);
+          setClientProjectJobs([]);
+          return;
+        }
 
-            try {
-              const { data: signed, error: signedError } = await client.storage
-                .from(file.storage_bucket)
-                .createSignedUrl(file.storage_path, 60 * 60);
-              if (signedError) throw signedError;
-              return { ...rowWithItemImages, client_preview_url: signed?.signedUrl || "" };
-            } catch (previewError) {
-              console.warn("Client furniture preview could not be created:", previewError.message || previewError);
-              return rowWithItemImages;
-            }
-          })
-        );
-        const projectIds = Array.from(
-          new Set(
-            clientRowsWithPreviews
-              .map((row) => row.project_id)
-              .filter(Boolean)
-              .map(String)
-          )
-        );
-        const progressTableSpecs = [
-          { table: "production_updates", key: "productionUpdates" },
-          { table: "inspection_reports", key: "inspections" },
-          { table: "shipments", key: "shipments" },
-          { table: "shipment_documents", key: "shipmentDocuments" },
-          { table: "project_files", key: "projectFiles" },
-          { table: "handover_reports", key: "handovers" },
-          { table: "workflow_events", key: "workflowEvents" }
-        ];
-        const progressRows = {};
+        if (authenticatedUser?.isStaff) {
+          if (shouldShowBlockingLoading) setAdminAccessStatus("loading");
+          const { data: reviewData, error: reviewError } = await client
+            .from("intake_jobs")
+            .select("*, intake_files(*), projects(*)")
+            .in("status", ["queued", "processing", "needs_review", "completed"])
+            .order("created_at", { ascending: false })
+            .limit(24);
 
-        if (projectIds.length) {
-          await Promise.all(
-            progressTableSpecs.map(async ({ table, key }) => {
+          if (reviewError) throw reviewError;
+          const reviewRowsWithPreviews = await Promise.all(
+            (reviewData || []).map((row) => addSignedIntakeItemImages(client, row))
+          );
+          setIntakeReviewJobs(reviewRowsWithPreviews);
+          setAdminAccessStatus("ready");
+        } else {
+          setAdminAccessStatus("forbidden");
+          setIntakeReviewJobs([]);
+        }
+
+        if (supabaseUser) {
+          const { data: clientData, error: clientError } = await client
+            .from("intake_jobs")
+            .select("*, intake_files(*), projects(*)")
+            .eq("user_id", supabaseUser.id)
+            .order("created_at", { ascending: false })
+            .limit(24);
+
+          if (clientError) throw clientError;
+          const clientRows = clientData && clientData.length > 0 ? clientData : [];
+          const clientRowsWithPreviews = await Promise.all(
+            clientRows.map(async (row) => {
+              const rowWithItemImages = await addSignedIntakeItemImages(client, row);
+              const file = getIntakeFileFromJob(row);
+              if (!file?.mime_type?.startsWith("image/") || !file.storage_bucket || !file.storage_path) {
+                return rowWithItemImages;
+              }
+
               try {
-                const { data: rows, error: rowsError } = await client
-                  .from(table)
-                  .select("*")
-                  .in("project_id", projectIds)
-                  .order("created_at", { ascending: false });
-                if (rowsError) {
-                  console.warn(`Client progress table ${table} was not loaded:`, rowsError.message || rowsError);
-                  progressRows[key] = [];
-                  return;
-                }
-                progressRows[key] = rows || [];
-              } catch (progressError) {
-                console.warn(`Client progress table ${table} was not loaded:`, progressError.message || progressError);
-                progressRows[key] = [];
+                const { data: signed, error: signedError } = await client.storage
+                  .from(file.storage_bucket)
+                  .createSignedUrl(file.storage_path, 60 * 60);
+                if (signedError) throw signedError;
+                return { ...rowWithItemImages, client_preview_url: signed?.signedUrl || "" };
+              } catch (previewError) {
+                console.warn("Client furniture preview could not be created:", previewError.message || previewError);
+                return rowWithItemImages;
               }
             })
           );
-        }
+          const projectIds = Array.from(
+            new Set(
+              clientRowsWithPreviews
+                .map((row) => row.project_id)
+                .filter(Boolean)
+                .map(String)
+            )
+          );
+          const progressTableSpecs = [
+            { table: "production_updates", key: "productionUpdates" },
+            { table: "inspection_reports", key: "inspections" },
+            { table: "shipments", key: "shipments" },
+            { table: "shipment_documents", key: "shipmentDocuments" },
+            { table: "project_files", key: "projectFiles" },
+            { table: "handover_reports", key: "handovers" },
+            { table: "workflow_events", key: "workflowEvents" }
+          ];
+          const progressRows = {};
 
-        const clientRowsWithProgress = clientRowsWithPreviews.map((row) => ({
-          ...row,
-          client_progress: Object.fromEntries(
-            progressTableSpecs.map(({ key }) => [
-              key,
-              (progressRows[key] || []).filter(
-                (progressRow) => String(progressRow.project_id) === String(row.project_id)
-              )
-            ])
-          )
-        }));
-        setClientProjectJobs(clientRowsWithProgress);
-      } else {
-        setClientProjectJobs([]);
+          if (projectIds.length) {
+            await Promise.all(
+              progressTableSpecs.map(async ({ table, key }) => {
+                try {
+                  const { data: rows, error: rowsError } = await client
+                    .from(table)
+                    .select("*")
+                    .in("project_id", projectIds)
+                    .order("created_at", { ascending: false });
+                  if (rowsError) {
+                    console.warn(`Client progress table ${table} was not loaded:`, rowsError.message || rowsError);
+                    progressRows[key] = [];
+                    return;
+                  }
+                  progressRows[key] = rows || [];
+                } catch (progressError) {
+                  console.warn(
+                    `Client progress table ${table} was not loaded:`,
+                    progressError.message || progressError
+                  );
+                  progressRows[key] = [];
+                }
+              })
+            );
+          }
+
+          const clientRowsWithProgress = clientRowsWithPreviews.map((row) => ({
+            ...row,
+            client_progress: Object.fromEntries(
+              progressTableSpecs.map(({ key }) => [
+                key,
+                (progressRows[key] || []).filter(
+                  (progressRow) => String(progressRow.project_id) === String(row.project_id)
+                )
+              ])
+            )
+          }));
+          setClientProjectJobs(clientRowsWithProgress);
+        } else {
+          setClientProjectJobs([]);
+        }
+      } catch (err) {
+        console.warn("Pre-quote workspace was not loaded from Supabase:", err.message || err);
+        if (!prequoteWorkspaceLoadedRef.current) {
+          setAdminAccessStatus("error");
+          setIntakeReviewJobs([]);
+          setClientProjectJobs([]);
+        }
+      } finally {
+        setClientProjectsLoading(false);
       }
-    } catch (err) {
-      console.warn("Pre-quote workspace was not loaded from Supabase:", err.message || err);
-      setAdminAccessStatus("error");
-      setIntakeReviewJobs([]);
-      setClientProjectJobs([]);
-    } finally {
-      setClientProjectsLoading(false);
-    }
+    })();
+
+    prequoteWorkspaceLoadRef.current = loadPromise;
+    return loadPromise.finally(() => {
+      prequoteWorkspaceLoadedRef.current = true;
+      if (prequoteWorkspaceLoadRef.current === loadPromise) prequoteWorkspaceLoadRef.current = null;
+    });
   };
 
   const updateLocalReviewJob = (jobId, patch) => {
@@ -5930,6 +5950,7 @@ function App() {
   };
 
   const handleAskClientForRevision = async () => {
+    if (clarificationRequestSavingRef.current) return;
     const job = intakeReviewJobs.find((item) => item.id === selectedReviewJobId) || intakeReviewJobs[0];
     if (!job || !reviewDraft) return;
 
@@ -5954,15 +5975,18 @@ function App() {
       result_json: resultJson
     };
 
+    clarificationRequestSavingRef.current = true;
+    setClarificationRequestSaving(true);
     try {
       await persistIntakeJobUpdate(job, updates);
       setPrequoteNotice("Clarification request sent to the client portal.");
       addLog("Cho", "Requested client clarification before RFQ.", "Requested client clarification before RFQ.");
-      await loadPrequoteWorkspace();
-      await loadAdminOperationalData();
     } catch (err) {
       console.error("Client clarification request failed:", err);
       setPrequoteNotice(`Clarification request could not be saved: ${err.message || err}`);
+    } finally {
+      clarificationRequestSavingRef.current = false;
+      setClarificationRequestSaving(false);
     }
   };
 
@@ -6235,6 +6259,19 @@ function App() {
 
     let channel = null;
     let realtimeClient = null;
+    let intakeRefreshTimer = null;
+    const scheduleIntakeRefresh = () => {
+      if (intakeRefreshTimer) clearTimeout(intakeRefreshTimer);
+      intakeRefreshTimer = setTimeout(() => {
+        intakeRefreshTimer = null;
+        loadLatestSubmittedTrackerProject().catch((err) =>
+          console.warn("Latest submitted tracker refresh failed:", err.message || err)
+        );
+        loadPrequoteWorkspace({ background: true }).catch((err) =>
+          console.warn("Realtime intake workspace refresh failed:", err.message || err)
+        );
+      }, 200);
+    };
     try {
       const url = getSupabaseUrl();
       const key = getSupabaseKey();
@@ -6313,8 +6350,7 @@ function App() {
             (payload) => {
               console.log("Realtime Change detected on 'intake_jobs':", payload);
               if (payload.new) setLatestIntakeJob(payload.new);
-              loadLatestSubmittedTrackerProject();
-              loadPrequoteWorkspace();
+              scheduleIntakeRefresh();
             }
           )
           .on(
@@ -6412,10 +6448,13 @@ function App() {
     }
 
     return () => {
+      if (intakeRefreshTimer) clearTimeout(intakeRefreshTimer);
       if (channel && realtimeClient) {
         try {
-          realtimeClient.removeChannel(channel);
-          console.log("Supabase Realtime subscription unsubscribed successfully.");
+          realtimeClient
+            .removeChannel(channel)
+            .then(() => console.log("Supabase Realtime subscription unsubscribed successfully."))
+            .catch((err) => console.error("Failed to clean up realtime channel:", err));
         } catch (err) {
           console.error("Failed to clean up realtime channel:", err);
         }
@@ -7932,7 +7971,11 @@ function App() {
           disabled: false
         }
       : hasMissingInfo
-        ? { label: "Request clarification", onClick: handleAskClientForRevision, disabled: false }
+        ? {
+            label: clarificationRequestSaving ? "Sending request..." : "Request clarification",
+            onClick: handleAskClientForRevision,
+            disabled: clarificationRequestSaving
+          }
         : !bomRows.length
           ? { label: "Waiting for parsed items", onClick: () => {}, disabled: true }
           : isIntakeApproved
@@ -8324,9 +8367,9 @@ function App() {
                     type="button"
                     className="btn-secondary"
                     onClick={handleAskClientForRevision}
-                    disabled={!hasMissingInfo}
+                    disabled={!hasMissingInfo || clarificationRequestSaving}
                   >
-                    Request clarification
+                    {clarificationRequestSaving ? "Sending request..." : "Request clarification"}
                   </button>
                   <button
                     type="button"
@@ -8403,8 +8446,13 @@ function App() {
                           <li key={`${question}-${questionIndex}`}>{question}</li>
                         ))}
                       </ol>
-                      <button type="button" className="intake-next-primary" onClick={handleAskClientForRevision}>
-                        Send clarification request
+                      <button
+                        type="button"
+                        className="intake-next-primary"
+                        onClick={handleAskClientForRevision}
+                        disabled={clarificationRequestSaving}
+                      >
+                        {clarificationRequestSaving ? "Sending request..." : "Send clarification request"}
                         <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
                       </button>
                     </div>
@@ -8470,8 +8518,13 @@ function App() {
                               <li key={`${question}-${questionIndex}`}>{question}</li>
                             ))}
                           </ol>
-                          <button type="button" className="intake-next-primary" onClick={handleAskClientForRevision}>
-                            Request item clarification
+                          <button
+                            type="button"
+                            className="intake-next-primary"
+                            onClick={handleAskClientForRevision}
+                            disabled={clarificationRequestSaving}
+                          >
+                            {clarificationRequestSaving ? "Sending request..." : "Request item clarification"}
                             <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
                           </button>
                         </section>
@@ -8777,8 +8830,12 @@ function App() {
                 </div>
 
                 <div className="intake-action-stack">
-                  <button className="btn-secondary" onClick={handleAskClientForRevision} disabled={!hasMissingInfo}>
-                    Ask client to complete missing info
+                  <button
+                    className="btn-secondary"
+                    onClick={handleAskClientForRevision}
+                    disabled={!hasMissingInfo || clarificationRequestSaving}
+                  >
+                    {clarificationRequestSaving ? "Sending request..." : "Ask client to complete missing info"}
                   </button>
                   <button
                     className="btn-premium"
@@ -9000,8 +9057,12 @@ function App() {
                 placeholder="Cho review note for drawing, BOM, material, dimensions, tolerance, and RFQ readiness..."
               />
               <div className="intake-approval-actions">
-                <button className="btn-secondary" onClick={handleAskClientForRevision} disabled={!hasMissingInfo}>
-                  Request clarification
+                <button
+                  className="btn-secondary"
+                  onClick={handleAskClientForRevision}
+                  disabled={!hasMissingInfo || clarificationRequestSaving}
+                >
+                  {clarificationRequestSaving ? "Sending request..." : "Request clarification"}
                 </button>
                 <button
                   className={`btn-premium ${isIntakeApproved && draft?.projectId ? "approval-complete" : ""}`}
@@ -10122,8 +10183,12 @@ function App() {
                 )}
 
                 <div className="review-action-row">
-                  <button className="btn-secondary" onClick={handleAskClientForRevision}>
-                    Ask client
+                  <button
+                    className="btn-secondary"
+                    onClick={handleAskClientForRevision}
+                    disabled={clarificationRequestSaving}
+                  >
+                    {clarificationRequestSaving ? "Sending request..." : "Ask client"}
                   </button>
                   <button className="btn-secondary" onClick={handleRejectIntakeReview}>
                     Reject
