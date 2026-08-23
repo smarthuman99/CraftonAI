@@ -84,6 +84,9 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
       ? "The visual inputs are rendered pages from the customer's PDF. Read every page at any orientation and transcribe every clearly printed furniture row."
       : "Inspect the uploaded reference image and return a conservative bilingual furniture-requirement draft for Cho to review.",
     renderedPdf
+      ? "Before extracting, determine the reading orientation of each page and mentally rotate it until the title, Type, Width, Depth, Height, Finish, and Quantity labels read horizontally. Never replace a clearly printed Type value with 'Custom Item'."
+      : "",
+    renderedPdf
       ? "Use the supplied PDF SOURCE PAGE marker as source_page. Preserve printed item names, quantities, dimensions, location, materials, finishes, model references, and notes exactly; do not merge distinct scheduled rows."
       : "Identify every distinct furniture type that is clearly visible. Describe visible style, colors, finishes, construction clues, and readable labels.",
     "Do not claim an exact material from appearance alone; mark visual material estimates as to confirm.",
@@ -93,7 +96,11 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
     "Do not invent dimensions, prices, delivery dates, model numbers, or compliance. A photo cannot prove Crib 5, BS 5852, structural, or other certification.",
     "Use dimensions_text='To confirm' unless a dimension is clearly printed in the image or supplied in the customer text.",
     "Use unit prices 0. Put visual evidence in the structured visual fields as well as concise bilingual notes.",
+    renderedPdf
+      ? "Completeness check: return at least one item for every PDF SOURCE PAGE that contains a furniture Type field. Before answering, compare the returned source_page values with every supplied page marker and recover any omitted furniture page."
+      : "",
     "Return JSON matching the provided schema.",
+    `Exact JSON field contract (also follow this when native schema enforcement is unavailable): ${JSON.stringify(schema)}`,
     "",
     `Project name: ${job.project_name || ""}`,
     `Destination: ${job.destination || ""}`,

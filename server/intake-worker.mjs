@@ -6,6 +6,7 @@ import {
   bindBatchSourcePages,
   buildPdfCheckpoint,
   createPageBatches,
+  findMissingVisualCoveragePages,
   mergeIntakeBatchResults,
   readPdfCheckpoint
 } from "./lib/intakeBatchProcessor.mjs";
@@ -175,30 +176,35 @@ async function parsePdfInBatches({ job, file, userId }) {
   try {
     const pendingBatches = createPageBatches(reader.totalPages, pdfBatchSize, [...completedPages]);
     for (const pages of pendingBatches) {
-      const result = await retryPdfBatch(
-        async () => {
-          const source = await reader.readPages(pages);
-          const batchJob = {
-            ...job,
-            brief_text: [
-              job.brief_text,
-              `PDF batch pages: ${pages.join(", ")}. Extract only furniture rows whose SOURCE PAGE is in this batch.`
-            ]
-              .filter(Boolean)
-              .join("\n")
-          };
-          let parsed = await parseIntakeBrief({
-            job: batchJob,
-            file,
-            sourceText: source.sourceText,
-            sourceMedia: source.sourceMedia,
-            mediaIssue: source.mediaIssue
-          });
-          parsed = bindBatchSourcePages(parsed, pages);
-          return attachExtractedProductImages({ job, result: parsed, images: source.images, userId });
-        },
-        pdfBatchRetries
-      );
+      const result = await retryPdfBatch(async () => {
+        const source = await reader.readPages(pages);
+        const batchJob = {
+          ...job,
+          brief_text: [
+            job.brief_text,
+            `PDF batch pages: ${pages.join(", ")}. Extract only furniture rows whose SOURCE PAGE is in this batch.`
+          ]
+            .filter(Boolean)
+            .join("\n")
+        };
+        let parsed = await parseIntakeBrief({
+          job: batchJob,
+          file,
+          sourceText: source.sourceText,
+          sourceMedia: source.sourceMedia,
+          mediaIssue: source.mediaIssue
+        });
+        parsed = bindBatchSourcePages(parsed, pages);
+        parsed = await retryMissingPdfVisualCoverage({
+          reader,
+          job: batchJob,
+          file,
+          pages,
+          source,
+          parsed
+        });
+        return attachExtractedProductImages({ job, result: parsed, images: source.images, userId });
+      }, pdfBatchRetries);
 
       for (const page of pages) completedPages.add(page);
       const existingIndex = batchEntries.findIndex((entry) => Number(entry.pages?.[0]) === Number(pages[0]));
@@ -214,13 +220,82 @@ async function parsePdfInBatches({ job, file, userId }) {
         batches: batchEntries,
         currentPages: pages
       });
-      console.log(`Intake job ${job.id}: parsed PDF pages ${pages.join(", ")} (${completedPages.size}/${reader.totalPages})`);
+      console.log(
+        `Intake job ${job.id}: parsed PDF pages ${pages.join(", ")} (${completedPages.size}/${reader.totalPages})`
+      );
     }
 
     return mergeIntakeBatchResults({ job, file, batchEntries, totalPages: reader.totalPages });
   } finally {
     await reader.destroy();
   }
+}
+
+async function retryMissingPdfVisualCoverage({ reader, job, file, pages, source, parsed }) {
+  const missingPages = findMissingVisualCoveragePages({
+    result: parsed,
+    visualFallbackPages: source.visualFallbackPages,
+    images: source.images
+  });
+  if (!missingPages.length) return parsed;
+
+  const recovered = [];
+  const questions = [...(parsed.questions || [])];
+  const notes = [parsed.source_notes];
+  const failedPages = [];
+
+  for (const page of missingPages) {
+    const pageSource = await reader.readPages([page]);
+    const pageJob = {
+      ...job,
+      brief_text: [
+        job.brief_text,
+        `PDF completeness retry for SOURCE PAGE ${page}. Read the page at its actual text orientation and extract every printed furniture field. Return only the furniture line on this page.`
+      ]
+        .filter(Boolean)
+        .join("\n")
+    };
+    let pageResult = await parseIntakeBrief({
+      job: pageJob,
+      file,
+      sourceText: pageSource.sourceText,
+      sourceMedia: pageSource.sourceMedia,
+      mediaIssue: pageSource.mediaIssue
+    });
+    pageResult = bindBatchSourcePages(pageResult, [page]);
+
+    const stillMissing = findMissingVisualCoveragePages({
+      result: pageResult,
+      visualFallbackPages: [page],
+      images: pageSource.images
+    });
+    if (stillMissing.length || pageResult.visual_analysis?.status === "manual_review_required") {
+      failedPages.push(page);
+      continue;
+    }
+
+    recovered.push(...(pageResult.items || []));
+    questions.push(...(pageResult.questions || []));
+    notes.push(`Recovered missing PDF SOURCE PAGE ${page} through single-page visual retry.`, pageResult.source_notes);
+  }
+
+  const uniqueQuestions = [
+    ...new Map(questions.filter(Boolean).map((question) => [String(question).trim().toLowerCase(), question])).values()
+  ];
+  return {
+    ...parsed,
+    items: [...(parsed.items || []), ...recovered],
+    questions: uniqueQuestions,
+    source_notes: notes.filter(Boolean).join("\n"),
+    visual_analysis: failedPages.length
+      ? {
+          ...(parsed.visual_analysis || {}),
+          status: "manual_review_required",
+          reason: "pdf_visual_page_coverage_missing",
+          page_numbers: failedPages
+        }
+      : parsed.visual_analysis
+  };
 }
 
 async function retryPdfBatch(task, retryCount) {

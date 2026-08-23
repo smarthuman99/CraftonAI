@@ -5,6 +5,7 @@ import {
   bindBatchSourcePages,
   buildPdfCheckpoint,
   createPageBatches,
+  findMissingVisualCoveragePages,
   mergeIntakeBatchResults,
   readPdfCheckpoint
 } from "./intakeBatchProcessor.mjs";
@@ -68,10 +69,25 @@ test("binds missing source pages to the current batch and merges results globall
   assert.equal(first.items[0].source_page, 1);
   assert.equal(merged.project.name, "Portal Outdoor Amenity");
   assert.equal(merged.items.length, 2);
-  assert.deepEqual(merged.items.map((item) => item.source_page), [1, 4]);
+  assert.deepEqual(
+    merged.items.map((item) => item.source_page),
+    [1, 4]
+  );
   assert.equal(merged.questions.filter((question) => question === "Please confirm delivery date.").length, 1);
   assert.equal(merged.processing.state, "completed");
   assert.deepEqual(merged.processing.completed_pages, [1, 2, 3, 4]);
+});
+
+test("detects a rendered product page omitted from a visual batch result", () => {
+  const missing = findMissingVisualCoveragePages({
+    result: {
+      items: [{ item_type_en: "Coffee Table", quantity: 1, dimensions_text: "1200 x 500 x 400mm", source_page: 5 }]
+    },
+    visualFallbackPages: [5, 6],
+    images: [{ page: 5 }, { page: 6 }]
+  });
+
+  assert.deepEqual(missing, [6]);
 });
 
 test("fails the PDF extraction quality gate when all processed pages yield zero furniture lines", () => {

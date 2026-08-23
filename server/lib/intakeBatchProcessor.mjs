@@ -16,7 +16,8 @@ export function createPageBatches(totalPages, batchSize = 4, completedPages = []
 
 export function readPdfCheckpoint(resultJson, { totalPages, fingerprint = "" } = {}) {
   const processing = resultJson?.processing;
-  if (resultJson?.schema_version !== CHECKPOINT_SCHEMA_VERSION || processing?.version !== CHECKPOINT_PROCESSING_VERSION) return null;
+  if (resultJson?.schema_version !== CHECKPOINT_SCHEMA_VERSION || processing?.version !== CHECKPOINT_PROCESSING_VERSION)
+    return null;
   if (Number(totalPages || 0) && Number(processing.total_pages || 0) !== Number(totalPages)) return null;
   if (fingerprint && processing.fingerprint && processing.fingerprint !== fingerprint) return null;
 
@@ -72,17 +73,29 @@ export function bindBatchSourcePages(result, pages = []) {
   };
 }
 
+export function findMissingVisualCoveragePages({ result = {}, visualFallbackPages = [], images = [] } = {}) {
+  const pagesWithProductImages = new Set(uniqueNumbers((images || []).map((image) => image?.page)));
+  const coveredPages = new Set(
+    uniqueNumbers((result.items || []).filter((item) => !isPlaceholderItem(item)).map((item) => item?.source_page))
+  );
+
+  return uniqueNumbers(visualFallbackPages).filter(
+    (page) => pagesWithProductImages.has(page) && !coveredPages.has(page)
+  );
+}
+
 export function mergeIntakeBatchResults({ job = {}, file = {}, batchEntries = [], totalPages = 0 }) {
   const orderedEntries = [...batchEntries].sort(
     (left, right) => Number(left.pages?.[0] || 0) - Number(right.pages?.[0] || 0)
   );
   const results = orderedEntries.map((entry) => entry.result).filter(Boolean);
   const items = dedupeItems(results.flatMap((result) => result.items || []));
-  const projectName = firstUseful([
-    job.project_name,
-    ...results.map((result) => result.project?.name)
-  ], { rejectGeneratedProjectName: true }) || `CRAFT-${new Date().getFullYear()}-INTAKE`;
-  const destination = firstUseful([job.destination, ...results.map((result) => result.project?.destination)]) || "To confirm";
+  const projectName =
+    firstUseful([job.project_name, ...results.map((result) => result.project?.name)], {
+      rejectGeneratedProjectName: true
+    }) || `CRAFT-${new Date().getFullYear()}-INTAKE`;
+  const destination =
+    firstUseful([job.destination, ...results.map((result) => result.project?.destination)]) || "To confirm";
   const clientName = firstUseful(results.map((result) => result.project?.client_name)) || "Portal Intake Client";
   let questions = uniqueStrings(results.flatMap((result) => result.questions || []));
 
@@ -209,7 +222,9 @@ function uniqueStrings(values) {
   const seen = new Set();
   const output = [];
   for (const value of values || []) {
-    const text = String(value || "").replace(/\s+/g, " ").trim();
+    const text = String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
     if (!text) continue;
     const key = text.toLowerCase();
     if (seen.has(key)) continue;
@@ -228,9 +243,27 @@ function uniqueNumbers(values) {
 function buildPaymentSchedule(total) {
   const amount = Math.max(0, Number(total || 0));
   return [
-    { milestone_cn: "50% 首期定金", milestone_en: "50% Deposit", amount: roundMoney(amount * 0.5), status: "Pending", payment_date: "Pending" },
-    { milestone_cn: "40% 出货前中款", milestone_en: "40% Shipping Release", amount: roundMoney(amount * 0.4), status: "Pending", payment_date: "Pending" },
-    { milestone_cn: "10% 交付尾款", milestone_en: "10% Handover Balance", amount: roundMoney(amount * 0.1), status: "Pending", payment_date: "Pending" }
+    {
+      milestone_cn: "50% 首期定金",
+      milestone_en: "50% Deposit",
+      amount: roundMoney(amount * 0.5),
+      status: "Pending",
+      payment_date: "Pending"
+    },
+    {
+      milestone_cn: "40% 出货前中款",
+      milestone_en: "40% Shipping Release",
+      amount: roundMoney(amount * 0.4),
+      status: "Pending",
+      payment_date: "Pending"
+    },
+    {
+      milestone_cn: "10% 交付尾款",
+      milestone_en: "10% Handover Balance",
+      amount: roundMoney(amount * 0.1),
+      status: "Pending",
+      payment_date: "Pending"
+    }
   ];
 }
 
