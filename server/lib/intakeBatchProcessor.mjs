@@ -201,7 +201,7 @@ function firstUseful(values, { rejectGeneratedProjectName = false } = {}) {
   for (const value of values || []) {
     const text = String(value || "").trim();
     if (!text || isToConfirm(text)) continue;
-    if (rejectGeneratedProjectName && /^craft-\d{4}-(?:intake|\d+)/i.test(text)) continue;
+    if (rejectGeneratedProjectName && /^craft-(?:\d{4}-(?:intake|\d+)|\d{10,})/i.test(text)) continue;
     return text;
   }
   return "";

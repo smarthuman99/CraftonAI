@@ -90,6 +90,35 @@ test("detects a rendered product page omitted from a visual batch result", () =>
   assert.deepEqual(missing, [6]);
 });
 
+test("rejects timestamp placeholder project names when PDF batches are merged", () => {
+  const merged = mergeIntakeBatchResults({
+    job: {},
+    file: { original_name: "schedule.pdf" },
+    totalPages: 1,
+    batchEntries: [
+      {
+        pages: [1],
+        result: {
+          project: { name: "CRAFT-1787498128234", client_name: "Portal Intake Client", destination: "To confirm" },
+          items: [
+            {
+              item_type_en: "Sofa",
+              item_type_cn: "沙发",
+              quantity: 2,
+              dimensions_text: "2340 x 980 x 750mm",
+              material_en: "To confirm",
+              source_page: 1
+            }
+          ],
+          questions: []
+        }
+      }
+    ]
+  });
+
+  assert.equal(merged.project.name, `CRAFT-${new Date().getFullYear()}-INTAKE`);
+});
+
 test("fails the PDF extraction quality gate when all processed pages yield zero furniture lines", () => {
   const merged = mergeIntakeBatchResults({
     job: { project_name: "Portal Amenity" },

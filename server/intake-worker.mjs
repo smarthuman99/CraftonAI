@@ -327,6 +327,27 @@ async function upsertProject(job, result) {
   const projectName = result.project.name || job.project_name || `CRAFT-${Date.now()}`;
   const userId = getJobUserId(job);
 
+  if (job.project_id) {
+    let projectQuery = supabase.from("projects").select("*").eq("id", job.project_id).limit(1);
+    projectQuery = userId ? projectQuery.eq("user_id", userId) : projectQuery.is("user_id", null);
+    const { data: projectById, error: projectByIdError } = await projectQuery;
+    if (projectByIdError) throw projectByIdError;
+    if (projectById?.[0]) {
+      const { data: updated, error: updateError } = await supabase
+        .from("projects")
+        .update({
+          name: isGeneratedIntakeProjectName(projectName) ? projectById[0].name : projectName,
+          client_name: result.project.client_name || projectById[0].client_name,
+          client_contact: result.project.destination || projectById[0].client_contact
+        })
+        .eq("id", projectById[0].id)
+        .select()
+        .single();
+      if (updateError) throw updateError;
+      return updated;
+    }
+  }
+
   let existingQuery = supabase.from("projects").select("*").eq("name", projectName).limit(1);
 
   existingQuery = userId ? existingQuery.eq("user_id", userId) : existingQuery.is("user_id", null);
@@ -356,6 +377,10 @@ async function upsertProject(job, result) {
 
   if (error) throw error;
   return data;
+}
+
+function isGeneratedIntakeProjectName(value) {
+  return /^craft-(?:\d{4}-(?:intake|\d+)|\d{10,})/i.test(String(value || "").trim());
 }
 
 async function replaceDraftSpecs(projectId, userId, items) {
