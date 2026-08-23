@@ -522,6 +522,13 @@ const getOwnerProfileClientName = (job = {}) => {
   return String(profile.full_name || profile.company || "").trim();
 };
 
+const normalizeProjectLifecycleStatus = (value) => {
+  const status = String(value || "active")
+    .trim()
+    .toLowerCase();
+  return ["active", "abandoned", "archived"].includes(status) ? status : "active";
+};
+
 const normalizeReviewJob = (job = {}) => {
   const result = safeJsonObject(job.result_json, {});
   const project = result.project || {};
@@ -532,6 +539,7 @@ const normalizeReviewJob = (job = {}) => {
   const reviewStatus = job.review_status || (job.status === "completed" ? "approved" : "pending");
   const clarificationRequest = safeJsonObject(result.clarification_request, {});
   const clarificationWorkflow = safeJsonObject(result.clarification_workflow, {});
+  const projectLifecycle = safeJsonObject(result.project_lifecycle || result.projectLifecycle, {});
   const savedQuestions = normalizeClarificationQuestions(
     result.open_questions,
     result.questions,
@@ -588,6 +596,11 @@ const normalizeReviewJob = (job = {}) => {
     visualAnalysis: safeJsonObject(result.visual_analysis, null),
     createdAt: job.created_at || job.submittedAt || "",
     currentStage: Number(linkedProject.current_stage || result.current_stage || job.current_stage || 0),
+    projectLifecycleStatus: normalizeProjectLifecycleStatus(
+      linkedProject.lifecycle_status || projectLifecycle.status || job.project_lifecycle_status
+    ),
+    projectLifecycleReason: linkedProject.retirement_reason || projectLifecycle.reason || "",
+    projectLifecycleUpdatedAt: linkedProject.lifecycle_updated_at || projectLifecycle.updated_at || "",
     clientProgress: safeJsonObject(job.client_progress, {}),
     fileName: intakeFile?.original_name || job.fileName || "",
     previewUrl: job.client_preview_url || job.previewUrl || result.preview_url || "",
@@ -1215,6 +1228,10 @@ function App() {
   const [adminPortfolioSearch, setAdminPortfolioSearch] = useState("");
   const [adminPortfolioFilter, setAdminPortfolioFilter] = useState("all");
   const [adminPortfolioClientKey, setAdminPortfolioClientKey] = useState("");
+  const [adminProjectActionDialog, setAdminProjectActionDialog] = useState(null);
+  const [adminProjectActionReason, setAdminProjectActionReason] = useState("");
+  const [adminProjectDeleteConfirmation, setAdminProjectDeleteConfirmation] = useState("");
+  const [adminProjectActionState, setAdminProjectActionState] = useState({ saving: false, error: "" });
   const [activeAdminFlow, setActiveAdminFlow] = useState(() => {
     const savedFlow = safeGetItem("crafton_admin_active_flow");
     return ["intake", "sourcing", "production", "shipping"].includes(savedFlow) ? savedFlow : "intake";
@@ -5588,7 +5605,7 @@ function App() {
             .select("*, intake_files(*), projects(*)")
             .in("status", ["queued", "processing", "needs_review", "completed"])
             .order("created_at", { ascending: false })
-            .limit(24);
+            .limit(200);
 
           if (reviewError) throw reviewError;
           const reviewRows = reviewData || [];
@@ -10078,6 +10095,190 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const buildAdminProjectLifecycleTarget = (project = {}) => {
+    const latestJob = project.latestJob || project.jobs?.[0] || project;
+    const normalized = normalizeReviewJob(latestJob || {});
+    const latestItems = Array.isArray(latestJob?.items) ? latestJob.items : normalized.items || [];
+    return {
+      projectId: project.projectId || normalized.projectId,
+      projectName: project.projectName || normalized.projectName || "Untitled project",
+      clientName: project.clientName || normalized.clientName || "",
+      destination: project.destination || normalized.destination || "",
+      lifecycleStatus: normalizeProjectLifecycleStatus(project.lifecycleStatus || normalized.projectLifecycleStatus),
+      lifecycleReason: project.lifecycleReason || normalized.projectLifecycleReason || "",
+      jobCount: project.jobs?.length || 1,
+      itemCount: latestItems.length,
+      latestJob
+    };
+  };
+
+  const getActiveAdminLifecycleTarget = () => {
+    const { selectedProject, selectedJob, draft } = getAdminDraftContext();
+    if (!selectedJob && !draft) return null;
+    return buildAdminProjectLifecycleTarget({
+      ...(selectedProject || {}),
+      latestJob: selectedJob || draft,
+      projectId: selectedProject?.projectId || draft?.projectId,
+      projectName: selectedProject?.projectName || draft?.projectName,
+      lifecycleStatus: draft?.projectLifecycleStatus,
+      lifecycleReason: draft?.projectLifecycleReason
+    });
+  };
+
+  const openAdminProjectAction = (project, action) => {
+    const target = buildAdminProjectLifecycleTarget(project);
+    if (!target.projectId) {
+      setPrequoteNotice(
+        lang === "Cn"
+          ? "这个预览项目尚未连接数据库，不能改变项目状态。"
+          : "This preview project is not linked to a database record."
+      );
+      return;
+    }
+    setAdminProjectActionDialog({ ...target, action });
+    setAdminProjectActionReason(
+      action === "restore" ? (lang === "Cn" ? "管理员恢复项目" : "Restored by administrator") : ""
+    );
+    setAdminProjectDeleteConfirmation("");
+    setAdminProjectActionState({ saving: false, error: "" });
+  };
+
+  const closeAdminProjectAction = () => {
+    if (adminProjectActionState.saving) return;
+    setAdminProjectActionDialog(null);
+    setAdminProjectActionReason("");
+    setAdminProjectDeleteConfirmation("");
+    setAdminProjectActionState({ saving: false, error: "" });
+  };
+
+  const submitAdminProjectAction = async () => {
+    const dialog = adminProjectActionDialog;
+    if (!dialog) return;
+    const reasonRequired = ["abandon", "archive", "delete"].includes(dialog.action);
+    if (reasonRequired && !adminProjectActionReason.trim()) {
+      setAdminProjectActionState({
+        saving: false,
+        error: lang === "Cn" ? "请先填写变更原因。" : "Please record a reason first."
+      });
+      return;
+    }
+    if (dialog.action === "delete" && adminProjectDeleteConfirmation.trim() !== dialog.projectName.trim()) {
+      setAdminProjectActionState({
+        saving: false,
+        error: lang === "Cn" ? "输入的项目名称不一致。" : "The project name confirmation does not match."
+      });
+      return;
+    }
+
+    setAdminProjectActionState({ saving: true, error: "" });
+    try {
+      const context = await getPortalSupabaseContext();
+      if (!context?.client) throw new Error("A signed-in Crafton staff session is required.");
+      const { data: sessionData, error: sessionError } = await context.client.auth.getSession();
+      if (sessionError) throw sessionError;
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) throw new Error("Your administrator session has expired. Please sign in again.");
+      const response = await fetch(AI_SUPPORT_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          action: "change_project_lifecycle",
+          lifecycleAction: dialog.action,
+          projectId: dialog.projectId,
+          reason: adminProjectActionReason.trim(),
+          confirmName: adminProjectDeleteConfirmation.trim()
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "The project could not be updated.");
+
+      if (dialog.action === "delete" || ["abandon", "archive"].includes(dialog.action)) {
+        setAdminWorkspaceMode("overview");
+        setAdminPortfolioClientKey("");
+      }
+      if (dialog.action === "delete") setSelectedReviewJobId("");
+      setAdminPortfolioFilter(dialog.action === "restore" ? "all" : "archived");
+      setPrequoteNotice(
+        dialog.action === "delete"
+          ? lang === "Cn"
+            ? `“${dialog.projectName}”已永久删除，删除记录已写入审计日志。`
+            : `“${dialog.projectName}” was permanently deleted and recorded in the audit log.`
+          : lang === "Cn"
+            ? `“${dialog.projectName}”的项目状态已更新。`
+            : `“${dialog.projectName}” has been updated.`
+      );
+      setAdminProjectActionDialog(null);
+      setAdminProjectActionReason("");
+      setAdminProjectDeleteConfirmation("");
+      setAdminProjectActionState({ saving: false, error: "" });
+      await loadPrequoteWorkspace({ background: true });
+    } catch (error) {
+      console.error("Project lifecycle update failed:", error);
+      setAdminProjectActionState({ saving: false, error: error.message || "The project could not be updated." });
+    }
+  };
+
+  const renderAdminProjectLifecycleMenu = (project, placement = "row") => {
+    const target = buildAdminProjectLifecycleTarget(project);
+    const status = target.lifecycleStatus;
+    return (
+      <details className={`admin-project-lifecycle-menu ${placement === "workspace" ? "workspace" : ""}`}>
+        <summary aria-label={lang === "Cn" ? `管理 ${target.projectName}` : `Manage ${target.projectName}`}>
+          <span aria-hidden="true">•••</span>
+        </summary>
+        <div role="menu">
+          <span className="admin-project-menu-heading">{lang === "Cn" ? "项目管理" : "Project management"}</span>
+          {status === "active" && (
+            <button type="button" role="menuitem" onClick={() => openAdminProjectAction(target, "abandon")}>
+              <i className="fa-regular fa-circle-xmark" aria-hidden="true"></i>
+              <span>
+                <strong>{lang === "Cn" ? "标记为已放弃" : "Mark as abandoned"}</strong>
+                <small>{lang === "Cn" ? "退出活跃项目与自动流程" : "Remove from live work and automation"}</small>
+              </span>
+            </button>
+          )}
+          {status !== "archived" && (
+            <button type="button" role="menuitem" onClick={() => openAdminProjectAction(target, "archive")}>
+              <i className="fa-solid fa-box-archive" aria-hidden="true"></i>
+              <span>
+                <strong>{lang === "Cn" ? "归档项目" : "Archive project"}</strong>
+                <small>{lang === "Cn" ? "保留资料，之后仍可恢复" : "Keep the record available to restore"}</small>
+              </span>
+            </button>
+          )}
+          {status !== "active" && (
+            <button type="button" role="menuitem" onClick={() => openAdminProjectAction(target, "restore")}>
+              <i className="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i>
+              <span>
+                <strong>{lang === "Cn" ? "恢复为进行中" : "Restore to active"}</strong>
+                <small>
+                  {lang === "Cn" ? "重新进入项目目录与自动流程" : "Return to the live directory and automation"}
+                </small>
+              </span>
+            </button>
+          )}
+          {status === "archived" && (
+            <button
+              className="danger"
+              type="button"
+              role="menuitem"
+              onClick={() => openAdminProjectAction(target, "delete")}
+            >
+              <i className="fa-regular fa-trash-can" aria-hidden="true"></i>
+              <span>
+                <strong>{lang === "Cn" ? "永久删除" : "Delete permanently"}</strong>
+                <small>{lang === "Cn" ? "不可恢复，仅用于明确放弃的项目" : "Cannot be undone"}</small>
+              </span>
+            </button>
+          )}
+        </div>
+      </details>
+    );
+  };
+
   const renderAdminPortfolioOverview = () => {
     const jobs = getAdminWorkspaceJobs();
     const clientGroups = buildClientGroupsFromJobs(jobs);
@@ -10166,18 +10367,22 @@ function App() {
           stage,
           flow,
           needsAction,
+          lifecycleStatus: normalizeProjectLifecycleStatus(latestJob.projectLifecycleStatus),
+          lifecycleReason: latestJob.projectLifecycleReason || "",
           nextAction: nextActionCopy(latestJob, stage)
         };
       })
     );
-    const activeProjects = projects.filter((project) => project.stage < 17);
+    const activeProjects = projects.filter((project) => project.stage < 17 && project.lifecycleStatus === "active");
+    const retiredProjects = projects.filter((project) => project.lifecycleStatus !== "active");
     const activeClientKeys = new Set(activeProjects.map((project) => project.clientKey));
     const phaseCounts = Object.keys(flowMeta).reduce(
       (counts, flow) => ({ ...counts, [flow]: activeProjects.filter((project) => project.flow === flow).length }),
       {}
     );
     const searchTerm = adminPortfolioSearch.trim().toLowerCase();
-    const filteredProjects = activeProjects.filter((project) => {
+    const filterSourceProjects = adminPortfolioFilter === "archived" ? retiredProjects : activeProjects;
+    const filteredProjects = filterSourceProjects.filter((project) => {
       const matchesSearch =
         !searchTerm ||
         [project.clientName, project.projectName, project.destination, project.latestJob.quantityText]
@@ -10185,6 +10390,7 @@ function App() {
           .some((value) => String(value).toLowerCase().includes(searchTerm));
       const matchesFilter =
         adminPortfolioFilter === "all" ||
+        adminPortfolioFilter === "archived" ||
         (adminPortfolioFilter === "action" ? project.needsAction : project.flow === adminPortfolioFilter);
       return matchesSearch && matchesFilter;
     });
@@ -10201,7 +10407,8 @@ function App() {
       { id: "intake", cn: "订单接入", en: "Intake", count: phaseCounts.intake || 0 },
       { id: "sourcing", cn: "询价", en: "Sourcing", count: phaseCounts.sourcing || 0 },
       { id: "production", cn: "生产", en: "Production", count: phaseCounts.production || 0 },
-      { id: "shipping", cn: "交付", en: "Shipping", count: phaseCounts.shipping || 0 }
+      { id: "shipping", cn: "交付", en: "Shipping", count: phaseCounts.shipping || 0 },
+      { id: "archived", cn: "已退出", en: "Retired", count: retiredProjects.length }
     ];
     const selectedClientGroup =
       visibleClientGroups.find((clientGroup) => clientGroup.key === adminPortfolioClientKey) ||
@@ -10317,9 +10524,10 @@ function App() {
                       const isSelected = adminPortfolioClientKey
                         ? clientGroup.key === adminPortfolioClientKey
                         : clientIndex === 0;
-                      const clientActionCount = clientGroup.portfolioProjects.filter(
-                        (project) => project.needsAction
-                      ).length;
+                      const clientActionCount =
+                        adminPortfolioFilter === "archived"
+                          ? 0
+                          : clientGroup.portfolioProjects.filter((project) => project.needsAction).length;
                       return (
                         <button
                           type="button"
@@ -10375,8 +10583,8 @@ function App() {
                             <h4>{selectedClientGroup.clientName}</h4>
                             <p>
                               {lang === "Cn"
-                                ? `${selectedClientGroup.portfolioProjects.length} 个进行中项目`
-                                : `${selectedClientGroup.portfolioProjects.length} live project${selectedClientGroup.portfolioProjects.length === 1 ? "" : "s"}`}
+                                ? `${selectedClientGroup.portfolioProjects.length} 个${adminPortfolioFilter === "archived" ? "已退出" : "进行中"}项目`
+                                : `${selectedClientGroup.portfolioProjects.length} ${adminPortfolioFilter === "archived" ? "retired" : "live"} project${selectedClientGroup.portfolioProjects.length === 1 ? "" : "s"}`}
                             </p>
                           </div>
                         </header>
@@ -10386,63 +10594,74 @@ function App() {
                             const flow = flowMeta[project.flow];
                             const stageLabel = stageLabels[project.stage - 1];
                             return (
-                              <button
-                                type="button"
-                                className="admin-portfolio-project-row"
-                                key={project.key}
-                                onClick={() => openAdminProjectWorkspace(project.latestJob)}
-                                aria-label={`${lang === "Cn" ? "打开项目" : "Open project"} ${project.projectName}`}
-                              >
-                                <span className="admin-project-stage-chip">
-                                  S{String(project.stage).padStart(2, "0")}
-                                </span>
-                                <span className="admin-project-identity">
-                                  <span>
-                                    <strong>{project.projectName}</strong>
-                                    <small>
-                                      {[
-                                        project.destination || (lang === "Cn" ? "目的地待确认" : "Destination pending"),
-                                        project.latestJob.quantityText
-                                      ]
-                                        .filter(Boolean)
-                                        .join(" · ")}
-                                    </small>
-                                  </span>
-                                </span>
-                                <span className="admin-project-stage-summary">
-                                  <strong>{lang === "Cn" ? flow.cn : flow.en}</strong>
-                                  <small>{lang === "Cn" ? stageLabel[0] : stageLabel[1]}</small>
-                                  <span className="admin-project-phase-track" aria-hidden="true">
-                                    {Object.entries(flowMeta).map(([phaseKey, phase]) => (
-                                      <i
-                                        key={phaseKey}
-                                        className={
-                                          phase.index < flow.index
-                                            ? "complete"
-                                            : phase.index === flow.index
-                                              ? "current"
-                                              : ""
-                                        }
-                                      ></i>
-                                    ))}
-                                  </span>
-                                </span>
-                                <span
-                                  className={`admin-project-action-state ${project.needsAction ? "attention" : ""}`}
+                              <div className="admin-portfolio-project-row-shell" key={project.key}>
+                                <button
+                                  type="button"
+                                  className={`admin-portfolio-project-row lifecycle-${project.lifecycleStatus}`}
+                                  onClick={() => openAdminProjectWorkspace(project.latestJob)}
+                                  aria-label={`${lang === "Cn" ? "打开项目" : "Open project"} ${project.projectName}`}
                                 >
-                                  {project.needsAction
-                                    ? lang === "Cn"
-                                      ? "需要处理"
-                                      : "Needs action"
-                                    : lang === "Cn"
-                                      ? "进行中"
-                                      : "In progress"}
-                                </span>
-                                <span className="admin-project-row-date">
-                                  {formatAdminDate(project.latestJob.createdAt)}
-                                </span>
-                                <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
-                              </button>
+                                  <span className="admin-project-stage-chip">
+                                    S{String(project.stage).padStart(2, "0")}
+                                  </span>
+                                  <span className="admin-project-identity">
+                                    <span>
+                                      <strong>{project.projectName}</strong>
+                                      <small>
+                                        {[
+                                          project.destination ||
+                                            (lang === "Cn" ? "目的地待确认" : "Destination pending"),
+                                          project.latestJob.quantityText
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" · ")}
+                                      </small>
+                                    </span>
+                                  </span>
+                                  <span className="admin-project-stage-summary">
+                                    <strong>{lang === "Cn" ? flow.cn : flow.en}</strong>
+                                    <small>{lang === "Cn" ? stageLabel[0] : stageLabel[1]}</small>
+                                    <span className="admin-project-phase-track" aria-hidden="true">
+                                      {Object.entries(flowMeta).map(([phaseKey, phase]) => (
+                                        <i
+                                          key={phaseKey}
+                                          className={
+                                            phase.index < flow.index
+                                              ? "complete"
+                                              : phase.index === flow.index
+                                                ? "current"
+                                                : ""
+                                          }
+                                        ></i>
+                                      ))}
+                                    </span>
+                                  </span>
+                                  <span
+                                    className={`admin-project-action-state ${project.needsAction ? "attention" : ""}`}
+                                  >
+                                    {project.lifecycleStatus === "archived"
+                                      ? lang === "Cn"
+                                        ? "已归档"
+                                        : "Archived"
+                                      : project.lifecycleStatus === "abandoned"
+                                        ? lang === "Cn"
+                                          ? "已放弃"
+                                          : "Abandoned"
+                                        : project.needsAction
+                                          ? lang === "Cn"
+                                            ? "需要处理"
+                                            : "Needs action"
+                                          : lang === "Cn"
+                                            ? "进行中"
+                                            : "In progress"}
+                                  </span>
+                                  <span className="admin-project-row-date">
+                                    {formatAdminDate(project.latestJob.createdAt)}
+                                  </span>
+                                  <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                                </button>
+                                {renderAdminProjectLifecycleMenu(project)}
+                              </div>
                             );
                           })}
                         </div>
@@ -10452,7 +10671,15 @@ function App() {
                 </>
               ) : (
                 <div className="admin-portfolio-empty">
-                  <strong>{lang === "Cn" ? "没有符合条件的活跃项目" : "No active projects match this view"}</strong>
+                  <strong>
+                    {adminPortfolioFilter === "archived"
+                      ? lang === "Cn"
+                        ? "没有已退出的项目"
+                        : "No retired projects match this view"
+                      : lang === "Cn"
+                        ? "没有符合条件的活跃项目"
+                        : "No active projects match this view"}
+                  </strong>
                   <p>{lang === "Cn" ? "调整搜索关键词或筛选条件。" : "Change the search term or project filter."}</p>
                 </div>
               )}
@@ -17828,15 +18055,168 @@ function App() {
                     <span aria-hidden="true">&larr;</span>
                     {lang === "Cn" ? "返回全部客户项目" : "Back to all client projects"}
                   </button>
-                  <div>
+                  <div className="admin-project-workspace-project">
                     <span>{lang === "Cn" ? "当前项目工作区" : "Current project workspace"}</span>
                     <strong>{reviewDraft?.projectName || getActiveAdminProject()?.orderId || "-"}</strong>
                   </div>
+                  <section className="admin-project-workspace-actions">
+                    {getActiveAdminLifecycleTarget() &&
+                      renderAdminProjectLifecycleMenu(getActiveAdminLifecycleTarget(), "workspace")}
+                  </section>
                 </div>
                 {renderAdminProgressBoard()}
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {adminProjectActionDialog && (
+        <div className="admin-project-action-overlay" role="presentation" onMouseDown={closeAdminProjectAction}>
+          <section
+            className={`admin-project-action-dialog ${adminProjectActionDialog.action === "delete" ? "danger" : ""}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-project-action-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <span className="admin-section-kicker">
+                {adminProjectActionDialog.action === "delete"
+                  ? lang === "Cn"
+                    ? "不可恢复操作"
+                    : "Irreversible action"
+                  : lang === "Cn"
+                    ? "项目生命周期"
+                    : "Project lifecycle"}
+              </span>
+              <h3 id="admin-project-action-title">
+                {adminProjectActionDialog.action === "abandon"
+                  ? lang === "Cn"
+                    ? "将项目标记为已放弃？"
+                    : "Mark this project as abandoned?"
+                  : adminProjectActionDialog.action === "archive"
+                    ? lang === "Cn"
+                      ? "归档这个项目？"
+                      : "Archive this project?"
+                    : adminProjectActionDialog.action === "restore"
+                      ? lang === "Cn"
+                        ? "恢复这个项目？"
+                        : "Restore this project?"
+                      : lang === "Cn"
+                        ? "永久删除这个项目？"
+                        : "Permanently delete this project?"}
+              </h3>
+              <p>
+                <strong>{adminProjectActionDialog.projectName}</strong>
+                {adminProjectActionDialog.clientName ? ` · ${adminProjectActionDialog.clientName}` : ""}
+              </p>
+            </header>
+
+            <div className="admin-project-action-impact">
+              <div>
+                <span>{lang === "Cn" ? "关联工作包" : "Linked intake jobs"}</span>
+                <strong>{adminProjectActionDialog.jobCount}</strong>
+              </div>
+              <div>
+                <span>{lang === "Cn" ? "家具明细" : "Furniture lines"}</span>
+                <strong>{adminProjectActionDialog.itemCount}</strong>
+              </div>
+              <p>
+                {adminProjectActionDialog.action === "delete"
+                  ? lang === "Cn"
+                    ? "项目、工作包、相关业务记录与私有文件将被清理；仅保留不含项目内容的删除审计。"
+                    : "The project, jobs, related workflow data and private files will be removed. Only the deletion audit is retained."
+                  : adminProjectActionDialog.action === "restore"
+                    ? lang === "Cn"
+                      ? "项目会重新进入活跃目录、统计与自动工作流程。"
+                      : "The project returns to the live directory, metrics and automation."
+                    : lang === "Cn"
+                      ? "项目会退出活跃目录与统计，自动 Worker 也会停止处理；资料仍然保留，可在“已退出”中恢复。"
+                      : "The project leaves live lists and metrics, and automated workers stop processing it. Records remain restorable under Retired."}
+              </p>
+            </div>
+
+            <label className="admin-project-action-field">
+              <span>
+                {adminProjectActionDialog.action === "restore"
+                  ? lang === "Cn"
+                    ? "恢复备注"
+                    : "Restore note"
+                  : lang === "Cn"
+                    ? "原因（必填）"
+                    : "Reason (required)"}
+              </span>
+              <textarea
+                rows="3"
+                value={adminProjectActionReason}
+                onChange={(event) => setAdminProjectActionReason(event.target.value)}
+                placeholder={
+                  lang === "Cn"
+                    ? "例如：客户已书面确认取消项目。"
+                    : "For example: Client confirmed cancellation in writing."
+                }
+              ></textarea>
+            </label>
+
+            {adminProjectActionDialog.action === "delete" && (
+              <label className="admin-project-action-field confirm-delete">
+                <span>{lang === "Cn" ? "输入完整项目名称以确认" : "Type the full project name to confirm"}</span>
+                <code>{adminProjectActionDialog.projectName}</code>
+                <input
+                  type="text"
+                  value={adminProjectDeleteConfirmation}
+                  onChange={(event) => setAdminProjectDeleteConfirmation(event.target.value)}
+                  autoComplete="off"
+                />
+              </label>
+            )}
+
+            {adminProjectActionState.error && (
+              <p className="admin-project-action-error" role="alert">
+                {adminProjectActionState.error}
+              </p>
+            )}
+
+            <footer>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={closeAdminProjectAction}
+                disabled={adminProjectActionState.saving}
+              >
+                {lang === "Cn" ? "取消" : "Cancel"}
+              </button>
+              <button
+                type="button"
+                className={
+                  adminProjectActionDialog.action === "delete" ? "admin-project-delete-confirm" : "btn-primary"
+                }
+                onClick={submitAdminProjectAction}
+                disabled={adminProjectActionState.saving}
+              >
+                {adminProjectActionState.saving
+                  ? lang === "Cn"
+                    ? "正在更新…"
+                    : "Updating…"
+                  : adminProjectActionDialog.action === "abandon"
+                    ? lang === "Cn"
+                      ? "标记为已放弃"
+                      : "Mark as abandoned"
+                    : adminProjectActionDialog.action === "archive"
+                      ? lang === "Cn"
+                        ? "归档项目"
+                        : "Archive project"
+                      : adminProjectActionDialog.action === "restore"
+                        ? lang === "Cn"
+                          ? "恢复项目"
+                          : "Restore project"
+                        : lang === "Cn"
+                          ? "永久删除项目"
+                          : "Delete permanently"}
+              </button>
+            </footer>
+          </section>
         </div>
       )}
 

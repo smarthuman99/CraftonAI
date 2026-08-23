@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { generateTechnicalDrawingForItem, technicalDrawingPendingItems } from "./lib/technicalDrawing.mjs";
+import { isJobAutomationActive } from "./lib/projectLifecycle.mjs";
 
 const supabase = createSupabaseAdmin();
 const intervalMs = Number(process.env.THREE_VIEW_WORKER_INTERVAL_MS || 12000);
@@ -27,13 +28,14 @@ const jobUserId = (job) => {
 async function findPendingItem() {
   const { data, error } = await supabase
     .from("intake_jobs")
-    .select("*, intake_files(*)")
+    .select("*, intake_files(*), projects(*)")
     .in("status", ["needs_review", "completed"])
     .order("created_at", { ascending: false })
     .limit(scanLimit);
   if (error) throw error;
 
   for (const job of data || []) {
+    if (!isJobAutomationActive(job)) continue;
     const pending = technicalDrawingPendingItems(job);
     if (pending.length) return { job, ...pending[0] };
   }
@@ -93,9 +95,7 @@ async function processPendingItem({ job, item, index }) {
         ...previousDrawing,
         status: waitingForQuota ? "waiting_for_quota" : "generation_failed",
         review_status: "pending_admin",
-        attempts: waitingForQuota
-          ? Number(previousDrawing.attempts || 0)
-          : Number(previousDrawing.attempts || 0) + 1,
+        attempts: waitingForQuota ? Number(previousDrawing.attempts || 0) : Number(previousDrawing.attempts || 0) + 1,
         error_code: waitingForQuota
           ? "provider_quota_exceeded"
           : error?.name === "AbortError"

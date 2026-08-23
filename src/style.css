@@ -17713,6 +17713,411 @@ select:focus,
   }
 }
 
+/* Back Office project lifecycle — reversible retirement before destructive deletion */
+.admin-portfolio-project-row-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.admin-portfolio-project-row-shell .admin-portfolio-project-row {
+  width: 100%;
+  padding-right: 4.75rem;
+}
+
+.admin-portfolio-project-row.lifecycle-abandoned,
+.admin-portfolio-project-row.lifecycle-archived {
+  opacity: 0.86;
+}
+
+.admin-portfolio-project-row.lifecycle-abandoned .admin-project-action-state,
+.admin-portfolio-project-row.lifecycle-archived .admin-project-action-state {
+  border-color: rgba(74, 53, 37, 0.22);
+  background: rgba(239, 231, 214, 0.72);
+  color: var(--craft-body, #5b5446);
+}
+
+.admin-project-lifecycle-menu {
+  position: absolute;
+  z-index: 18;
+  top: 50%;
+  right: 1.05rem;
+  transform: translateY(-50%);
+}
+
+.admin-project-lifecycle-menu > summary {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+  list-style: none;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--craft-walnut, #4a3525);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+}
+
+.admin-project-lifecycle-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-project-lifecycle-menu > summary:hover,
+.admin-project-lifecycle-menu[open] > summary,
+.admin-project-lifecycle-menu > summary:focus-visible {
+  border-color: var(--craft-line, rgba(35, 34, 32, 0.14));
+  background: #efe7d6;
+  outline: none;
+}
+
+.admin-project-lifecycle-menu > div {
+  position: absolute;
+  z-index: 19;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  width: 276px;
+  overflow: hidden;
+  padding: 0.5rem;
+  border: 1px solid rgba(74, 53, 37, 0.2);
+  border-radius: 12px;
+  background: #fbf6ec;
+  box-shadow: 0 18px 40px rgba(55, 39, 26, 0.18);
+}
+
+.admin-project-menu-heading {
+  display: block;
+  padding: 0.55rem 0.65rem 0.45rem;
+  color: var(--craft-stone, #8f8064);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.admin-project-lifecycle-menu div > button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 0.5rem;
+  padding: 0.7rem 0.65rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--craft-ink, #232220);
+  text-align: left;
+}
+
+.admin-project-lifecycle-menu div > button:hover,
+.admin-project-lifecycle-menu div > button:focus-visible {
+  background: #efe7d6;
+  outline: none;
+}
+
+.admin-project-lifecycle-menu div > button i {
+  padding-top: 0.12rem;
+  color: var(--craft-stone, #8f8064);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.admin-project-lifecycle-menu div > button span,
+.admin-project-lifecycle-menu div > button strong,
+.admin-project-lifecycle-menu div > button small {
+  display: block;
+}
+
+.admin-project-lifecycle-menu div > button strong {
+  font-size: 0.74rem;
+  line-height: 1.25;
+}
+
+.admin-project-lifecycle-menu div > button small {
+  margin-top: 0.2rem;
+  color: var(--craft-stone, #8f8064);
+  font-size: 0.6rem;
+  line-height: 1.4;
+}
+
+.admin-project-lifecycle-menu div > button.danger,
+.admin-project-lifecycle-menu div > button.danger i {
+  color: #923f33;
+}
+
+.admin-project-workspace-nav {
+  position: relative;
+  gap: 1rem;
+}
+
+.admin-project-workspace-nav > .admin-project-workspace-project {
+  margin-left: auto;
+}
+
+.admin-project-workspace-actions {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+}
+
+.admin-project-workspace-actions .admin-project-lifecycle-menu {
+  top: 0;
+  right: 0;
+  transform: none;
+}
+
+.admin-project-workspace-actions .admin-project-lifecycle-menu > summary {
+  border-color: var(--craft-line, rgba(35, 34, 32, 0.14));
+  background: var(--admin-portfolio-paper, #fbf6ec);
+}
+
+.admin-project-action-overlay {
+  position: fixed;
+  z-index: 12000;
+  inset: 0;
+  display: grid;
+  overflow-y: auto;
+  padding: clamp(1rem, 4vw, 3rem);
+  place-items: center;
+  background: rgba(35, 29, 24, 0.58);
+  backdrop-filter: blur(5px);
+}
+
+.admin-project-action-dialog {
+  width: min(620px, 100%);
+  overflow: hidden;
+  border: 1px solid rgba(74, 53, 37, 0.24);
+  border-radius: 16px;
+  background: #fbf6ec;
+  box-shadow: 0 28px 80px rgba(35, 29, 24, 0.3);
+}
+
+.admin-project-action-dialog > header,
+.admin-project-action-dialog > .admin-project-action-impact,
+.admin-project-action-dialog > .admin-project-action-field,
+.admin-project-action-dialog > .admin-project-action-error,
+.admin-project-action-dialog > footer {
+  margin-inline: 1.65rem;
+}
+
+.admin-project-action-dialog > header {
+  padding: 1.7rem 0 1.15rem;
+  border-bottom: 1px solid var(--craft-line, rgba(35, 34, 32, 0.14));
+}
+
+.admin-project-action-dialog h3 {
+  margin: 0.35rem 0 0.5rem;
+  color: var(--craft-ink, #232220);
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 4vw, 2.35rem);
+  font-weight: 400;
+  line-height: 1.05;
+}
+
+.admin-project-action-dialog header p {
+  margin: 0;
+  color: var(--craft-body, #5b5446);
+  font-size: 0.72rem;
+}
+
+.admin-project-action-dialog.danger h3 {
+  color: #7f3026;
+}
+
+.admin-project-action-impact {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 1.15rem 0 0;
+}
+
+.admin-project-action-impact > div {
+  padding: 0.8rem;
+  border: 1px solid var(--craft-line, rgba(35, 34, 32, 0.14));
+  border-radius: 10px;
+  background: rgba(239, 231, 214, 0.46);
+}
+
+.admin-project-action-impact > div span,
+.admin-project-action-impact > div strong {
+  display: block;
+}
+
+.admin-project-action-impact > div span {
+  color: var(--craft-stone, #8f8064);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-project-action-impact > div strong {
+  margin-top: 0.25rem;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 400;
+}
+
+.admin-project-action-impact > p {
+  grid-column: 1 / -1;
+  margin: 0.2rem 0 0;
+  color: var(--craft-body, #5b5446);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.admin-project-action-field {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 1.1rem;
+}
+
+.admin-project-action-field > span {
+  color: var(--craft-body, #5b5446);
+  font-size: 0.69rem;
+  font-weight: 700;
+}
+
+.admin-project-action-field textarea,
+.admin-project-action-field input {
+  width: 100%;
+  border: 1px solid var(--craft-line, rgba(35, 34, 32, 0.14));
+  border-radius: 10px;
+  background: #fffaf1;
+  color: var(--craft-ink, #232220);
+  font: inherit;
+}
+
+.admin-project-action-field textarea {
+  min-height: 94px;
+  padding: 0.8rem;
+  resize: vertical;
+}
+
+.admin-project-action-field input {
+  min-height: 44px;
+  padding-inline: 0.8rem;
+}
+
+.admin-project-action-field textarea:focus,
+.admin-project-action-field input:focus {
+  border-color: var(--craft-walnut, #4a3525);
+  outline: 3px solid rgba(74, 53, 37, 0.1);
+}
+
+.admin-project-action-field code {
+  width: fit-content;
+  padding: 0.3rem 0.45rem;
+  border-radius: 5px;
+  background: #efe7d6;
+  color: #7f3026;
+  font-size: 0.68rem;
+}
+
+.admin-project-action-error {
+  margin-top: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(146, 63, 51, 0.25);
+  border-radius: 8px;
+  background: rgba(146, 63, 51, 0.07);
+  color: #7f3026;
+  font-size: 0.7rem;
+}
+
+.admin-project-action-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1.3rem;
+  padding: 1rem 0 1.5rem;
+  border-top: 1px solid var(--craft-line, rgba(35, 34, 32, 0.14));
+  background: transparent;
+  color: var(--craft-ink, #232220);
+}
+
+.admin-project-action-dialog > footer button {
+  min-height: 44px;
+  padding: 0.7rem 1.1rem;
+  border-radius: 999px;
+}
+
+.admin-project-action-dialog > footer .btn-secondary {
+  border: 1px solid var(--craft-line, rgba(35, 34, 32, 0.18));
+  background: transparent;
+  color: var(--craft-ink, #232220);
+}
+
+.admin-project-action-dialog > footer .btn-primary {
+  border: 1px solid var(--craft-walnut, #4a3525);
+  background: var(--craft-walnut, #4a3525);
+  color: #fff;
+}
+
+.admin-project-delete-confirm {
+  border: 1px solid #7f3026;
+  background: #7f3026;
+  color: #fff;
+  font-weight: 700;
+}
+
+.admin-project-delete-confirm:hover {
+  background: #64261e;
+}
+
+@media (max-width: 760px) {
+  .admin-portfolio-project-row-shell .admin-portfolio-project-row {
+    padding-right: 3.75rem;
+  }
+
+  .admin-project-lifecycle-menu {
+    right: 0.7rem;
+  }
+
+  .admin-project-lifecycle-menu > div {
+    position: fixed;
+    top: auto;
+    right: 0.8rem;
+    bottom: 0.8rem;
+    left: 0.8rem;
+    width: auto;
+  }
+
+  .admin-project-workspace-nav > .admin-project-workspace-project {
+    width: auto;
+    margin-left: 0;
+  }
+
+  .admin-project-workspace-actions {
+    margin-left: auto;
+  }
+
+  .admin-project-action-overlay {
+    align-items: end;
+    padding: 0.65rem;
+  }
+
+  .admin-project-action-dialog {
+    border-radius: 16px;
+  }
+
+  .admin-project-action-dialog > header,
+  .admin-project-action-dialog > .admin-project-action-impact,
+  .admin-project-action-dialog > .admin-project-action-field,
+  .admin-project-action-dialog > .admin-project-action-error,
+  .admin-project-action-dialog > footer {
+    margin-inline: 1rem;
+  }
+
+  .admin-project-action-dialog > footer {
+    flex-direction: column-reverse;
+  }
+
+  .admin-project-action-dialog > footer button {
+    width: 100%;
+  }
+}
+
 /* Client project detail — context-sheet confirmations and full-width line-item ledger */
 .cho-project-hero {
   padding-bottom: 4px;

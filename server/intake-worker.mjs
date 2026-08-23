@@ -11,6 +11,7 @@ import {
   mergeIntakeBatchResults,
   readPdfCheckpoint
 } from "./lib/intakeBatchProcessor.mjs";
+import { isJobAutomationActive } from "./lib/projectLifecycle.mjs";
 
 const supabase = createSupabaseAdmin();
 const intervalMs = Number(process.env.INTAKE_WORKER_INTERVAL_MS || 8000);
@@ -31,7 +32,7 @@ const runOnce = process.argv.includes("--once");
 async function claimQueuedJobs() {
   const { data: queuedJobs, error } = await supabase
     .from("intake_jobs")
-    .select("*, intake_files(*)")
+    .select("*, intake_files(*), projects(*)")
     .eq("status", "queued")
     .lt("attempts", maxAttempts)
     .order("created_at", { ascending: true })
@@ -43,7 +44,7 @@ async function claimQueuedJobs() {
     const staleBefore = new Date(Date.now() - staleJobMinutes * 60 * 1000).toISOString();
     const { data: staleJobs, error: staleError } = await supabase
       .from("intake_jobs")
-      .select("*, intake_files(*)")
+      .select("*, intake_files(*), projects(*)")
       .eq("status", "processing")
       .lt("attempts", maxAttempts)
       .lt("updated_at", staleBefore)
@@ -52,6 +53,7 @@ async function claimQueuedJobs() {
     if (staleError) throw staleError;
     jobs = [...jobs, ...(staleJobs || [])];
   }
+  jobs = jobs.filter(isJobAutomationActive);
   if (!jobs.length) return [];
 
   const claimed = [];
@@ -67,7 +69,7 @@ async function claimQueuedJobs() {
       })
       .eq("id", job.id)
       .eq("status", job.status)
-      .select("*, intake_files(*)")
+      .select("*, intake_files(*), projects(*)")
       .single();
 
     if (!updateError && data) claimed.push(data);
