@@ -1,6 +1,9 @@
 const DEFAULT_MAX_TEXT_CHARS = 60000;
 const DEFAULT_MAX_VISION_BYTES = 12 * 1024 * 1024;
 const DEFAULT_MAX_DOCUMENT_BYTES = 250 * 1024 * 1024;
+const DEFAULT_PDF_VISION_MIN_TEXT_CHARS_PER_PAGE = 80;
+const DEFAULT_PDF_VISION_RENDER_WIDTH = 1400;
+const MIN_PDF_VISION_RENDER_WIDTH = 800;
 
 export function getIntakeSourceKind(file = {}) {
   const mime = String(file.mime_type || "").toLowerCase();
@@ -270,27 +273,31 @@ async function extractPdfSource(buffer) {
     const imageResult = await parser.getImage({ imageThreshold: 120, imageDataUrl: false, imageBuffer: true });
     return {
       text: textResult.text || "",
-      images: (imageResult.pages || [])
-        .map((page, index) => {
-          const image = selectPrimaryPdfImage(page.images || []);
-          if (!image?.data) return null;
-          return {
-            page: Number(page.pageNumber || index + 1),
-            name: image.name || `page-${index + 1}-product`,
-            mimeType: "image/png",
-            width: Number(image.width || 0),
-            height: Number(image.height || 0),
-            data: Buffer.from(image.data)
-          };
-        })
-        .filter(Boolean)
+      images: (imageResult.pages || []).flatMap((page, index) =>
+        selectPdfProductImages(page.images || []).map((image, imageIndex) => ({
+          page: Number(page.pageNumber || index + 1),
+          imageIndex,
+          name: image.name || `page-${index + 1}-product-${imageIndex + 1}`,
+          mimeType: "image/png",
+          width: Number(image.width || 0),
+          height: Number(image.height || 0),
+          data: Buffer.from(image.data)
+        }))
+      )
     };
   } finally {
     await parser.destroy();
   }
 }
 
-export async function openPdfBatchReader({ url, buffer, maxTextChars = DEFAULT_MAX_TEXT_CHARS }) {
+export async function openPdfBatchReader({
+  url,
+  buffer,
+  maxTextChars = DEFAULT_MAX_TEXT_CHARS,
+  maxVisionBytes = DEFAULT_MAX_VISION_BYTES,
+  visualFallbackMinTextCharsPerPage = DEFAULT_PDF_VISION_MIN_TEXT_CHARS_PER_PAGE,
+  visualFallbackRenderWidth = DEFAULT_PDF_VISION_RENDER_WIDTH
+}) {
   const { PDFParse } = await import("pdf-parse");
   const loadSource = url
     ? { url }
@@ -305,7 +312,7 @@ export async function openPdfBatchReader({ url, buffer, maxTextChars = DEFAULT_M
       const selectedPages = [...new Set((pages || []).map(Number).filter((page) => page > 0))].sort(
         (left, right) => left - right
       );
-      if (!selectedPages.length) return { sourceText: "", images: [] };
+      if (!selectedPages.length) return { sourceText: "", sourceMedia: null, images: [], mediaIssue: "" };
 
       const textResult = await parser.getText({ partial: selectedPages });
       const imageResult = await parser.getImage({
@@ -314,27 +321,50 @@ export async function openPdfBatchReader({ url, buffer, maxTextChars = DEFAULT_M
         imageDataUrl: false,
         imageBuffer: true
       });
+      const textPages = new Map(
+        (textResult.pages || []).map((page, index) => [
+          Number(page.num || selectedPages[index] || index + 1),
+          String(page.text || "")
+        ])
+      );
       const sourceText = normalizeExtractedText(
-        (textResult.pages || [])
-          .map((page) => `SOURCE PAGE ${Number(page.num || 0)}\n${page.text || ""}`)
-          .join("\n\n")
+        selectedPages.map((page) => `SOURCE PAGE ${page}\n${textPages.get(page) || ""}`).join("\n\n")
       ).slice(0, maxTextChars);
-      const images = (imageResult.pages || [])
-        .map((page, index) => {
-          const image = selectPrimaryPdfImage(page.images || []);
-          if (!image?.data) return null;
-          return {
-            page: Number(page.pageNumber || selectedPages[index] || index + 1),
-            name: image.name || `page-${selectedPages[index] || index + 1}-product`,
-            mimeType: "image/png",
-            width: Number(image.width || 0),
-            height: Number(image.height || 0),
-            data: Buffer.from(image.data)
-          };
-        })
-        .filter(Boolean);
+      const images = (imageResult.pages || []).flatMap((page, index) =>
+        selectPdfProductImages(page.images || []).map((image, imageIndex) => ({
+          page: Number(page.pageNumber || selectedPages[index] || index + 1),
+          imageIndex,
+          name: image.name || `page-${selectedPages[index] || index + 1}-product-${imageIndex + 1}`,
+          mimeType: "image/png",
+          width: Number(image.width || 0),
+          height: Number(image.height || 0),
+          data: Buffer.from(image.data)
+        }))
+      );
 
-      return { sourceText, images };
+      const visualFallbackPages = selectPdfVisualFallbackPages({
+        pages: selectedPages,
+        textByPage: textPages,
+        minTextCharsPerPage: visualFallbackMinTextCharsPerPage
+      });
+      let sourceMedia = null;
+      let mediaIssue = "";
+      if (visualFallbackPages.length) {
+        try {
+          sourceMedia = await renderPdfPagesForVision({
+            parser,
+            pages: visualFallbackPages,
+            desiredWidth: visualFallbackRenderWidth,
+            maxVisionBytes
+          });
+          if (!sourceMedia) mediaIssue = "pdf_visual_fallback_exceeds_inline_limit";
+        } catch (error) {
+          console.warn(`Could not render PDF pages ${visualFallbackPages.join(", ")} for visual analysis:`, error.message || error);
+          mediaIssue = "pdf_visual_fallback_render_failed";
+        }
+      }
+
+      return { sourceText, sourceMedia, images, mediaIssue, visualFallbackPages };
     },
     async destroy() {
       await parser.destroy();
@@ -342,18 +372,90 @@ export async function openPdfBatchReader({ url, buffer, maxTextChars = DEFAULT_M
   };
 }
 
+export function countPdfReadableCharacters(value) {
+  return String(value || "")
+    .replace(/SOURCE PAGE\s+\d+/gi, "")
+    .replace(/[^\p{L}\p{N}]/gu, "").length;
+}
+
+export function selectPdfVisualFallbackPages({ pages = [], textByPage = new Map(), minTextCharsPerPage } = {}) {
+  const threshold = Math.max(0, Number(minTextCharsPerPage ?? DEFAULT_PDF_VISION_MIN_TEXT_CHARS_PER_PAGE));
+  return [...new Set((pages || []).map(Number).filter((page) => Number.isInteger(page) && page > 0))]
+    .sort((left, right) => left - right)
+    .filter((page) => countPdfReadableCharacters(readPageText(textByPage, page)) < threshold);
+}
+
+async function renderPdfPagesForVision({ parser, pages, desiredWidth, maxVisionBytes }) {
+  const byteLimit = Math.max(1, Number(maxVisionBytes || DEFAULT_MAX_VISION_BYTES));
+  let width = Math.max(MIN_PDF_VISION_RENDER_WIDTH, Math.round(Number(desiredWidth || DEFAULT_PDF_VISION_RENDER_WIDTH)));
+  let rendered = await renderAtWidth(parser, pages, width);
+  let totalBytes = rendered.reduce((sum, page) => sum + page.byteLength, 0);
+
+  if (totalBytes > byteLimit && width > MIN_PDF_VISION_RENDER_WIDTH) {
+    const ratio = Math.sqrt(byteLimit / totalBytes) * 0.92;
+    const reducedWidth = Math.max(MIN_PDF_VISION_RENDER_WIDTH, Math.floor(width * ratio));
+    if (reducedWidth < width) {
+      width = reducedWidth;
+      rendered = await renderAtWidth(parser, pages, width);
+      totalBytes = rendered.reduce((sum, page) => sum + page.byteLength, 0);
+    }
+  }
+
+  if (!rendered.length || totalBytes > byteLimit) return null;
+  return {
+    sourceKind: "pdf_pages",
+    mimeType: "image/png",
+    byteLength: totalBytes,
+    pageNumbers: rendered.map((page) => page.pageNumber),
+    pages: rendered
+  };
+}
+
+async function renderAtWidth(parser, pages, desiredWidth) {
+  const result = await parser.getScreenshot({
+    partial: pages,
+    desiredWidth,
+    imageDataUrl: false,
+    imageBuffer: true
+  });
+  return (result.pages || [])
+    .map((page, index) => {
+      const data = Buffer.from(page.data || []);
+      if (!data.length) return null;
+      return {
+        pageNumber: Number(page.pageNumber || pages[index] || index + 1),
+        mimeType: "image/png",
+        dataBase64: data.toString("base64"),
+        byteLength: data.byteLength,
+        width: Math.round(Number(page.width || 0)),
+        height: Math.round(Number(page.height || 0))
+      };
+    })
+    .filter(Boolean);
+}
+
+function readPageText(textByPage, page) {
+  if (textByPage instanceof Map) return textByPage.get(page) || "";
+  return textByPage?.[page] || textByPage?.[String(page)] || "";
+}
+
 export function selectPrimaryPdfImage(images = []) {
+  return selectPdfProductImages(images, 1)[0] || null;
+}
+
+export function selectPdfProductImages(images = [], limit = 4) {
   const candidates = images.filter(
     (image) => image?.data && Number(image.width || 0) >= 120 && Number(image.height || 0) >= 120
   );
-  if (!candidates.length) return null;
+  if (!candidates.length) return [];
 
-  const transparentCandidates = candidates.filter((image) => Number(image.kind) === 3);
-  const pool = transparentCandidates.length ? transparentCandidates : candidates;
-  return [...pool].sort(
-    (left, right) =>
-      Number(right.width || 0) * Number(right.height || 0) - Number(left.width || 0) * Number(left.height || 0)
-  )[0];
+  return [...candidates]
+    .sort((left, right) => {
+      const transparentDifference = Number(Number(right.kind) === 3) - Number(Number(left.kind) === 3);
+      if (transparentDifference) return transparentDifference;
+      return Number(right.width || 0) * Number(right.height || 0) - Number(left.width || 0) * Number(left.height || 0);
+    })
+    .slice(0, Math.max(1, Number(limit || 1)));
 }
 
 async function extractDocxText(buffer) {

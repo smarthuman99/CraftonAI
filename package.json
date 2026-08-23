@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "report:build": "node scripts/build-self-contained-report.mjs",
     "lint": "eslint src/app.jsx src/main.jsx src/components --report-unused-disable-directives --max-warnings 0",
-    "test:intake": "node --test server/lib/intakeProcessor.test.mjs server/lib/intakeSourceReader.test.mjs server/lib/intakeBatchProcessor.test.mjs server/lib/intakeClarificationReanalysis.test.mjs",
+    "test:intake": "node --test server/lib/intakeProcessor.test.mjs server/lib/intakeSourceReader.test.mjs server/lib/intakeBatchProcessor.test.mjs server/lib/intakeClientCompletion.test.mjs server/lib/intakeClarificationReanalysis.test.mjs",
     "test:rfq": "node --test server/lib/rfqGenerator.test.mjs",
     "test:rfq-excel": "node --test server/lib/rfqExcel.test.mjs",
     "test:workflow-ai": "node --test server/lib/quoteAnalyzer.test.mjs server/lib/operationsAutomation.test.mjs",

@@ -49,6 +49,8 @@ GEMINI_API_REVISION=2026-05-20
 INTAKE_DOCUMENT_MAX_FILE_BYTES=262144000
 INTAKE_PDF_BATCH_PAGES=4
 INTAKE_PDF_BATCH_RETRIES=2
+INTAKE_PDF_VISUAL_FALLBACK_MIN_TEXT_CHARS_PER_PAGE=80
+INTAKE_PDF_VISUAL_FALLBACK_RENDER_WIDTH=1400
 INTAKE_WORKER_STALE_MINUTES=30
 LIBREOFFICE_BIN=soffice
 INTAKE_XLS_CONVERSION_TIMEOUT_MS=60000
@@ -56,7 +58,7 @@ INTAKE_XLS_CONVERSION_TIMEOUT_MS=60000
 
 `DEEPSEEK_API_KEY` is optional. Without it, the worker uses deterministic text parsing so the pipeline can be tested end to end.
 
-`GEMINI_API_KEY` enables real image understanding. Without it—or if the image is larger than `INTAKE_VISION_MAX_FILE_BYTES`—the upload is preserved and the job is still sent to `needs_review`, but it carries an explicit `manual_review_required` visual status instead of pretending that the image was parsed.
+`GEMINI_API_KEY` enables real image understanding and the low-text PDF fallback. When a PDF page contains fewer than `INTAKE_PDF_VISUAL_FALLBACK_MIN_TEXT_CHARS_PER_PAGE` machine-readable characters, Intake Worker renders that page at `INTAKE_PDF_VISUAL_FALLBACK_RENDER_WIDTH` pixels and sends it to Gemini with its source-page marker. Without a Gemini key—or when rendering/vision fails—the upload is preserved and the job is sent to `needs_review` with an explicit `manual_review_required` status instead of pretending that the document was parsed.
 
 The default 12 MiB image limit leaves room for base64 expansion and prompts under Gemini's 20 MB inline-request limit. Larger source images should be resized before upload or moved to a future Files API flow.
 

@@ -29,6 +29,13 @@ test("round-trips a compatible PDF processing checkpoint", () => {
   assert.deepEqual(restored.completedPages, [1, 2, 3, 4]);
   assert.equal(restored.batches.length, 1);
   assert.equal(readPdfCheckpoint(checkpoint, { totalPages: 9, fingerprint: "pdf-123" }), null);
+  assert.equal(
+    readPdfCheckpoint(
+      { schema_version: "pdf_batch_checkpoint_v1", processing: { version: 1, total_pages: 8 } },
+      { totalPages: 8, fingerprint: "pdf-123" }
+    ),
+    null
+  );
 });
 
 test("binds missing source pages to the current batch and merges results globally", () => {
@@ -65,6 +72,33 @@ test("binds missing source pages to the current batch and merges results globall
   assert.equal(merged.questions.filter((question) => question === "Please confirm delivery date.").length, 1);
   assert.equal(merged.processing.state, "completed");
   assert.deepEqual(merged.processing.completed_pages, [1, 2, 3, 4]);
+});
+
+test("fails the PDF extraction quality gate when all processed pages yield zero furniture lines", () => {
+  const merged = mergeIntakeBatchResults({
+    job: { project_name: "Portal Amenity" },
+    file: { original_name: "portal.pdf" },
+    totalPages: 2,
+    batchEntries: [
+      {
+        pages: [1, 2],
+        result: {
+          project: { name: "Portal Amenity", client_name: "The Crafton Ltd", destination: "London" },
+          items: [],
+          questions: ["Please upload the furniture schedule again."],
+          visual_analysis: { status: "completed" }
+        }
+      }
+    ]
+  });
+
+  assert.equal(merged.items.length, 0);
+  assert.equal(merged.processing.state, "manual_review_required");
+  assert.equal(merged.processing.quality_gate_passed, false);
+  assert.equal(merged.visual_analysis.reason, "no_furniture_lines_extracted");
+  assert.equal(merged.questions.length, 1);
+  assert.match(merged.questions[0], /Crafton must review/i);
+  assert.doesNotMatch(merged.questions[0], /upload the furniture schedule again/i);
 });
 
 function fixtureItem(overrides = {}) {

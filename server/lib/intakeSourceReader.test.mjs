@@ -4,7 +4,14 @@ import { readFile } from "node:fs/promises";
 
 import ExcelJS from "exceljs";
 
-import { extractIntakeSource, getIntakeSourceKind, selectPrimaryPdfImage } from "./intakeSourceReader.mjs";
+import {
+  countPdfReadableCharacters,
+  extractIntakeSource,
+  getIntakeSourceKind,
+  selectPdfProductImages,
+  selectPdfVisualFallbackPages,
+  selectPrimaryPdfImage
+} from "./intakeSourceReader.mjs";
 
 test("detects the supported FF&E source formats", () => {
   assert.equal(getIntakeSourceKind({ original_name: "schedule.xlsx" }), "spreadsheet");
@@ -88,4 +95,22 @@ test("prefers the largest transparent product cutout from a PDF page", () => {
   const productCutout = { name: "product", width: 900, height: 800, kind: 3, data: Buffer.from("product") };
 
   assert.equal(selectPrimaryPdfImage([referencePhoto, smallCutout, productCutout]).name, "product");
+  assert.deepEqual(
+    selectPdfProductImages([referencePhoto, smallCutout, productCutout], 3).map((image) => image.name),
+    ["product", "small", "photo"]
+  );
+});
+
+test("selects PDF pages with too little machine-readable text for visual fallback", () => {
+  const textByPage = new Map([
+    [1, ""],
+    [2, "Item Quantity Dimensions Material Finish Location"],
+    [3, "Sofa 4 W 2000 x D 900 x H 750 mm hand-woven rattan terrace"]
+  ]);
+
+  assert.equal(countPdfReadableCharacters("SOURCE PAGE 1"), 0);
+  assert.deepEqual(
+    selectPdfVisualFallbackPages({ pages: [1, 2, 3], textByPage, minTextCharsPerPage: 35 }),
+    [1]
+  );
 });

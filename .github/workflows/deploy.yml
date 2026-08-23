@@ -258,21 +258,27 @@ jobs:
               exit 1
             fi
 
-            if [ "$(id -u)" = "0" ] && [ -f server/systemd/crafton-technical-drawing-worker.service ]; then
+            if [ "$(id -u)" = "0" ] && [ -f server/systemd/crafton-technical-drawing-worker.service ] && [ -f server/systemd/crafton-intake-worker.service ]; then
               node_binary="$(command -v node)"
-              sed \
-                -e "s|^WorkingDirectory=.*|WorkingDirectory=$runtime|" \
-                -e "s|^ExecStart=/usr/bin/node |ExecStart=$node_binary |" \
-                server/systemd/crafton-technical-drawing-worker.service \
-                > /etc/systemd/system/crafton-technical-drawing-worker.service
+              for worker in crafton-intake-worker crafton-technical-drawing-worker; do
+                sed \
+                  -e "s|^WorkingDirectory=.*|WorkingDirectory=$runtime|" \
+                  -e "s|^ExecStart=/usr/bin/node |ExecStart=$node_binary |" \
+                  "server/systemd/$worker.service" \
+                  > "/etc/systemd/system/$worker.service"
+              done
               systemctl daemon-reload
-              systemctl enable --now crafton-technical-drawing-worker.service
-              systemctl restart crafton-technical-drawing-worker.service
+              systemctl enable --now crafton-intake-worker.service crafton-technical-drawing-worker.service
+              systemctl restart crafton-intake-worker.service crafton-technical-drawing-worker.service
+              systemctl --no-pager --full status crafton-intake-worker.service | head -n 12
               systemctl --no-pager --full status crafton-technical-drawing-worker.service | head -n 12
             else
+              old_intake_pid="$(ps -eo pid=,args= | awk "/[i]ntake-worker[.]mjs/ { print \$1; exit }" || true)"
+              if [ -n "$old_intake_pid" ]; then kill "$old_intake_pid" 2>/dev/null || true; fi
               old_drawing_pid="$(ps -eo pid=,args= | awk "/[t]echnical-drawing-worker[.]mjs/ { print \$1; exit }" || true)"
               if [ -n "$old_drawing_pid" ]; then kill "$old_drawing_pid" 2>/dev/null || true; fi
               mkdir -p server/logs
+              nohup node --env-file-if-exists=server/.env server/intake-worker.mjs > server/logs/intake-worker.log 2>&1 < /dev/null &
               nohup node --env-file-if-exists=server/.env server/technical-drawing-worker.mjs > server/logs/technical-drawing-worker.log 2>&1 < /dev/null &
             fi
           '

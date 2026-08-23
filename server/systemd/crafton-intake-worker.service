@@ -1,0 +1,16 @@
+[Unit]
+Description=Crafton FF&E intake worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/crafton-ai
+ExecStart=/usr/bin/node --env-file-if-exists=server/.env server/intake-worker.mjs
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

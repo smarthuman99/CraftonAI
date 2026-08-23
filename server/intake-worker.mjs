@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { parseIntakeBrief } from "./lib/intakeProcessor.mjs";
+import { prepareInitialClientCompletion } from "./lib/intakeClientCompletion.mjs";
 import { extractIntakeSource, getIntakeSourceKind, openPdfBatchReader } from "./lib/intakeSourceReader.mjs";
 import {
   bindBatchSourcePages,
@@ -18,6 +19,10 @@ const maxVisionFileBytes = Number(process.env.INTAKE_VISION_MAX_FILE_BYTES || 12
 const maxDocumentFileBytes = Number(process.env.INTAKE_DOCUMENT_MAX_FILE_BYTES || 250 * 1024 * 1024);
 const pdfBatchSize = Number(process.env.INTAKE_PDF_BATCH_PAGES || 4);
 const pdfBatchRetries = Number(process.env.INTAKE_PDF_BATCH_RETRIES || 2);
+const pdfVisualFallbackMinTextCharsPerPage = Number(
+  process.env.INTAKE_PDF_VISUAL_FALLBACK_MIN_TEXT_CHARS_PER_PAGE || 80
+);
+const pdfVisualFallbackRenderWidth = Number(process.env.INTAKE_PDF_VISUAL_FALLBACK_RENDER_WIDTH || 1400);
 const staleJobMinutes = Number(process.env.INTAKE_WORKER_STALE_MINUTES || 30);
 const runOnce = process.argv.includes("--once");
 
@@ -89,6 +94,13 @@ async function processJob(job) {
     result = await parseIntakeBrief({ job, file, sourceText, sourceMedia, mediaIssue });
     result = await attachExtractedProductImages({ job, result, images: extractedImages, userId });
   }
+  const completedAt = new Date().toISOString();
+  const clientCompletion = prepareInitialClientCompletion({
+    result,
+    jobId: job.id,
+    createdAt: completedAt
+  });
+  result = clientCompletion.result;
   const project = await upsertProject(job, result);
   const ownerUserId = project.user_id || userId;
 
@@ -123,10 +135,13 @@ async function processJob(job) {
     .from("intake_jobs")
     .update({
       status: "needs_review",
+      step: clientCompletion.jobState.step,
+      review_status: clientCompletion.jobState.reviewStatus,
+      review_notes: clientCompletion.jobState.reviewNotes,
       project_id: project.id,
       user_id: ownerUserId,
       result_json: result,
-      completed_at: new Date().toISOString()
+      completed_at: completedAt
     })
     .eq("id", job.id);
 
@@ -145,7 +160,13 @@ async function parsePdfInBatches({ job, file, userId }) {
     .createSignedUrl(file.storage_path, 4 * 60 * 60);
   if (signedError || !signed?.signedUrl) throw signedError || new Error("Could not create a signed PDF URL.");
 
-  const reader = await openPdfBatchReader({ url: signed.signedUrl, maxTextChars: maxReadableFileChars });
+  const reader = await openPdfBatchReader({
+    url: signed.signedUrl,
+    maxTextChars: maxReadableFileChars,
+    maxVisionBytes: maxVisionFileBytes,
+    visualFallbackMinTextCharsPerPage: pdfVisualFallbackMinTextCharsPerPage,
+    visualFallbackRenderWidth: pdfVisualFallbackRenderWidth
+  });
   const fingerprint = reader.fingerprints[0] || `${file.storage_path}:${file.file_size || 0}`;
   const previous = readPdfCheckpoint(job.result_json, { totalPages: reader.totalPages, fingerprint });
   const completedPages = new Set(previous?.completedPages || []);
@@ -166,7 +187,13 @@ async function parsePdfInBatches({ job, file, userId }) {
               .filter(Boolean)
               .join("\n")
           };
-          let parsed = await parseIntakeBrief({ job: batchJob, file, sourceText: source.sourceText });
+          let parsed = await parseIntakeBrief({
+            job: batchJob,
+            file,
+            sourceText: source.sourceText,
+            sourceMedia: source.sourceMedia,
+            mediaIssue: source.mediaIssue
+          });
           parsed = bindBatchSourcePages(parsed, pages);
           return attachExtractedProductImages({ job, result: parsed, images: source.images, userId });
         },
@@ -343,39 +370,70 @@ async function readUploadedSource(file) {
 async function attachExtractedProductImages({ job, result, images = [], userId }) {
   if (!images.length || !Array.isArray(result.items) || !result.items.length) return result;
 
-  const imagesByPage = new Map(images.map((image) => [Number(image.page || 0), image]));
+  const imagesByPage = images.reduce((map, image) => {
+    const page = Number(image.page || 0);
+    const existing = map.get(page) || [];
+    existing.push(image);
+    map.set(page, existing);
+    return map;
+  }, new Map());
   const uploadedItems = [];
+  let uploadedImageCount = 0;
 
   for (const [index, item] of result.items.entries()) {
     const sourcePage = Math.max(1, Number(item.source_page || index + 1));
-    const image = imagesByPage.get(sourcePage) || images[index];
-    if (!image?.data) {
+    const primaryImage = imagesByPage.get(sourcePage)?.[0] || images[index];
+    const relatedImages = primaryImage?.sourceRow
+      ? images.filter(
+          (image) =>
+            image.sourceRow === primaryImage.sourceRow &&
+            (!primaryImage.worksheet || image.worksheet === primaryImage.worksheet)
+        )
+      : imagesByPage.get(sourcePage) || [primaryImage];
+    const candidates = relatedImages.filter((image) => image?.data).slice(0, 4);
+    if (!candidates.length) {
       uploadedItems.push(item);
       continue;
     }
 
-    const extension = imageFileExtension(image.mimeType);
-    const storagePath = `${userId || "unowned"}/derived/${job.id}/source-image-${String(sourcePage).padStart(4, "0")}.${extension}`;
-    const { error } = await supabase.storage.from("intake-files").upload(storagePath, image.data, {
-      contentType: image.mimeType || "image/png",
-      cacheControl: "3600",
-      upsert: true
-    });
+    const savedReferences = [];
+    for (const [imageIndex, image] of candidates.entries()) {
+      const extension = imageFileExtension(image.mimeType);
+      const storagePath = `${userId || "unowned"}/derived/${job.id}/source-image-${String(sourcePage).padStart(4, "0")}-${String(imageIndex + 1).padStart(2, "0")}.${extension}`;
+      const { error } = await supabase.storage.from("intake-files").upload(storagePath, image.data, {
+        contentType: image.mimeType || "image/png",
+        cacheControl: "3600",
+        upsert: true
+      });
 
-    if (error) {
-      console.warn(`Could not save extracted PDF image for intake job ${job.id}:`, error.message || error);
+      if (error) {
+        console.warn(`Could not save extracted product image for intake job ${job.id}:`, error.message || error);
+        continue;
+      }
+      uploadedImageCount += 1;
+      savedReferences.push({
+        storage_bucket: "intake-files",
+        storage_path: storagePath,
+        mime_type: image.mimeType || "image/png",
+        width: Number(image.width || 0),
+        height: Number(image.height || 0)
+      });
+    }
+
+    const primaryReference = savedReferences[0];
+    if (!primaryReference) {
       uploadedItems.push(item);
       continue;
     }
-
     uploadedItems.push({
       ...item,
       source_page: sourcePage,
-      image_storage_bucket: "intake-files",
-      image_storage_path: storagePath,
-      image_mime_type: image.mimeType || "image/png",
-      image_width: Number(image.width || 0),
-      image_height: Number(image.height || 0)
+      image_storage_bucket: primaryReference.storage_bucket,
+      image_storage_path: primaryReference.storage_path,
+      image_mime_type: primaryReference.mime_type,
+      image_width: primaryReference.width,
+      image_height: primaryReference.height,
+      image_storage_paths: savedReferences
     });
   }
 
@@ -384,7 +442,7 @@ async function attachExtractedProductImages({ job, result, images = [], userId }
     items: uploadedItems,
     source_notes: [
       result.source_notes,
-      `Extracted ${uploadedItems.filter((item) => item.image_storage_path).length} product images from the PDF.`
+      `Saved ${uploadedImageCount} product reference image(s) across ${uploadedItems.filter((item) => item.image_storage_path).length} furniture line(s).`
     ]
       .filter(Boolean)
       .join("\n")

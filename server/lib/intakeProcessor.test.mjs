@@ -165,6 +165,86 @@ test("image intake sends bytes to Gemini and preserves structured visual evidenc
   assert.ok(result.questions.some((question) => /physical sample or specification sheet/i.test(question)));
 });
 
+test("rendered PDF pages are sent to Gemini vision with page markers and preserve printed schedule facts", async () => {
+  process.env.DEEPSEEK_API_KEY = "";
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  process.env.GEMINI_BASE_URL = "https://gemini.test/v1beta";
+  process.env.GEMINI_VISION_MODEL = "gemini-vision-test";
+
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url, body: JSON.parse(options.body) };
+    const output = {
+      project: { name: "Portal Amenity", client_name: "The Crafton Ltd", destination: "London" },
+      items: [
+        {
+          item_type_cn: "沙发",
+          item_type_en: "Sofa",
+          quantity: 2,
+          material_cn: "待确认",
+          material_en: "To confirm",
+          original_unit_price: 0,
+          unit_price: 0,
+          dimensions_text: "W 2340 x D 980 x H 750 mm",
+          usage_location: "Snug",
+          source_page: 1,
+          confidence: 0.96,
+          notes_cn: "",
+          notes_en: "Printed schedule row."
+        }
+      ],
+      questions: [],
+      summary_cn: "已读取 PDF 家具表。",
+      summary_en: "The PDF furniture schedule was read.",
+      source_notes: "Rendered pages 1-2",
+      visual_analysis: {
+        image_summary_cn: "家具表页面。",
+        image_summary_en: "Furniture schedule pages.",
+        detected_text: ["Sofa", "Qty 2"],
+        limitations: []
+      }
+    };
+    return new Response(
+      JSON.stringify({
+        id: "int_pdf_test",
+        steps: [{ type: "model_output", content: [{ type: "text", text: JSON.stringify(output) }] }]
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  };
+
+  const result = await parseIntakeBrief({
+    job: { project_name: "Portal Amenity", destination: "London", quantity_text: "", brief_text: "" },
+    file: { original_name: "portal-amenity.pdf", mime_type: "application/pdf" },
+    sourceText: "SOURCE PAGE 1\n\nSOURCE PAGE 2",
+    sourceMedia: {
+      sourceKind: "pdf_pages",
+      mimeType: "image/png",
+      byteLength: 12,
+      pages: [
+        { pageNumber: 1, mimeType: "image/png", dataBase64: "cGFnZS0x", byteLength: 6 },
+        { pageNumber: 2, mimeType: "image/png", dataBase64: "cGFnZS0y", byteLength: 6 }
+      ]
+    }
+  });
+
+  assert.equal(request.url, "https://gemini.test/v1beta/interactions");
+  assert.deepEqual(
+    request.body.input.slice(1).map((part) => [part.type, part.text || part.data]),
+    [
+      ["text", "PDF SOURCE PAGE 1"],
+      ["image", "cGFnZS0x"],
+      ["text", "PDF SOURCE PAGE 2"],
+      ["image", "cGFnZS0y"]
+    ]
+  );
+  assert.equal(result.items[0].quantity, 2);
+  assert.equal(result.items[0].material_en, "To confirm");
+  assert.equal(result.items[0].dimensions_text, "W 2340 x D 980 x H 750 mm");
+  assert.equal(result.items[0].source_page, 1);
+  assert.ok(result.questions.every((question) => !/reference photo|physical sample/i.test(question)));
+});
+
 test("image intake requires manual review when no vision key is configured", async () => {
   process.env.DEEPSEEK_API_KEY = "";
   process.env.GEMINI_API_KEY = "";

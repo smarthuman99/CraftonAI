@@ -1,4 +1,5 @@
-const CHECKPOINT_SCHEMA_VERSION = "pdf_batch_checkpoint_v1";
+const CHECKPOINT_SCHEMA_VERSION = "pdf_batch_checkpoint_v2";
+const CHECKPOINT_PROCESSING_VERSION = 2;
 
 export function createPageBatches(totalPages, batchSize = 4, completedPages = []) {
   const total = Math.max(0, Math.trunc(Number(totalPages || 0)));
@@ -15,7 +16,7 @@ export function createPageBatches(totalPages, batchSize = 4, completedPages = []
 
 export function readPdfCheckpoint(resultJson, { totalPages, fingerprint = "" } = {}) {
   const processing = resultJson?.processing;
-  if (resultJson?.schema_version !== CHECKPOINT_SCHEMA_VERSION || processing?.version !== 1) return null;
+  if (resultJson?.schema_version !== CHECKPOINT_SCHEMA_VERSION || processing?.version !== CHECKPOINT_PROCESSING_VERSION) return null;
   if (Number(totalPages || 0) && Number(processing.total_pages || 0) !== Number(totalPages)) return null;
   if (fingerprint && processing.fingerprint && processing.fingerprint !== fingerprint) return null;
 
@@ -38,7 +39,7 @@ export function buildPdfCheckpoint({
   return {
     schema_version: CHECKPOINT_SCHEMA_VERSION,
     processing: {
-      version: 1,
+      version: CHECKPOINT_PROCESSING_VERSION,
       source_type: "pdf",
       state,
       total_pages: Math.max(0, Number(totalPages || 0)),
@@ -83,7 +84,7 @@ export function mergeIntakeBatchResults({ job = {}, file = {}, batchEntries = []
   ], { rejectGeneratedProjectName: true }) || `CRAFT-${new Date().getFullYear()}-INTAKE`;
   const destination = firstUseful([job.destination, ...results.map((result) => result.project?.destination)]) || "To confirm";
   const clientName = firstUseful(results.map((result) => result.project?.client_name)) || "Portal Intake Client";
-  const questions = uniqueStrings(results.flatMap((result) => result.questions || []));
+  let questions = uniqueStrings(results.flatMap((result) => result.questions || []));
 
   if (items.some((item) => !item.dimensions_text || isToConfirm(item.dimensions_text))) {
     questions.push("Please confirm the missing dimensions for the furniture lines marked To confirm.");
@@ -97,14 +98,34 @@ export function mergeIntakeBatchResults({ job = {}, file = {}, batchEntries = []
     0
   );
   const completedPages = uniqueNumbers(orderedEntries.flatMap((entry) => entry.pages || []));
+  const failedVisualPages = uniqueNumbers(
+    orderedEntries
+      .filter((entry) => entry.result?.visual_analysis?.status === "manual_review_required")
+      .flatMap((entry) => entry.pages || [])
+  );
+  const extractionNeedsManualReview = items.length === 0 || failedVisualPages.length > 0;
+  if (items.length === 0) {
+    questions = [
+      "Automated PDF extraction produced no furniture lines. Crafton must review the source PDF or retry the visual worker before requesting client clarification."
+    ];
+  } else if (failedVisualPages.length) {
+    questions = uniqueStrings([
+      `Crafton must retry or manually review PDF page(s) ${failedVisualPages.join(", ")} because visual extraction did not complete.`,
+      ...questions
+    ]);
+  }
 
   return {
     project: { name: projectName, client_name: clientName, destination },
     items,
     payments: buildPaymentSchedule(total),
     questions: uniqueStrings(questions).slice(0, 30),
-    summary_cn: `已分批读取 ${completedPages.length}/${Number(totalPages || completedPages.length)} 页，并整理 ${items.length} 条家具需求，等待 Cho 审核。`,
-    summary_en: `Processed ${completedPages.length}/${Number(totalPages || completedPages.length)} PDF pages in batches and prepared ${items.length} furniture lines for Cho review.`,
+    summary_cn: extractionNeedsManualReview
+      ? `已读取 ${completedPages.length}/${Number(totalPages || completedPages.length)} 页，但视觉提取未完整通过质量检查，需 Crafton 重试或人工核对。`
+      : `已分批读取 ${completedPages.length}/${Number(totalPages || completedPages.length)} 页，并整理 ${items.length} 条家具需求，等待 Cho 审核。`,
+    summary_en: extractionNeedsManualReview
+      ? `Processed ${completedPages.length}/${Number(totalPages || completedPages.length)} PDF pages, but visual extraction did not pass the completeness gate. Crafton must retry or review the source.`
+      : `Processed ${completedPages.length}/${Number(totalPages || completedPages.length)} PDF pages in batches and prepared ${items.length} furniture lines for Cho review.`,
     source_notes: [
       file.original_name ? `Uploaded file: ${file.original_name}` : "",
       `PDF batch extraction: ${orderedEntries.length} batches, ${completedPages.length} pages.`,
@@ -112,14 +133,23 @@ export function mergeIntakeBatchResults({ job = {}, file = {}, batchEntries = []
     ]
       .filter(Boolean)
       .join("\n"),
-    visual_analysis: null,
+    visual_analysis: extractionNeedsManualReview
+      ? {
+          status: "manual_review_required",
+          reason: items.length === 0 ? "no_furniture_lines_extracted" : "pdf_visual_batch_failed",
+          page_numbers: failedVisualPages
+        }
+      : null,
     processing: {
-      version: 1,
+      version: CHECKPOINT_PROCESSING_VERSION,
       source_type: "pdf",
-      state: "completed",
+      state: extractionNeedsManualReview ? "manual_review_required" : "completed",
       total_pages: Number(totalPages || completedPages.length),
       completed_pages: completedPages,
       batch_count: orderedEntries.length,
+      item_count: items.length,
+      failed_visual_pages: failedVisualPages,
+      quality_gate_passed: !extractionNeedsManualReview,
       completed_at: new Date().toISOString()
     }
   };

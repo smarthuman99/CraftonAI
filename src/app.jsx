@@ -2403,6 +2403,7 @@ function App() {
       lang === "Cn" ? "\u6b63\u5728\u4fdd\u5b58\u6587\u4ef6\u5230 Supabase..." : "Saving file to Supabase..."
     );
 
+    let uploadedFileIdForAnalysis = null;
     try {
       const fileRow = await uploadIntakeFileRecord({
         file,
@@ -2431,10 +2432,13 @@ function App() {
       });
 
       if (fileRow?.id) {
+        uploadedFileIdForAnalysis = fileRow.id;
         setIntakeUploadProgress(100);
         setIntakeUploadedFileId(fileRow.id);
         setIntakeUploadStatus(
-          `${lang === "Cn" ? "\u5df2\u4fdd\u5b58\u5230 intake_files\uff1a" : "Saved to intake_files: "}${file.name}`
+          lang === "Cn"
+            ? "文件已安全上传，AI 正在自动开始资料检查。"
+            : "File uploaded securely. AI is starting the document check automatically."
         );
       } else {
         setIntakeUploadStatus(
@@ -2452,10 +2456,16 @@ function App() {
     } finally {
       setIntakeFileUploading(false);
     }
+
+    if (uploadedFileIdForAnalysis) {
+      await handleFfeScheduleAnalysis({ sourceFile: file, intakeFileId: uploadedFileIdForAnalysis });
+    }
   };
 
-  const handleFfeScheduleAnalysis = async () => {
-    if (!intakeSelectedFile && !intakeUploadedFileId) {
+  const handleFfeScheduleAnalysis = async (options = {}) => {
+    const sourceFile = options?.sourceFile || intakeSelectedFile;
+    const sourceIntakeFileId = options?.intakeFileId || intakeUploadedFileId;
+    if (!sourceFile && !sourceIntakeFileId) {
       setLiveIntakeWarning(
         lang === "Cn" ? "请先选择一份 FF&E 文件。" : "Choose an FF&E file before starting the extraction."
       );
@@ -2482,8 +2492,8 @@ function App() {
           .filter(Boolean)
           .join("\n"),
         structuredBrief: null,
-        file: intakeUploadedFileId ? null : intakeSelectedFile,
-        intakeFileId: intakeUploadedFileId
+        file: sourceIntakeFileId ? null : sourceFile,
+        intakeFileId: sourceIntakeFileId
       });
 
       if (!job) {
@@ -2497,7 +2507,9 @@ function App() {
       setFfeAnalysisJobId(job.id);
       setLatestIntakeJob(job);
       setIntakeUploadStatus(
-        lang === "Cn" ? "文件已提交，正在读取 FF&E 内容。" : "File submitted. The FF&E extraction is running."
+        lang === "Cn"
+          ? "AI 正在读取 FF&E 内容；完成后会自动进入客户资料补全。"
+          : "AI is reading the FF&E file. Client Completion will open automatically when the check finishes."
       );
       loadPrequoteWorkspace().catch((error) => console.warn("FF&E extraction refresh failed:", error.message || error));
     } catch (error) {
@@ -7245,7 +7257,7 @@ function App() {
     return <span className={`review-status-pill status-${meta.tone}`}>{adminText(meta.label, lang)}</span>;
   };
 
-  const renderAiConciergePanel = ({ embedded = false } = {}) => {
+  const renderAiConciergePanel = ({ embedded = false, hideHandoff = false } = {}) => {
     const overview = buildSupportProjectContext();
     const latestOrder = overview.latestOrder;
 
@@ -7311,15 +7323,17 @@ function App() {
 
         {supportSelectedFileName && <div className="ai-file-chip">File received: {supportSelectedFileName}</div>}
 
-        <button
-          type="button"
-          className="btn-premium"
-          onClick={handleSupportHandoffToIntake}
-          disabled={isIntakeUploading || supportIsTyping}
-          style={{ width: "100%", justifyContent: "center" }}
-        >
-          {supportSubmittedJobId ? "View image analysis task" : "Submit brief to Crafton"}
-        </button>
+        {!hideHandoff && (
+          <button
+            type="button"
+            className="btn-premium"
+            onClick={handleSupportHandoffToIntake}
+            disabled={isIntakeUploading || supportIsTyping}
+            style={{ width: "100%", justifyContent: "center" }}
+          >
+            {supportSubmittedJobId ? "View image analysis task" : "Submit brief to Crafton"}
+          </button>
+        )}
 
         {supportStatus && <div className="ai-support-status">{supportStatus}</div>}
       </div>
@@ -7583,9 +7597,110 @@ function App() {
   };
 
   const renderClientFfeIntake = () => {
-    const rawJob = [...clientProjectJobs, latestIntakeJob].find(
-      (row) => row && String(row.id) === String(ffeAnalysisJobId)
-    );
+    const completionDemoMode =
+      import.meta.env.DEV && new window.URLSearchParams(window.location.search).get("ffe-completion-demo");
+    const completionDemoReady = completionDemoMode === "ready";
+    const completionDemoJob = completionDemoMode
+      ? {
+          id: "LOCAL-FFE-COMPLETION-DEMO",
+          status: "needs_review",
+          step: completionDemoReady ? "ai_intake_ready_for_approval" : "client_completion",
+          review_status: completionDemoReady ? "pending" : "revision_requested",
+          project_name: "The Portal Outdoor Amenity",
+          destination: "London, United Kingdom",
+          created_at: "2026-08-22T08:00:00.000Z",
+          result_json: {
+            project: {
+              name: "The Portal Outdoor Amenity",
+              client_name: "Jenkins Contract Interior Studio",
+              destination: "London, United Kingdom",
+              desired_delivery_date: completionDemoReady ? "2026-11-30" : ""
+            },
+            items: [
+              {
+                id: "sofa",
+                item_type_cn: "户外沙发",
+                item_type_en: "Outdoor Sofa",
+                quantity: 4,
+                quantity_text: "4",
+                dimensions_text: "2000mm × 860mm × 730mm",
+                material_en: "Hand-woven rattan frame; weather-resistant fabric cushions",
+                usage_location: "Level 10 Terrace",
+                image_url: "/set-furniture/sofa.jpg"
+              },
+              {
+                id: "coffee-table",
+                item_type_cn: "户外咖啡桌",
+                item_type_en: "Outdoor Coffee Table",
+                quantity: 3,
+                quantity_text: "3",
+                dimensions_text: "1520mm × 690mm × 340mm",
+                material_en: "Hand-woven rattan base; glass top",
+                usage_location: "Level 10 Terrace",
+                image_url: "/set-furniture/side-table.jpg"
+              },
+              {
+                id: "bench",
+                item_type_cn: "户外长凳",
+                item_type_en: "Outdoor Bench",
+                quantity: 2,
+                quantity_text: "2",
+                dimensions_text: "1800mm × 665mm × 920mm",
+                material_en: completionDemoReady ? "Solid timber and outdoor-rated fabric" : "To confirm",
+                usage_location: "Level 10 Terrace",
+                image_url: "/set-furniture/armchair.jpg"
+              }
+            ],
+            questions: completionDemoReady
+              ? []
+              : [
+                  "Please confirm the target delivery or installation date.",
+                  "Please confirm the material and construction for Outdoor Bench."
+                ],
+            clarification_request: completionDemoReady
+              ? { id: "CC-DEMO", status: "not_required", questions: [], items: [] }
+              : {
+                  id: "CC-DEMO",
+                  status: "sent",
+                  questions: [
+                    "Please confirm the target delivery or installation date.",
+                    "Please confirm the material and construction for Outdoor Bench."
+                  ],
+                  items: [
+                    {
+                      id: "CC-DEMO-Q01",
+                      question: "Please confirm the target delivery or installation date.",
+                      scope: "project",
+                      item_id: "",
+                      item_index: null
+                    },
+                    {
+                      id: "CC-DEMO-Q02",
+                      question: "Please confirm the material and construction for Outdoor Bench.",
+                      scope: "item",
+                      item_id: "bench",
+                      item_index: 2
+                    }
+                  ]
+                },
+            clarification_workflow: {
+              version: 2,
+              status: completionDemoReady ? "ready_for_approval" : "client_completion",
+              remaining_question_count: completionDemoReady ? 0 : 2,
+              continue_client_clarification: !completionDemoReady,
+              summary_en: completionDemoReady
+                ? "AI intake check complete. The structured project draft is ready for Cho approval."
+                : "AI intake check complete. Two client-owned details need confirmation."
+            },
+            summary_en: completionDemoReady
+              ? "AI intake check complete. The structured project draft is ready for Cho approval."
+              : "AI extracted three furniture lines and found two details that need client confirmation."
+          }
+        }
+      : null;
+    const rawJob =
+      completionDemoJob ||
+      [...clientProjectJobs, latestIntakeJob].find((row) => row && String(row.id) === String(ffeAnalysisJobId));
     const extractedJob = rawJob ? normalizeReviewJob(rawJob) : null;
 
     return (
@@ -7602,6 +7717,8 @@ function App() {
         confirming={ffeConfirmationSaving}
         rawJob={rawJob}
         extractedJob={extractedJob}
+        answers={(rawJob && clientAnswerDrafts[rawJob.id]) || extractedJob?.clientAnswers || {}}
+        answerState={(rawJob && clientAnswerSubmitState[rawJob.id]) || {}}
         projectName={intakeProjectName}
         destination={intakeDestination}
         notes={intakeAdditionalNotes}
@@ -7611,12 +7728,34 @@ function App() {
         onDestinationChange={setIntakeDestination}
         onNotesChange={setIntakeAdditionalNotes}
         onAnalyze={handleFfeScheduleAnalysis}
-        onConfirm={handleConfirmFfeExtraction}
+        onAnswerChange={(questionIndex, value, savedAnswers) => {
+          if (!rawJob) return;
+          setClientAnswerDrafts((previous) => ({
+            ...previous,
+            [rawJob.id]: {
+              ...(savedAnswers || {}),
+              ...(previous[rawJob.id] || {}),
+              [questionIndex]: value
+            }
+          }));
+        }}
+        onAnswerInput={() => {
+          if (!rawJob) return;
+          setClientAnswerSubmitState((previous) => ({
+            ...previous,
+            [rawJob.id]: {
+              status: "editing",
+              message: lang === "Cn" ? "答案尚未提交。" : "Unsaved answer changes."
+            }
+          }));
+        }}
+        onSubmitAnswers={() => (rawJob ? handleSubmitClientAnswers(rawJob) : Promise.resolve())}
+        onOpenProject={handleConfirmFfeExtraction}
         onBack={() => {
           setClientPortalTab("Tracker");
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
-        concierge={renderAiConciergePanel({ embedded: true })}
+        concierge={renderAiConciergePanel({ embedded: true, hideHandoff: true })}
       />
     );
   };
