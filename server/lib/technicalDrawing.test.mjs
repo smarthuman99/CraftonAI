@@ -14,11 +14,11 @@ const image = { mimeType: "image/png", dataBase64: Buffer.alloc(256, 1).toString
 
 test("builds a secure IP Item Passport tracking URL", () => {
   const previous = process.env.THREE_VIEW_PUBLIC_APP_URL;
-  process.env.THREE_VIEW_PUBLIC_APP_URL = "https://129.121.98.185/";
+  process.env.THREE_VIEW_PUBLIC_APP_URL = "https://129.121.98.185:8443/";
   try {
     assert.equal(
       buildItemTrackingUrl("trk-example123"),
-      "https://129.121.98.185/?view=item-tracking&tracking=TRK-EXAMPLE123"
+      "https://129.121.98.185:8443/?view=item-tracking&tracking=TRK-EXAMPLE123"
     );
   } finally {
     if (previous === undefined) delete process.env.THREE_VIEW_PUBLIC_APP_URL;

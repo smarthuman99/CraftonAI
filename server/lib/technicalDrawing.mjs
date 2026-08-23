@@ -8,7 +8,7 @@ const DEFAULT_DRAWING_MODEL = "gemini-3.1-flash-image";
 const DEFAULT_DRAWING_TIMEOUT_MS = 180000;
 const DRAWING_BUCKET = "intake-files";
 const DRAWING_PROMPT_VERSION = "three-view-v1";
-const DEFAULT_PUBLIC_APP_URL = "https://129.121.98.185/";
+const DEFAULT_PUBLIC_APP_URL = "https://129.121.98.185:8443/";
 
 const clean = (value, maxLength = 500) => String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
 

@@ -214,7 +214,9 @@ const getItemTrackingId = (project, job, item) => {
 
 const getItemTrackingUrl = (trackingId) => {
   if (typeof window === "undefined") return `?view=item-tracking&tracking=${encodeURIComponent(trackingId)}`;
-  const url = new URL(window.location.origin + window.location.pathname);
+  const publicOrigin =
+    window.location.hostname === "129.121.98.185" ? "https://129.121.98.185:8443" : window.location.origin;
+  const url = new URL(publicOrigin + window.location.pathname);
   url.searchParams.set("view", "item-tracking");
   url.searchParams.set("tracking", trackingId);
   return url.toString();
