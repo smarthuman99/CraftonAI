@@ -502,6 +502,16 @@ const normalizeTechnicalDrawing = (item = {}) => {
   };
 };
 
+const getIntakeJobOwnerId = (job = {}) => {
+  const intakeFile = getIntakeFileFromJob(job);
+  return String(job.user_id || job.requested_by || intakeFile?.user_id || intakeFile?.uploaded_by || "").trim();
+};
+
+const getOwnerProfileClientName = (job = {}) => {
+  const profile = safeJsonObject(job.owner_profile, {});
+  return String(profile.full_name || profile.company || "").trim();
+};
+
 const normalizeReviewJob = (job = {}) => {
   const result = safeJsonObject(job.result_json, {});
   const project = result.project || {};
@@ -537,13 +547,16 @@ const normalizeReviewJob = (job = {}) => {
     result.dimensions ||
     firstItem.dimensions_text ||
     formatDimensionPayload(firstItem.dimensions || {});
+  const ownerUserId = getIntakeJobOwnerId(job);
+  const ownerClientName = getOwnerProfileClientName(job);
 
   return {
     id: job.id || "LOCAL-INTAKE-DEMO",
+    ownerUserId,
     projectId: job.project_id || null,
     sourceMode: result.source_mode || result.sourceMode || "",
     projectName: job.project_name || project.name || linkedProject.name || job.projectName || "To confirm",
-    clientName: project.client_name || job.projects?.client_name || "Portal Intake Client",
+    clientName: ownerClientName || project.client_name || linkedProject.client_name || "Portal Intake Client",
     destination: job.destination || project.destination || linkedProject.client_contact || "",
     deliveryAddress: project.delivery_address || result.delivery_address || "",
     desiredDeliveryDate: project.desired_delivery_date || result.desired_delivery_date || "",
@@ -879,7 +892,9 @@ const buildClientGroupsFromJobs = (jobs = []) => {
   jobs.forEach((job) => {
     const normalized = normalizeReviewJob(job);
     const clientName = normalized.clientName || "Unassigned client";
-    const key = normalizeGroupingText(clientName) || "unassigned-client";
+    const key = normalized.ownerUserId
+      ? `user:${normalized.ownerUserId}`
+      : normalizeGroupingText(clientName) || "unassigned-client";
     const existing = groups.get(key);
 
     if (existing) {
@@ -887,7 +902,7 @@ const buildClientGroupsFromJobs = (jobs = []) => {
       return;
     }
 
-    groups.set(key, { key, clientName, jobs: [job] });
+    groups.set(key, { key, ownerUserId: normalized.ownerUserId || "", clientName, jobs: [job] });
   });
 
   return Array.from(groups.values())
@@ -1765,7 +1780,12 @@ function App() {
       .insert({
         user_id: supabaseUser.id,
         name: normalizedProjectName,
-        client_name: structuredBrief?.project?.client_name || user?.company || user?.name || "Portal Intake Client",
+        client_name:
+          supabaseUser.user_metadata?.full_name ||
+          supabaseUser.user_metadata?.name ||
+          user?.name ||
+          user?.company ||
+          "Portal Intake Client",
         client_contact: destination || structuredBrief?.project?.destination || "",
         current_stage: 1
       })
@@ -2298,7 +2318,7 @@ function App() {
       file_name: fileName,
       project: {
         name: projectName.trim(),
-        client_name: user?.company || user?.name || "Portal Intake Client",
+        client_name: user?.name || user?.company || "Portal Intake Client",
         contact_name: user?.name || "",
         destination: destination.trim(),
         delivery_address: intakeDeliveryAddress.trim(),
@@ -2805,7 +2825,7 @@ function App() {
           file_name: file?.name || "",
           project: {
             name: projectName || "Set Furniture project",
-            client_name: user?.company || user?.name || "Portal Intake Client",
+            client_name: user?.name || user?.company || "Portal Intake Client",
             contact_name: user?.name || "",
             destination: destination || ""
           },
@@ -5560,8 +5580,23 @@ function App() {
             .limit(24);
 
           if (reviewError) throw reviewError;
+          const reviewRows = reviewData || [];
+          const ownerIds = Array.from(new Set(reviewRows.map(getIntakeJobOwnerId).filter(Boolean)));
+          const ownerProfilesById = new Map();
+          if (ownerIds.length > 0) {
+            const { data: ownerProfiles, error: ownerProfilesError } = await client
+              .from("user_profiles")
+              .select("user_id,public_id,full_name,company")
+              .in("user_id", ownerIds);
+            if (ownerProfilesError) throw ownerProfilesError;
+            (ownerProfiles || []).forEach((profile) => ownerProfilesById.set(String(profile.user_id), profile));
+          }
+          const reviewRowsWithOwners = reviewRows.map((row) => ({
+            ...row,
+            owner_profile: ownerProfilesById.get(getIntakeJobOwnerId(row)) || null
+          }));
           const reviewRowsWithPreviews = await Promise.all(
-            (reviewData || []).map((row) => addSignedIntakeItemImages(client, row))
+            reviewRowsWithOwners.map((row) => addSignedIntakeItemImages(client, row))
           );
           setIntakeReviewJobs(reviewRowsWithPreviews);
           setAdminAccessStatus("ready");

@@ -1,6 +1,7 @@
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { parseIntakeBrief } from "./lib/intakeProcessor.mjs";
 import { prepareInitialClientCompletion } from "./lib/intakeClientCompletion.mjs";
+import { bindIntakeResultToOwner } from "./lib/intakeOwnership.mjs";
 import { extractIntakeSource, getIntakeSourceKind, openPdfBatchReader } from "./lib/intakeSourceReader.mjs";
 import {
   bindBatchSourcePages,
@@ -95,6 +96,7 @@ async function processJob(job) {
     result = await parseIntakeBrief({ job, file, sourceText, sourceMedia, mediaIssue });
     result = await attachExtractedProductImages({ job, result, images: extractedImages, userId });
   }
+  result = await bindResultToOwnerProfile(result, userId);
   const completedAt = new Date().toISOString();
   const clientCompletion = prepareInitialClientCompletion({
     result,
@@ -558,6 +560,17 @@ function imageFileExtension(mimeType) {
 function getJobUserId(job) {
   const intakeFile = Array.isArray(job.intake_files) ? job.intake_files[0] : job.intake_files;
   return job.user_id || job.requested_by || intakeFile?.user_id || intakeFile?.uploaded_by || null;
+}
+
+async function bindResultToOwnerProfile(result, userId) {
+  if (!userId) return result;
+  const { data: profile, error } = await supabase
+    .from("user_profiles")
+    .select("full_name,company")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return bindIntakeResultToOwner(result, { profile: profile || {} });
 }
 
 async function markJobFailed(job, err) {
