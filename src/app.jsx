@@ -262,7 +262,17 @@ const mapSupabaseUserToAppUser = (supabaseUser, fallback = {}) => {
 
 const getOAuthRedirectUrl = () => {
   if (typeof window === "undefined") return undefined;
-  return window.location.href.split("#")[0].split("?")[0];
+  return window.location.href.split("#")[0];
+};
+
+const getItemTrackingRequest = () => {
+  if (typeof window === "undefined") return "";
+  const params = new window.URLSearchParams(window.location.search);
+  if (params.get("view") !== "item-tracking") return "";
+  const trackingId = String(params.get("tracking") || "")
+    .trim()
+    .toUpperCase();
+  return /^TRK-[A-Z0-9]+$/.test(trackingId) ? trackingId : "";
 };
 
 const getLogActionEn = (cnText) => {
@@ -1084,7 +1094,7 @@ const buildRfqDraft = (draft) => {
 
 function App() {
   console.log("=== APP COMPONENT EXECUTING ===");
-  const [currentView, setCurrentStageView] = useState("Marketing"); // Views: "Marketing", "Backoffice", "ClientPortal", "SupplierPortal"
+  const [currentView, setCurrentStageView] = useState(() => (getItemTrackingRequest() ? "ClientPortal" : "Marketing")); // Views: "Marketing", "Backoffice", "ClientPortal", "SupplierPortal"
   const [setFurnitureCategory, setSetFurnitureCategory] = useState("sofa");
   const [setFurnitureProduct, setSetFurnitureProduct] = useState("");
   const [lang, setLang] = useState("Cn"); // Language: "Cn" or "En"
@@ -1230,6 +1240,7 @@ function App() {
   const clarificationRequestSavingRef = useRef(false);
   const prequoteWorkspaceLoadRef = useRef(null);
   const prequoteWorkspaceLoadedRef = useRef(false);
+  const trackingAuthPromptedRef = useRef(false);
 
   // Material Studio Swatch Configurator States
   const [selectedFabric, setSelectedFabric] = useState("FAB-02"); // default Navy Classic Linen
@@ -6512,6 +6523,25 @@ function App() {
   }, [dbUrl, dbKey]);
 
   useEffect(() => {
+    const trackingId = getItemTrackingRequest();
+    if (!trackingId) return;
+
+    setCurrentStageView("ClientPortal");
+    setClientPortalTab("Tracker");
+
+    if (supabaseAuthReady && !supabaseSessionUser && !user && !trackingAuthPromptedRef.current) {
+      trackingAuthPromptedRef.current = true;
+      setAuthMode("login");
+      setAuthError(
+        lang === "Cn"
+          ? `请登录后查看追踪项目 ${trackingId} 的 Item Passport。`
+          : `Sign in to open the Item Passport for ${trackingId}.`
+      );
+      setShowAuthGate(true);
+    }
+  }, [lang, supabaseAuthReady, supabaseSessionUser, user]);
+
+  useEffect(() => {
     if (clientPortalTab === "Support") setClientPortalTab("Intake");
   }, [clientPortalTab]);
 
@@ -7575,7 +7605,10 @@ function App() {
   const renderClientOrderDashboard = () => {
     const forceEmptyDashboard =
       import.meta.env.DEV && new window.URLSearchParams(window.location.search).has("empty-dashboard");
-    const dashboardJobs = mergeProjectJobSources(clientProjectJobs, getLocalReviewJobs());
+    const dashboardJobs = mergeProjectJobSources(
+      isStaffUser ? intakeReviewJobs : clientProjectJobs,
+      getLocalReviewJobs()
+    );
     const jobs = forceEmptyDashboard ? [] : dashboardJobs;
     const projectGroups = buildProjectGroupsFromJobs(jobs).map((project) => ({
       ...project,

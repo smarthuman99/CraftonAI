@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildItemTrackingUrl,
   buildTechnicalDrawingSvg,
   extractGeminiImage,
   formalizeTechnicalDrawing,
@@ -10,6 +11,20 @@ import {
 } from "./technicalDrawing.mjs";
 
 const image = { mimeType: "image/png", dataBase64: Buffer.alloc(256, 1).toString("base64") };
+
+test("builds a secure IP Item Passport tracking URL", () => {
+  const previous = process.env.THREE_VIEW_PUBLIC_APP_URL;
+  process.env.THREE_VIEW_PUBLIC_APP_URL = "https://129.121.98.185/";
+  try {
+    assert.equal(
+      buildItemTrackingUrl("trk-example123"),
+      "https://129.121.98.185/?view=item-tracking&tracking=TRK-EXAMPLE123"
+    );
+  } finally {
+    if (previous === undefined) delete process.env.THREE_VIEW_PUBLIC_APP_URL;
+    else process.env.THREE_VIEW_PUBLIC_APP_URL = previous;
+  }
+});
 
 test("extracts an image from Gemini interaction output", () => {
   const result = extractGeminiImage({ output_image: { mime_type: image.mimeType, data: image.dataBase64 } });

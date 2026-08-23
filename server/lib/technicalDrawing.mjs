@@ -8,7 +8,7 @@ const DEFAULT_DRAWING_MODEL = "gemini-3.1-flash-image";
 const DEFAULT_DRAWING_TIMEOUT_MS = 180000;
 const DRAWING_BUCKET = "intake-files";
 const DRAWING_PROMPT_VERSION = "three-view-v1";
-const DEFAULT_PUBLIC_APP_URL = "http://129.121.98.185/";
+const DEFAULT_PUBLIC_APP_URL = "https://129.121.98.185/";
 
 const clean = (value, maxLength = 500) => String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
 
@@ -49,6 +49,17 @@ const stableIdentityToken = (value, length = 8) => {
   return (hash >>> 0).toString(36).toUpperCase().padStart(length, "0").slice(-length);
 };
 
+export const buildItemTrackingUrl = (trackingId) => {
+  const publicAppUrl = clean(
+    process.env.THREE_VIEW_PUBLIC_APP_URL || process.env.PUBLIC_APP_URL || DEFAULT_PUBLIC_APP_URL,
+    2000
+  );
+  const url = new URL(publicAppUrl || DEFAULT_PUBLIC_APP_URL);
+  url.searchParams.set("view", "item-tracking");
+  url.searchParams.set("tracking", clean(trackingId, 100).toUpperCase());
+  return url.toString();
+};
+
 const itemTraceability = ({ item = {}, job = {}, itemIndex = 0 } = {}) => {
   const projectName = job.project_name || job.projectName || job.result_json?.project?.name || "Crafton project";
   const projectIdentity = job.project_id || job.projectId || projectName;
@@ -70,15 +81,7 @@ const itemTraceability = ({ item = {}, job = {}, itemIndex = 0 } = {}) => {
   const trackingId =
     savedTrackingId.toUpperCase() ||
     `TRK-${stableIdentityToken(`${identity}|tracking`, 7)}${stableIdentityToken(`tracking|${identity}`, 5)}`;
-  const savedTrackingUrl = clean(item.tracking_url || item.trackingUrl || item.qr_url || item.qrUrl, 2000);
-  let trackingUrl = savedTrackingUrl;
-  if (!trackingUrl) {
-    const publicAppUrl = clean(process.env.THREE_VIEW_PUBLIC_APP_URL || process.env.PUBLIC_APP_URL || DEFAULT_PUBLIC_APP_URL, 2000);
-    const url = new URL(publicAppUrl || DEFAULT_PUBLIC_APP_URL);
-    url.searchParams.set("view", "item-tracking");
-    url.searchParams.set("tracking", trackingId);
-    trackingUrl = url.toString();
-  }
+  const trackingUrl = buildItemTrackingUrl(trackingId);
   return { sku, trackingId, trackingUrl };
 };
 

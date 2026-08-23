@@ -183,7 +183,7 @@ const getItemIdentityKey = (project, job, item) =>
   [project.projectId || project.key || project.projectName, job.id, item.id].filter(Boolean).join("|");
 
 const getItemSku = (project, job, item) => {
-  const savedSku = item.sku || item.skuCode || item.itemNo || item.item_code;
+  const savedSku = item.sku || item.skuCode || item.itemNo || item.item_code || item.technicalDrawing?.sku;
   if (savedSku) return String(savedSku).trim().toUpperCase();
 
   const projectInitials = String(project.projectName || "Project")
@@ -201,20 +201,28 @@ const getItemSku = (project, job, item) => {
 };
 
 const getItemTrackingId = (project, job, item) => {
-  const savedTrackingId = item.trackingId || item.tracking_id || item.qrTrackingId || item.qr_tracking_id;
+  const savedTrackingId =
+    item.trackingId ||
+    item.tracking_id ||
+    item.qrTrackingId ||
+    item.qr_tracking_id ||
+    item.technicalDrawing?.trackingId;
   if (savedTrackingId) return String(savedTrackingId).trim().toUpperCase();
   const identity = getItemIdentityKey(project, job, item);
   return `TRK-${stableIdentityToken(`${identity}|tracking`, 7)}${stableIdentityToken(`tracking|${identity}`, 5)}`;
 };
 
-const getItemTrackingUrl = (trackingId, item) => {
-  const savedUrl = item.trackingUrl || item.tracking_url || item.qrUrl || item.qr_url;
-  if (savedUrl) return savedUrl;
+const getItemTrackingUrl = (trackingId) => {
   if (typeof window === "undefined") return `?view=item-tracking&tracking=${encodeURIComponent(trackingId)}`;
   const url = new URL(window.location.origin + window.location.pathname);
   url.searchParams.set("view", "item-tracking");
   url.searchParams.set("tracking", trackingId);
   return url.toString();
+};
+
+const getItemDrawingUrl = (item) => {
+  const drawing = item.technicalDrawing || {};
+  return drawing.status === "formal" ? drawing.formalUrl || drawing.url : drawing.draftUrl || drawing.url;
 };
 
 const getDrawingQrElementId = (trackingId) =>
@@ -315,12 +323,16 @@ function ProductImage({ src, alt, className = "" }) {
   );
 }
 
-function ItemTrackingSheet({ lang, project, job, item, onClose }) {
+function ItemTrackingSheet({ lang, project, job, item, onOpenDrawing, onClose }) {
   const [copyState, setCopyState] = useState("");
   const sku = getItemSku(project, job, item);
   const trackingId = getItemTrackingId(project, job, item);
   const trackingUrl = getItemTrackingUrl(trackingId, item);
   const itemName = lang === "Cn" ? item.typeCn : item.typeEn;
+  const material = lang === "Cn" ? item.materialCn : item.materialEn;
+  const drawing = item.technicalDrawing || {};
+  const drawingUrl = getItemDrawingUrl(item);
+  const drawingIsFormal = drawing.status === "formal";
   const stage = getOrderStage(job);
   const status = getOrderStatus(job, lang);
   const qrElementId = `cho-item-qr-${trackingId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
@@ -367,7 +379,7 @@ function ItemTrackingSheet({ lang, project, job, item, onClose }) {
         aria-labelledby="cho-item-tracking-title"
       >
         <header className="cho-project-action-sheet-header">
-          <span className="cho-client-kicker">{copy(lang, "单项追踪", "ITEM TRACEABILITY")}</span>
+          <span className="cho-client-kicker">{copy(lang, "单项数字档案", "ITEM PASSPORT")}</span>
           <button
             type="button"
             className="cho-project-action-sheet-close"
@@ -385,6 +397,49 @@ function ItemTrackingSheet({ lang, project, job, item, onClose }) {
             <p>{sku}</p>
           </div>
         </div>
+
+        <section className="cho-item-passport-drawing" aria-label={copy(lang, "最新图纸", "Latest drawing")}>
+          <div className="cho-item-passport-drawing-heading">
+            <div>
+              <span>{copy(lang, "最新图纸", "LATEST DRAWING")}</span>
+              <strong>
+                {drawingIsFormal
+                  ? copy(lang, "Crafton 已批准", "Crafton approved")
+                  : copy(lang, "系统生成 · 待管理员批准", "System generated · Pending approval")}
+              </strong>
+            </div>
+            <span className={`cho-item-passport-drawing-status ${drawingIsFormal ? "is-formal" : "is-draft"}`}>
+              {drawingIsFormal ? copy(lang, "正式", "FORMAL") : copy(lang, "草稿", "DRAFT")}
+            </span>
+          </div>
+          {drawingUrl ? (
+            <button
+              type="button"
+              className="cho-item-passport-drawing-preview"
+              onClick={() =>
+                onOpenDrawing?.({
+                  url: drawingUrl,
+                  itemName,
+                  drawing,
+                  sku,
+                  trackingId,
+                  trackingUrl
+                })
+              }
+            >
+              <img src={drawingUrl} alt={`${itemName} ${copy(lang, "三视图", "three-view drawing")}`} />
+              <span>
+                <i className="fa-solid fa-expand" aria-hidden="true"></i>
+                {copy(lang, "查看及下载完整图纸", "View and download full drawing")}
+              </span>
+            </button>
+          ) : (
+            <div className="cho-item-passport-drawing-pending">
+              <i className="fa-regular fa-image" aria-hidden="true"></i>
+              <span>{copy(lang, "图纸仍在生成中", "Drawing generation is still pending")}</span>
+            </div>
+          )}
+        </section>
 
         <div className="cho-item-tracking-qr-card">
           <QRCodeSVG
@@ -422,6 +477,20 @@ function ItemTrackingSheet({ lang, project, job, item, onClose }) {
           <div>
             <dt>{copy(lang, "当前状态", "Current status")}</dt>
             <dd>{status.label}</dd>
+          </div>
+          <div>
+            <dt>{copy(lang, "尺寸", "Dimensions")}</dt>
+            <dd>{item.dimensionsText || job.dimensions || copy(lang, "待确认", "To confirm")}</dd>
+          </div>
+          <div>
+            <dt>{copy(lang, "材质 / 饰面", "Material / finish")}</dt>
+            <dd>{[material, item.finish].filter(Boolean).join(" · ") || copy(lang, "待确认", "To confirm")}</dd>
+          </div>
+          <div>
+            <dt>{copy(lang, "图纸版本", "Drawing version")}</dt>
+            <dd>
+              {drawingIsFormal ? copy(lang, "已批准正式版", "Approved formal") : copy(lang, "AI 草稿", "AI draft")}
+            </dd>
           </div>
         </dl>
 
@@ -1343,6 +1412,10 @@ function ClientProjectDetail({
             project={project}
             job={trackingSheet.job}
             item={trackingSheet.item}
+            onOpenDrawing={(preview) => {
+              setTrackingSheet(null);
+              setDrawingPreview(preview);
+            }}
             onClose={() => setTrackingSheet(null)}
           />,
           document.body
