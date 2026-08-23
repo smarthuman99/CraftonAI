@@ -10126,6 +10126,14 @@ function App() {
     return "shipping";
   };
 
+  const openBackofficeOverview = () => {
+    setAdminWorkspaceMode("overview");
+    setAdminPortfolioClientKey("");
+    setCurrentStageView("Backoffice");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setTimeout(() => loadAdminOperationalData(), 0);
+  };
+
   const openAdminProjectWorkspace = (job) => {
     const stage = getAdminPortfolioStage(job);
     setSelectedReviewJobId(job.id);
@@ -12472,10 +12480,7 @@ function App() {
               {isStaffUser && (
                 <span
                   className={`nav-link ${currentView === "Backoffice" ? "active" : ""}`}
-                  onClick={() => {
-                    setCurrentStageView("Backoffice");
-                    setTimeout(() => loadAdminOperationalData(), 0);
-                  }}
+                  onClick={openBackofficeOverview}
                   style={{ fontSize: "0.85rem", cursor: "pointer" }}
                 >
                   {lang === "Cn" ? "管理控制台" : "Backoffice"}
