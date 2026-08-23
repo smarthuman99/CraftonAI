@@ -11050,6 +11050,17 @@ select:focus,
   line-height: 1.5;
 }
 
+.ffe-ready-for-approval.ffe-manual-review {
+  grid-template-columns: 48px minmax(0, 1fr);
+  border-color: rgba(138, 103, 61, 0.32);
+  background: rgba(239, 231, 214, 0.5);
+}
+
+.ffe-ready-for-approval.ffe-manual-review > span {
+  border-color: rgba(138, 103, 61, 0.35);
+  color: var(--ffe-walnut);
+}
+
 .ffe-completion-workspace {
   margin-top: 20px;
   border: 1px solid var(--ffe-line);
@@ -13335,7 +13346,9 @@ select:focus,
   padding: 3px 4px;
   overflow: hidden;
   color: #fff;
-  font: 6px/1.2 "JetBrains Mono", monospace;
+  font:
+    6px/1.2 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.3px;
   text-overflow: ellipsis;
   text-transform: uppercase;
@@ -13355,7 +13368,9 @@ select:focus,
   background: var(--cho-placeholder);
   border: 1px dashed var(--cho-line);
   border-radius: 5px;
-  font: 7px/1.35 "JetBrains Mono", monospace;
+  font:
+    7px/1.35 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -13404,7 +13419,9 @@ select:focus,
 .cho-drawing-dialog header h2 {
   margin: 4px 0 0;
   color: var(--cho-ink);
-  font: italic 34px/1.1 Georgia, serif;
+  font:
+    italic 34px/1.1 Georgia,
+    serif;
   letter-spacing: 0;
 }
 
@@ -13481,7 +13498,9 @@ select:focus,
 .cho-drawing-tracking-panel small {
   overflow: hidden;
   color: var(--cho-stone);
-  font: 600 clamp(4px, 3.4cqw, 11px) / 1.2 "JetBrains Mono", monospace;
+  font:
+    600 clamp(4px, 3.4cqw, 11px) / 1.2 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.08em;
   text-overflow: ellipsis;
   text-transform: uppercase;
@@ -13491,7 +13510,9 @@ select:focus,
 .cho-drawing-tracking-panel strong {
   margin: 0.45em 0 0.7em;
   overflow: hidden;
-  font: 700 clamp(5px, 4.6cqw, 15px) / 1.15 Inter, sans-serif;
+  font:
+    700 clamp(5px, 4.6cqw, 15px) / 1.15 Inter,
+    sans-serif;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -13500,7 +13521,9 @@ select:focus,
   margin-top: 0.45em;
   overflow: hidden;
   color: var(--cho-walnut);
-  font: 600 clamp(4px, 3.7cqw, 12px) / 1.2 "JetBrains Mono", monospace;
+  font:
+    600 clamp(4px, 3.7cqw, 12px) / 1.2 "JetBrains Mono",
+    monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -13560,7 +13583,9 @@ select:focus,
   min-height: 16px;
   margin-top: 5px;
   color: var(--cho-stone);
-  font: 500 10px/1.4 "JetBrains Mono", monospace;
+  font:
+    500 10px/1.4 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.03em;
 }
 
@@ -17749,7 +17774,10 @@ select:focus,
   background: var(--cho-paper);
   border: 1px solid var(--cho-walnut);
   border-radius: 999px;
-  font: 600 11px/1.2 "Inter", "PingFang SC", sans-serif;
+  font:
+    600 11px/1.2 "Inter",
+    "PingFang SC",
+    sans-serif;
 }
 
 .cho-project-context-action small {
@@ -17760,7 +17788,9 @@ select:focus,
   color: var(--cho-paper);
   background: var(--cho-walnut);
   border-radius: 50%;
-  font: 500 9px/1 "JetBrains Mono", monospace;
+  font:
+    500 9px/1 "JetBrains Mono",
+    monospace;
 }
 
 .cho-project-context-action:hover {
@@ -17804,14 +17834,19 @@ select:focus,
   white-space: nowrap;
   border: 1px solid var(--cho-line);
   border-radius: 999px;
-  font: 500 9px/1 "JetBrains Mono", monospace;
+  font:
+    500 9px/1 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.7px;
   text-transform: uppercase;
 }
 
 .cho-project-line-items .cho-project-table-head,
 .cho-project-line-items .cho-project-table-row {
-  grid-template-columns: minmax(190px, 1.7fr) 66px minmax(210px, 1.75fr) minmax(118px, 1fr) minmax(108px, 0.9fr) minmax(118px, 0.95fr);
+  grid-template-columns: minmax(190px, 1.7fr) 66px minmax(210px, 1.75fr) minmax(118px, 1fr) minmax(108px, 0.9fr) minmax(
+      118px,
+      0.95fr
+    );
   column-gap: 10px;
 }
 
@@ -17870,7 +17905,9 @@ select:focus,
   background: var(--cho-walnut);
   border: 1px solid var(--cho-walnut);
   border-radius: 999px;
-  font: 500 9px/1.2 "JetBrains Mono", monospace;
+  font:
+    500 9px/1.2 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.55px;
   text-transform: uppercase;
 }
@@ -17902,12 +17939,17 @@ select:focus,
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--cho-line);
-  font: 600 12px/1.2 "Inter", "PingFang SC", sans-serif;
+  font:
+    600 12px/1.2 "Inter",
+    "PingFang SC",
+    sans-serif;
 }
 
 .cho-project-secondary-disclosures > button small {
   color: var(--cho-stone);
-  font: 500 9px/1 "JetBrains Mono", monospace;
+  font:
+    500 9px/1 "JetBrains Mono",
+    monospace;
 }
 
 .cho-project-secondary-disclosures > button i {
@@ -18036,7 +18078,9 @@ select:focus,
 .cho-project-action-sheet-identity p {
   margin: 8px 0 0;
   color: var(--cho-stone);
-  font: 500 9px/1.5 "JetBrains Mono", monospace;
+  font:
+    500 9px/1.5 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.45px;
   text-transform: uppercase;
 }
@@ -18048,7 +18092,9 @@ select:focus,
   justify-content: space-between;
   gap: 16px;
   color: var(--cho-stone);
-  font: 500 9px/1.2 "JetBrains Mono", monospace;
+  font:
+    500 9px/1.2 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.8px;
   text-transform: uppercase;
 }
@@ -18083,7 +18129,9 @@ select:focus,
 
 .cho-project-action-sheet-question > span {
   color: var(--cho-stone);
-  font: 500 9px/1.2 "JetBrains Mono", monospace;
+  font:
+    500 9px/1.2 "JetBrains Mono",
+    monospace;
   letter-spacing: 1px;
 }
 
@@ -18104,7 +18152,10 @@ select:focus,
   background: var(--cho-paper);
   border: 1px solid var(--cho-line);
   border-radius: 8px;
-  font: 14px/1.6 "Inter", "PingFang SC", sans-serif;
+  font:
+    14px/1.6 "Inter",
+    "PingFang SC",
+    sans-serif;
 }
 
 .cho-project-action-sheet-question textarea:focus {
@@ -18143,7 +18194,9 @@ select:focus,
 
 .cho-project-item-identity code {
   color: var(--cho-stone);
-  font: 500 8.5px/1.2 "JetBrains Mono", monospace;
+  font:
+    500 8.5px/1.2 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.55px;
 }
 
@@ -18158,7 +18211,9 @@ select:focus,
   background: transparent;
   border: 1px solid var(--cho-line);
   border-radius: 999px;
-  font: 600 8px/1 "JetBrains Mono", monospace;
+  font:
+    600 8px/1 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.45px;
   text-transform: uppercase;
 }
@@ -18203,7 +18258,9 @@ select:focus,
 .cho-item-tracking-facts dt {
   display: block;
   color: var(--cho-stone);
-  font: 500 8.5px/1.3 "JetBrains Mono", monospace;
+  font:
+    500 8.5px/1.3 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.8px;
   text-transform: uppercase;
 }
@@ -18212,7 +18269,9 @@ select:focus,
   display: block;
   margin-top: 9px;
   color: var(--cho-ink);
-  font: 600 13px/1.3 "JetBrains Mono", monospace;
+  font:
+    600 13px/1.3 "JetBrains Mono",
+    monospace;
   letter-spacing: 0.6px;
   overflow-wrap: anywhere;
 }
@@ -18274,7 +18333,9 @@ select:focus,
   background: var(--cho-paper);
   border: 1px solid var(--cho-line);
   border-radius: 50%;
-  font: 500 8px/1 "JetBrains Mono", monospace;
+  font:
+    500 8px/1 "JetBrains Mono",
+    monospace;
 }
 
 .cho-item-tracking-timeline > div:not(:last-child) > span::after {
@@ -18672,7 +18733,10 @@ select:focus,
   font-weight: 750;
   line-height: 1;
   cursor: pointer;
-  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
 }
 
 .intake-next-primary:hover:not(:disabled) {
@@ -19386,8 +19450,14 @@ select:focus,
 }
 
 @keyframes intake-next-sheet-in {
-  from { transform: translateX(36px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(36px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .intake-next-sheet > header {

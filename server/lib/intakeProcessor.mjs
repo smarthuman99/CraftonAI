@@ -73,8 +73,6 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
   const model = process.env.GEMINI_VISION_MODEL || DEFAULT_GEMINI_VISION_MODEL;
   const baseUrl = (process.env.GEMINI_BASE_URL || DEFAULT_GEMINI_BASE_URL).replace(/\/+$/, "");
   const timeoutMs = positiveNumber(process.env.GEMINI_VISION_TIMEOUT_MS, DEFAULT_VISION_TIMEOUT_MS);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   const renderedPdf = isRenderedPdfMedia(sourceMedia);
   const mediaParts = getSourceMediaParts(sourceMedia);
@@ -103,20 +101,31 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
     `Brief text: ${job.brief_text || ""}`,
     `Uploaded file name: ${file?.original_name || "image"}`,
     `Uploaded file mime: ${sourceMedia.mimeType}`,
-    renderedPdf ? `Rendered PDF pages: ${mediaParts.map((part) => part.pageNumber).filter(Boolean).join(", ")}` : "",
+    renderedPdf
+      ? `Rendered PDF pages: ${mediaParts
+          .map((part) => part.pageNumber)
+          .filter(Boolean)
+          .join(", ")}`
+      : "",
     sourceText ? `Additional readable source text: ${sourceText}` : ""
   ]
     .filter(Boolean)
     .join("\n");
 
-  let response;
+  const requestHeaders = {
+    "x-goog-api-key": process.env.GEMINI_API_KEY,
+    "Content-Type": "application/json"
+  };
+  let text = "";
+  let transport = "interactions";
+  let interactionsError;
+
   try {
-    response = await fetch(`${baseUrl}/interactions`, {
-      method: "POST",
-      signal: controller.signal,
+    const data = await requestGeminiJson({
+      url: `${baseUrl}/interactions`,
+      timeoutMs,
       headers: {
-        "x-goog-api-key": process.env.GEMINI_API_KEY,
-        "Content-Type": "application/json",
+        ...requestHeaders,
         "Api-Revision": process.env.GEMINI_API_REVISION || DEFAULT_GEMINI_API_REVISION
       },
       body: JSON.stringify({
@@ -132,18 +141,69 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
         }
       })
     });
-  } finally {
-    clearTimeout(timeout);
+    text = extractGeminiInteractionText(data);
+    if (!text) throw new Error("Gemini Interactions response did not include structured output text.");
+  } catch (err) {
+    interactionsError = err;
+    transport = "generateContent";
+    console.warn("Gemini Interactions visual parse failed; retrying with generateContent:", err.message);
   }
 
-  if (!response.ok) {
-    const body = (await response.text()).slice(0, 1200);
-    throw new Error(`Gemini visual parse request failed: ${response.status} ${body}`);
-  }
+  if (!text) {
+    const generateContentUrl = `${baseUrl}/models/${encodeURIComponent(model)}:generateContent`;
+    const contents = [
+      {
+        role: "user",
+        parts: [{ text: prompt }, ...buildGeminiGenerateContentParts(mediaParts, { renderedPdf })]
+      }
+    ];
+    let structuredError;
 
-  const data = await response.json();
-  const text = extractGeminiInteractionText(data);
-  if (!text) throw new Error("Gemini response did not include structured output text.");
+    try {
+      const data = await requestGeminiJson({
+        url: generateContentUrl,
+        timeoutMs,
+        headers: requestHeaders,
+        body: JSON.stringify({
+          contents,
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: "application/json",
+            responseJsonSchema: schema
+          }
+        })
+      });
+      text = extractGeminiGenerateContentText(data);
+      if (!text) throw new Error("Gemini generateContent response did not include structured output text.");
+    } catch (err) {
+      structuredError = err;
+      transport = "generateContent-json";
+      console.warn("Gemini structured generateContent failed; retrying JSON-only mode:", err.message);
+    }
+
+    if (!text) {
+      try {
+        const data = await requestGeminiJson({
+          url: generateContentUrl,
+          timeoutMs,
+          headers: requestHeaders,
+          body: JSON.stringify({
+            contents,
+            generationConfig: {
+              temperature: 0.1,
+              responseMimeType: "application/json"
+            }
+          })
+        });
+        text = extractGeminiGenerateContentText(data);
+        if (!text) throw new Error("Gemini JSON-mode response did not include output text.");
+      } catch (err) {
+        throw new Error(
+          `Gemini visual parse failed across all transports. Interactions: ${interactionsError?.message || "not attempted"}; structured generateContent: ${structuredError?.message || "not attempted"}; JSON generateContent: ${err.message}`
+        );
+      }
+    }
+  }
 
   const parsed = sanitizeVisionResult(JSON.parse(stripJsonFence(text)), { job, sourceText, sourceMedia });
   parsed.visual_analysis = {
@@ -151,6 +211,7 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
     status: "completed",
     provider: "gemini",
     model,
+    transport,
     file_name: file?.original_name || "",
     mime_type: sourceMedia.mimeType,
     byte_length: Number(sourceMedia.byteLength || 0),
@@ -159,6 +220,28 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
 
   const result = normalizeResult(parsed, { job, file, sourceText, sourceMedia });
   return addVisionSafetyQuestions(result, { job, sourceText, sourceMedia });
+}
+
+async function requestGeminiJson({ url, headers, body, timeoutMs }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      signal: controller.signal,
+      headers,
+      body
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    const responseBody = (await response.text()).slice(0, 1200);
+    throw new Error(`HTTP ${response.status}: ${responseBody}`);
+  }
+  return response.json();
 }
 
 async function parseWithDeepSeek({ job, file, sourceText }) {
@@ -445,10 +528,13 @@ function normalizeVisualAnalysis(value) {
     status: cleanField(value.status) || "completed",
     provider: cleanField(value.provider),
     model: cleanField(value.model),
+    transport: cleanField(value.transport),
     file_name: cleanField(value.file_name),
     mime_type: cleanField(value.mime_type),
     byte_length: Math.max(0, Number(value.byte_length || 0)),
-    page_numbers: [...new Set((value.page_numbers || []).map(Number).filter((page) => Number.isInteger(page) && page > 0))],
+    page_numbers: [
+      ...new Set((value.page_numbers || []).map(Number).filter((page) => Number.isInteger(page) && page > 0))
+    ],
     image_summary_cn: cleanField(value.image_summary_cn),
     image_summary_en: cleanField(value.image_summary_en),
     detected_text: normalizeStringArray(value.detected_text),
@@ -655,6 +741,14 @@ function buildGeminiMediaInput(parts, { renderedPdf = false } = {}) {
   });
 }
 
+function buildGeminiGenerateContentParts(parts, { renderedPdf = false } = {}) {
+  return parts.flatMap((part) => {
+    const image = { inlineData: { mimeType: part.mimeType, data: part.dataBase64 } };
+    if (!renderedPdf || !part.pageNumber) return [image];
+    return [{ text: `PDF SOURCE PAGE ${part.pageNumber}` }, image];
+  });
+}
+
 function isRenderedPdfMedia(sourceMedia) {
   return sourceMedia?.sourceKind === "pdf_pages" && Array.isArray(sourceMedia.pages);
 }
@@ -711,7 +805,8 @@ function addManualPdfVisionReview(result, { file, sourceMedia, reason }) {
       "Automated PDF visual extraction was not completed. Crafton must review the source PDF or retry the visual worker before requesting client clarification."
     ]),
     summary_cn: "PDF 页面已保存，但自动视觉解析未完成；需由 Crafton 重试视觉分析或人工核对原文件。",
-    summary_en: "The PDF pages were saved, but automated visual extraction was not completed. Crafton must retry visual analysis or review the source document.",
+    summary_en:
+      "The PDF pages were saved, but automated visual extraction was not completed. Crafton must retry visual analysis or review the source document.",
     source_notes: joinNonEmpty([
       result.source_notes,
       `PDF visual analysis status: manual_review_required (${reason || "unknown"})`
@@ -763,6 +858,16 @@ function extractGeminiInteractionText(data) {
     ? data.outputs.filter((part) => part?.type === "text" && typeof part.text === "string").map((part) => part.text)
     : [];
   return outputTexts.join("\n");
+}
+
+function extractGeminiGenerateContentText(data) {
+  return Array.isArray(data?.candidates)
+    ? data.candidates
+        .flatMap((candidate) => (Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []))
+        .filter((part) => typeof part?.text === "string")
+        .map((part) => part.text)
+        .join("\n")
+    : "";
 }
 
 function isImageIntakeFile(file) {

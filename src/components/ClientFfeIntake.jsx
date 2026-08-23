@@ -53,13 +53,31 @@ const getQuestionItem = (question, job) => {
 };
 
 const getClientCompletionQuestions = (job) => {
-  const requestedItems = Array.isArray(job?.clarificationRequest?.items) ? job.clarificationRequest.items : [];
+  const clarificationRequest = job?.clarificationRequest;
+  const requestedItems = Array.isArray(clarificationRequest?.items) ? clarificationRequest.items : [];
   if (requestedItems.length) {
     return requestedItems.map((item, questionIndex) => ({
       ...item,
       question: item.question || item.text || "",
       questionIndex
     }));
+  }
+  const requestedQuestions = Array.isArray(clarificationRequest?.questions) ? clarificationRequest.questions : [];
+  if (requestedQuestions.length) {
+    return requestedQuestions.map((question, questionIndex) => ({
+      id: `${job?.id || "completion"}-Q${questionIndex + 1}`,
+      question,
+      questionIndex,
+      scope: "project",
+      item_id: "",
+      item_index: null
+    }));
+  }
+  if (
+    clarificationRequest ||
+    ["manual_review_required", "ready_for_approval"].includes(job?.clarificationWorkflow?.status)
+  ) {
+    return [];
   }
   const fallbackQuestions = job?.activeQuestions?.length ? job.activeQuestions : job?.questions || [];
   return fallbackQuestions.map((question, questionIndex) => ({
@@ -91,6 +109,8 @@ function ClientCompletion({
   const adminExceptions = Array.isArray(rawJob?.result_json?.admin_exceptions)
     ? rawJob.result_json.admin_exceptions
     : [];
+  const manualReviewRequired =
+    workflowStatus === "manual_review_required" || (adminExceptions.length > 0 && questions.length === 0);
   const readyForApproval =
     workflowStatus === "ready_for_approval" ||
     (questions.length === 0 && items.length > 0 && adminExceptions.length === 0);
@@ -108,7 +128,9 @@ function ClientCompletion({
           <h2 id="ffe-review-title">
             {readyForApproval
               ? t(lang, "资料已准备好等待批准", "Your project draft is ready for approval")
-              : t(lang, "AI 已找出仍需确认的资料", "AI found the details that still need you")}
+              : manualReviewRequired
+                ? t(lang, "文件正在由 Crafton 复核", "Crafton is reviewing the source file")
+                : t(lang, "AI 已找出仍需确认的资料", "AI found the details that still need you")}
           </h2>
           <p>
             {readyForApproval
@@ -117,11 +139,17 @@ function ClientCompletion({
                   "AI 已把文件和您的答案整理成结构化项目资料，管理员只需检查变更并批准。",
                   "AI has structured the file and your answers. Crafton now only needs to review the changes and approve."
                 )
-              : t(
-                  lang,
-                  "请只补充文件中无法确定的内容。提交后，AI 会立即更新项目并再次检查。",
-                  "Only complete what the file could not establish. AI will update and re-check the project immediately after you submit."
-                )}
+              : manualReviewRequired
+                ? t(
+                    lang,
+                    "视觉提取未通过完整性检查。原文件已经安全保留，Crafton 会自动重试或人工复核；您暂时不需要补充资料。",
+                    "Visual extraction did not pass the completeness check. Your source file is safely stored while Crafton retries or reviews it; no client input is needed now."
+                  )
+                : t(
+                    lang,
+                    "请只补充文件中无法确定的内容。提交后，AI 会立即更新项目并再次检查。",
+                    "Only complete what the file could not establish. AI will update and re-check the project immediately after you submit."
+                  )}
           </p>
         </div>
         <span className={`ffe-status-badge ${readyForApproval ? "is-ready" : "is-action"}`}>
@@ -132,7 +160,9 @@ function ClientCompletion({
           )}
           {readyForApproval
             ? t(lang, "等待管理员批准", "AWAITING APPROVAL")
-            : t(lang, `${questions.length} 项待补充`, `${questions.length} TO COMPLETE`)}
+            : manualReviewRequired
+              ? t(lang, "CRAFTON 复核", "CRAFTON REVIEW")
+              : t(lang, `${questions.length} 项待补充`, `${questions.length} TO COMPLETE`)}
         </span>
       </header>
 
@@ -154,7 +184,9 @@ function ClientCompletion({
           <strong>
             {readyForApproval
               ? t(lang, "可批准", "Ready")
-              : t(lang, `${questions.length} 项需确认`, `${questions.length} details needed`)}
+              : manualReviewRequired
+                ? t(lang, "内部复核", "Crafton review")
+                : t(lang, `${questions.length} 项需确认`, `${questions.length} details needed`)}
           </strong>
         </div>
       </div>
@@ -179,6 +211,22 @@ function ClientCompletion({
           <button type="button" className="ffe-primary-button" onClick={onOpenProject}>
             {t(lang, "打开项目", "Open project")}
           </button>
+        </div>
+      ) : manualReviewRequired ? (
+        <div className="ffe-ready-for-approval ffe-manual-review" role="status">
+          <span>
+            <FileSearch size={24} aria-hidden="true" />
+          </span>
+          <div>
+            <strong>{t(lang, "Crafton 正在处理识别异常", "Crafton is resolving the extraction exception")}</strong>
+            <p>
+              {t(
+                lang,
+                "这不是客户遗漏问题。系统会保留原 PDF，并由 Crafton 重试 AI 视觉识别或人工核对后更新项目。",
+                "This is not missing client information. Crafton will retry AI vision or review the preserved PDF, then update the project."
+              )}
+            </p>
+          </div>
         </div>
       ) : (
         <div className="ffe-completion-workspace">

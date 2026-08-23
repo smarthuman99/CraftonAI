@@ -245,6 +245,87 @@ test("rendered PDF pages are sent to Gemini vision with page markers and preserv
   assert.ok(result.questions.every((question) => !/reference photo|physical sample/i.test(question)));
 });
 
+test("Gemini vision retries rendered PDF batches through generateContent when Interactions is unavailable", async () => {
+  process.env.DEEPSEEK_API_KEY = "";
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  process.env.GEMINI_BASE_URL = "https://gemini.test/v1beta";
+  process.env.GEMINI_VISION_MODEL = "gemini-vision-test";
+
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, body: JSON.parse(options.body) });
+    if (String(url).endsWith("/interactions")) {
+      return new Response(JSON.stringify({ error: { message: "Interactions not enabled" } }), { status: 404 });
+    }
+
+    const output = {
+      project: { name: "Portal Amenity", client_name: "The Crafton Ltd", destination: "London" },
+      items: [
+        {
+          item_type_cn: "沙发",
+          item_type_en: "Sofa",
+          quantity: 2,
+          material_cn: "米色布艺",
+          material_en: "Beige upholstery",
+          original_unit_price: 0,
+          unit_price: 0,
+          dimensions_text: "W 2340 x D 980 x H 750 mm",
+          usage_location: "Snug",
+          source_page: 1,
+          style_cn: "现代",
+          style_en: "Modern",
+          color_cn: "米色",
+          color_en: "Beige",
+          finish_cn: "待确认",
+          finish_en: "To confirm",
+          visible_features_cn: ["弧形靠背"],
+          visible_features_en: ["Curved back"],
+          confidence: 0.96,
+          notes_cn: "PDF 表格行。",
+          notes_en: "Printed PDF schedule row."
+        }
+      ],
+      questions: [],
+      summary_cn: "已读取 PDF 家具表。",
+      summary_en: "The PDF furniture schedule was read.",
+      source_notes: "Rendered page 1",
+      visual_analysis: {
+        image_summary_cn: "家具表页面。",
+        image_summary_en: "Furniture schedule page.",
+        detected_text: ["Sofa", "Qty 2"],
+        limitations: []
+      }
+    };
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(output) }] } }] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  };
+
+  const result = await parseIntakeBrief({
+    job: { project_name: "Portal Amenity", destination: "London", quantity_text: "", brief_text: "" },
+    file: { original_name: "portal-amenity.pdf", mime_type: "application/pdf" },
+    sourceText: "SOURCE PAGE 1",
+    sourceMedia: {
+      sourceKind: "pdf_pages",
+      mimeType: "image/png",
+      byteLength: 6,
+      pages: [{ pageNumber: 1, mimeType: "image/png", dataBase64: "cGFnZS0x", byteLength: 6 }]
+    }
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].url, "https://gemini.test/v1beta/models/gemini-vision-test:generateContent");
+  assert.deepEqual(
+    requests[1].body.contents[0].parts.slice(1).map((part) => part.text || part.inlineData?.data),
+    ["PDF SOURCE PAGE 1", "cGFnZS0x"]
+  );
+  assert.equal(requests[1].body.generationConfig.responseMimeType, "application/json");
+  assert.equal(result.visual_analysis.status, "completed");
+  assert.equal(result.visual_analysis.transport, "generateContent");
+  assert.equal(result.items[0].quantity, 2);
+});
+
 test("image intake requires manual review when no vision key is configured", async () => {
   process.env.DEEPSEEK_API_KEY = "";
   process.env.GEMINI_API_KEY = "";
