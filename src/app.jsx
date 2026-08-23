@@ -29,6 +29,7 @@ import { AdminLocalized, adminText } from "./adminI18n";
 import { deriveProjectLifecycle, mergeProjectJobSources } from "./projectLifecycle.js";
 import { normalizeProjectItemsForLoading } from "./loadingAiProjectItems.js";
 import { callWorkflowAi } from "./components/workflowAiClient.js";
+import { buildPortalOwnershipFilter, filterPortalJobsForOwner, getPortalJobOwnerId } from "./portalOwnership.js";
 
 const IMAGES = {
   heroChair: "/hero_chair.jpg", // 侘寂奢華皮質單椅 (取代 image1)
@@ -513,8 +514,7 @@ const normalizeTechnicalDrawing = (item = {}) => {
 };
 
 const getIntakeJobOwnerId = (job = {}) => {
-  const intakeFile = getIntakeFileFromJob(job);
-  return String(job.user_id || job.requested_by || intakeFile?.user_id || intakeFile?.uploaded_by || "").trim();
+  return getPortalJobOwnerId(job);
 };
 
 const getOwnerProfileClientName = (job = {}) => {
@@ -1258,6 +1258,7 @@ function App() {
   const prequoteWorkspaceLoadRef = useRef(null);
   const prequoteWorkspaceLoadedRef = useRef(false);
   const trackingAuthPromptedRef = useRef(false);
+  const portalOwnerIdRef = useRef("");
 
   // Material Studio Swatch Configurator States
   const [selectedFabric, setSelectedFabric] = useState("FAB-02"); // default Navy Classic Linen
@@ -1637,6 +1638,19 @@ function App() {
     }
   };
 
+  const resetClientPortalAccountData = () => {
+    setClientProjectJobs([]);
+    setClientProjectsLoading(true);
+    setClientAnswerDrafts({});
+    setClientAnswerSubmitState({});
+    setSubmittedTrackerProject(null);
+    setLatestIntakeJob(null);
+    setTrackerPreviewUrl("");
+    setFfeAnalysisJobId("");
+    prequoteWorkspaceLoadRef.current = null;
+    prequoteWorkspaceLoadedRef.current = false;
+  };
+
   const handleAuthLogout = async () => {
     const client = getSupabaseBrowserClient();
     setAuthError("");
@@ -1653,13 +1667,8 @@ function App() {
     setCurrentStageView("Marketing");
     setMarketingTab("Overview");
     setClientPortalTab("Tracker");
-    setClientProjectsLoading(true);
-    setSubmittedTrackerProject(null);
-    setLatestIntakeJob(null);
-    setTrackerPreviewUrl("");
-    setClientProjectJobs([]);
-    setClientAnswerDrafts({});
-    setClientAnswerSubmitState({});
+    portalOwnerIdRef.current = "";
+    resetClientPortalAccountData();
     clearSupabaseAuthStorage();
 
     if (client) {
@@ -1987,8 +1996,19 @@ function App() {
     if (extracted.quantityText) setIntakeQuantity(extracted.quantityText);
   };
 
+  const getOwnedClientProjectJobs = () => {
+    const authenticatedOwnerId = supabaseSessionUser?.id || "";
+    if (authenticatedOwnerId) {
+      return filterPortalJobsForOwner(clientProjectJobs, authenticatedOwnerId);
+    }
+    // Quick-access demo users may use the in-memory demo jobs, but a configured
+    // Supabase portal must never fall back to another account's cached jobs.
+    if (user && !supabaseSessionUser) return clientProjectJobs;
+    return [];
+  };
+
   const getPortalContextJobs = () => {
-    return mergeProjectJobSources(clientProjectJobs, getLocalReviewJobs());
+    return getOwnedClientProjectJobs();
   };
 
   const buildSupportProjectContext = () =>
@@ -2569,9 +2589,7 @@ function App() {
   };
 
   const handleConfirmFfeExtraction = async () => {
-    const job = [...clientProjectJobs, latestIntakeJob].find(
-      (row) => row && String(row.id) === String(ffeAnalysisJobId)
-    );
+    const job = getOwnedClientProjectJobs().find((row) => row && String(row.id) === String(ffeAnalysisJobId));
     if (!job) return;
 
     setFfeConfirmationSaving(true);
@@ -5275,12 +5293,15 @@ function App() {
     if (!context?.supabaseUser) return;
 
     const { client, supabaseUser } = context;
+    const requestedOwnerId = String(supabaseUser.id);
     const { data, error } = await client
       .from("intake_jobs")
       .select("*, intake_files(*)")
-      .eq("user_id", supabaseUser.id)
+      .or(buildPortalOwnershipFilter(requestedOwnerId))
       .order("created_at", { ascending: false })
       .limit(1);
+
+    if (portalOwnerIdRef.current !== requestedOwnerId) return;
 
     if (error) {
       console.warn("Latest submitted tracker project was not loaded:", error.message || error);
@@ -5303,6 +5324,8 @@ function App() {
         .createSignedUrl(file.storage_path, 60 * 60);
       previewUrl = signed?.signedUrl || "";
     }
+
+    if (portalOwnerIdRef.current !== requestedOwnerId) return;
 
     const quantityText = job.quantity_text || "";
     const trackerProject = {
@@ -5568,6 +5591,7 @@ function App() {
     if (prequoteWorkspaceLoadRef.current) return prequoteWorkspaceLoadRef.current;
 
     const shouldShowBlockingLoading = !prequoteWorkspaceLoadedRef.current && !options.background;
+    const requestedOwnerId = portalOwnerIdRef.current;
     const loadPromise = (async () => {
       if (shouldShowBlockingLoading) setClientProjectsLoading(true);
       const localJobs = getLocalReviewJobs();
@@ -5590,6 +5614,7 @@ function App() {
       try {
         const { client, supabaseUser } = context;
         const authenticatedUser = supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null;
+        const authenticatedOwnerId = String(supabaseUser?.id || "");
 
         if (!supabaseUser) {
           setAdminAccessStatus("unauthenticated");
@@ -5626,6 +5651,7 @@ function App() {
           const reviewRowsWithPreviews = await Promise.all(
             reviewRowsWithOwners.map((row) => addSignedIntakeItemImages(client, row))
           );
+          if (portalOwnerIdRef.current !== authenticatedOwnerId) return;
           setIntakeReviewJobs(reviewRowsWithPreviews);
           setAdminAccessStatus("ready");
         } else {
@@ -5637,12 +5663,13 @@ function App() {
           const { data: clientData, error: clientError } = await client
             .from("intake_jobs")
             .select("*, intake_files(*), projects(*)")
-            .eq("user_id", supabaseUser.id)
+            .or(buildPortalOwnershipFilter(authenticatedOwnerId))
             .order("created_at", { ascending: false })
             .limit(24);
 
           if (clientError) throw clientError;
-          const clientRows = clientData && clientData.length > 0 ? clientData : [];
+          if (portalOwnerIdRef.current !== authenticatedOwnerId) return;
+          const clientRows = filterPortalJobsForOwner(clientData || [], authenticatedOwnerId);
           const clientRowsWithPreviews = await Promise.all(
             clientRows.map(async (row) => {
               const rowWithItemImages = await addSignedIntakeItemImages(client, row);
@@ -5719,6 +5746,7 @@ function App() {
               ])
             )
           }));
+          if (portalOwnerIdRef.current !== authenticatedOwnerId) return;
           setClientProjectJobs(clientRowsWithProgress);
         } else {
           setClientProjectJobs([]);
@@ -5731,14 +5759,16 @@ function App() {
           setClientProjectJobs([]);
         }
       } finally {
-        setClientProjectsLoading(false);
+        if (portalOwnerIdRef.current === requestedOwnerId) setClientProjectsLoading(false);
       }
     })();
 
     prequoteWorkspaceLoadRef.current = loadPromise;
     return loadPromise.finally(() => {
-      prequoteWorkspaceLoadedRef.current = true;
-      if (prequoteWorkspaceLoadRef.current === loadPromise) prequoteWorkspaceLoadRef.current = null;
+      if (prequoteWorkspaceLoadRef.current === loadPromise) {
+        prequoteWorkspaceLoadedRef.current = true;
+        prequoteWorkspaceLoadRef.current = null;
+      }
     });
   };
 
@@ -6483,6 +6513,11 @@ function App() {
 
     const hydrateAuthenticatedUser = async (supabaseUser) => {
       if (cancelled) return;
+      const nextOwnerId = String(supabaseUser?.id || "");
+      if (portalOwnerIdRef.current !== nextOwnerId) {
+        resetClientPortalAccountData();
+        portalOwnerIdRef.current = nextOwnerId;
+      }
       setSupabaseSessionUser(supabaseUser || null);
       setSupabaseAuthReady(true);
       const appUser = supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null;
@@ -6509,6 +6544,8 @@ function App() {
       setSupabaseSessionUser(supabaseUser);
       setSupabaseAuthReady(true);
       if (!supabaseUser) {
+        portalOwnerIdRef.current = "";
+        resetClientPortalAccountData();
         setSupportConversationId(null);
         setSupportUploadedFileId(null);
         setSupportSubmittedJobId(null);
@@ -6516,6 +6553,12 @@ function App() {
         lastProfileSyncRef.current = "";
         setUser(null);
         return;
+      }
+
+      const nextOwnerId = String(supabaseUser.id);
+      if (portalOwnerIdRef.current !== nextOwnerId) {
+        resetClientPortalAccountData();
+        portalOwnerIdRef.current = nextOwnerId;
       }
 
       const appUser = mapSupabaseUserToAppUser(supabaseUser);
@@ -7425,7 +7468,7 @@ function App() {
   };
 
   const renderClientPrequoteWorkspace = () => {
-    const jobs = clientProjectJobs.length > 0 ? clientProjectJobs : getLocalReviewJobs();
+    const jobs = getOwnedClientProjectJobs();
     const projectGroups = [];
     const groupIndex = new Map();
 
@@ -7622,10 +7665,7 @@ function App() {
   const renderClientOrderDashboard = () => {
     const forceEmptyDashboard =
       import.meta.env.DEV && new window.URLSearchParams(window.location.search).has("empty-dashboard");
-    const dashboardJobs = mergeProjectJobSources(
-      isStaffUser ? intakeReviewJobs : clientProjectJobs,
-      getLocalReviewJobs()
-    );
+    const dashboardJobs = getOwnedClientProjectJobs();
     const jobs = forceEmptyDashboard ? [] : dashboardJobs;
     const projectGroups = buildProjectGroupsFromJobs(jobs).map((project) => ({
       ...project,
@@ -7785,7 +7825,7 @@ function App() {
       : null;
     const rawJob =
       completionDemoJob ||
-      [...clientProjectJobs, latestIntakeJob].find((row) => row && String(row.id) === String(ffeAnalysisJobId));
+      getOwnedClientProjectJobs().find((row) => row && String(row.id) === String(ffeAnalysisJobId));
     const extractedJob = rawJob ? normalizeReviewJob(rawJob) : null;
 
     return (
