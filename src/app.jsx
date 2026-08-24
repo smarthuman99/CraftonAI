@@ -6104,7 +6104,10 @@ function App() {
 
   const handleApproveIntakeReview = async () => {
     const { selectedJob: job, draft, projectJobs } = getAdminDraftContext();
-    if (!job || !draft) return;
+    if (!job || !draft) {
+      setPrequoteNotice("Approval is unavailable because the active project package could not be loaded.");
+      return;
+    }
     const blockingQuestions = normalizeClarificationQuestions(draft.questions).filter(isClientFacingClarification);
     if (blockingQuestions.length > 0) {
       setPrequoteNotice(`Approval is blocked: ${blockingQuestions.length} client clarification(s) remain.`);
@@ -8428,6 +8431,33 @@ function App() {
     const itemActionCount = enrichedIntakeItems.reduce((total, record) => total + record.actionCount, 0);
     const totalActionCount = projectQuestions.length + itemActionCount;
     const pendingDrawingCount = enrichedIntakeItems.filter((record) => record.drawingNeedsConfirmation).length;
+    const approvalBlockerCount = missingQuestions.length + pendingDrawingCount + (bomRows.length ? 0 : 1);
+    const approvalBlockerCopy = [
+      missingQuestions.length
+        ? `${missingQuestions.length} client clarification${missingQuestions.length === 1 ? "" : "s"}`
+        : "",
+      pendingDrawingCount ? `${pendingDrawingCount} drawing confirmation${pendingDrawingCount === 1 ? "" : "s"}` : "",
+      !bomRows.length ? "a generated BOM" : ""
+    ]
+      .filter(Boolean)
+      .join(" and ");
+    const handleApprovalAttempt = () => {
+      if (hasMissingInfo) {
+        setPrequoteNotice(`Approval is not ready. Required before approval: ${approvalBlockerCopy}.`);
+        setIntakeDisclosure(hasClarificationAnalysis ? "clarification" : "approval");
+        return;
+      }
+      if (pendingDrawingCount > 0) {
+        setPrequoteNotice(`Approval is not ready. Required before approval: ${approvalBlockerCopy}.`);
+        setIntakeDisclosure("drawings");
+        return;
+      }
+      if (!bomRows.length) {
+        setPrequoteNotice("Approval is not ready: generate the project BOM before approving the package.");
+        return;
+      }
+      handleApproveIntakeReview();
+    };
     const readyItemCount = enrichedIntakeItems.filter((record) => record.actionCount === 0).length;
     const totalPieces = bomItems.reduce((total, item) => total + parseIntakeQuantity(item), 0);
     const completenessDone = completenessItems.filter((item) => item.state === "done").length;
@@ -8972,6 +9002,11 @@ function App() {
                   />
                 </label>
                 <div>
+                  {approvalBlockerCount > 0 && (
+                    <small className="intake-next-approval-guidance" role="status">
+                      Required before approval: {approvalBlockerCopy}.
+                    </small>
+                  )}
                   <button
                     type="button"
                     className="btn-secondary"
@@ -8982,21 +9017,18 @@ function App() {
                   </button>
                   <button
                     type="button"
-                    className="btn-premium"
-                    onClick={handleApproveIntakeReview}
-                    disabled={
-                      hasMissingInfo ||
-                      pendingDrawingCount > 0 ||
-                      !bomRows.length ||
-                      intakeApprovalSaving ||
-                      (isIntakeApproved && Boolean(draft?.projectId))
-                    }
+                    className={`btn-premium ${approvalBlockerCount > 0 ? "intake-next-approval-blocked" : ""}`}
+                    onClick={handleApprovalAttempt}
+                    disabled={intakeApprovalSaving || (isIntakeApproved && Boolean(draft?.projectId))}
+                    title={approvalBlockerCount > 0 ? `Complete ${approvalBlockerCopy} first.` : ""}
                   >
                     {intakeApprovalSaving
                       ? "Saving approval..."
                       : isIntakeApproved
                         ? "Approved"
-                        : "Approve checked package"}
+                        : approvalBlockerCount > 0
+                          ? `Review ${approvalBlockerCount} action${approvalBlockerCount === 1 ? "" : "s"}`
+                          : "Approve checked package"}
                   </button>
                 </div>
               </div>

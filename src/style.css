@@ -19926,8 +19926,35 @@ select:focus,
 .intake-next-approval-panel > div:last-child {
   margin-top: 14px;
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 9px;
+}
+
+.intake-next-approval-guidance {
+  min-width: min(100%, 320px);
+  margin-right: auto;
+  color: var(--intake-stone);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.intake-next-approval-panel .intake-next-approval-blocked {
+  border-color: rgba(74, 53, 37, 0.42);
+  background: #f2e8d6;
+  color: var(--intake-walnut);
+}
+
+.intake-next-approval-panel .intake-next-approval-blocked:hover:not(:disabled) {
+  border-color: var(--intake-walnut);
+  background: #eadcc5;
+}
+
+.intake-next-approval-panel button:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .intake-next-notice {
