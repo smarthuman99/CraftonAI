@@ -20958,6 +20958,7 @@ select:focus,
 .sourcing-next-grid {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 18px;
 }
 
