@@ -85,9 +85,19 @@ function Notice({ tone = "", children }) {
   return <div className={`admin-ops-notice ${tone}`}>{children}</div>;
 }
 
-function StageSection({ stage, title, status, description, actions, children, wide = false }) {
+function StageSection({
+  stage,
+  title,
+  status,
+  description,
+  actions,
+  children,
+  wide = false,
+  hidden = false,
+  className = ""
+}) {
   return (
-    <section className={`admin-ops-section ${wide ? "wide" : ""}`}>
+    <section className={`admin-ops-section ${wide ? "wide" : ""} ${className}`.trim()} hidden={hidden}>
       <header>
         <div>
           <span>{stage}</span>
@@ -144,6 +154,9 @@ export default function AdminWorkflowWorkspace({
   const [bulkQuoteBusy, setBulkQuoteBusy] = useState(false);
   const [bulkQuoteResults, setBulkQuoteResults] = useState([]);
   const [quoteAutoAnalyzeToken, setQuoteAutoAnalyzeToken] = useState("");
+  const [sourcingView, setSourcingView] = useState("prepare");
+  const [showSupplierDirectory, setShowSupplierDirectory] = useState(false);
+  const sourcingProjectRef = React.useRef("");
 
   const [supplierForm, setSupplierForm] = useState(EMPTY_SUPPLIER_FORM);
   const [editingSupplierId, setEditingSupplierId] = useState("");
@@ -1210,40 +1223,115 @@ export default function AdminWorkflowWorkspace({
     ? quoteAnalysisFile?.payload?.analysis?.recommendation?.quoteId || null
     : null;
   const selectedQuote = sourcingScoredQuotes.find((quote) => quote.status === "selected") || null;
-  const sourcingSteps = [
+  const sourcingItemCount = project?.items?.length || 0;
+  const sourcingPieceCount = (project?.items || []).reduce(
+    (total, item) => total + Number(item.quantity || item.qty || 0),
+    0
+  );
+  const sourcingHasDocument = Boolean(sourcingBatch?.payload?.document);
+  const sourcingHasReleasedRfq = Boolean(
+    rfqExcelFile || sourcingBatch?.status === "sent" || sourcingBatch?.payload?.dispatch
+  );
+  const sourcingSuggestedView =
+    selectedQuote || quoteAnalysisReady
+      ? "decide"
+      : sourcingHasReleasedRfq || sourcingResponseCount > 0
+        ? "collect"
+        : "prepare";
+  const sourcingPhases = [
     {
-      label: t("Inquiry generated", "询盘已生成"),
-      detail: sourcingBatch?.payload?.document ? sourcingBatch.rfq_code : t("Waiting for RFQ", "等待生成 RFQ"),
-      done: Boolean(sourcingBatch?.payload?.document)
+      id: "prepare",
+      stage: "S06",
+      label: t("Prepare RFQ", "准备询价"),
+      detail: sourcingHasReleasedRfq
+        ? t("Released to suppliers", "已发给供应商")
+        : sourcingHasDocument
+          ? t("Draft ready for review", "草稿待审核")
+          : t("Use approved intake data", "引用已批准订单资料"),
+      done: sourcingHasReleasedRfq
     },
     {
-      label: t("Cho approved", "Cho 已批准"),
-      detail: ["approved", "sent"].includes(sourcingBatch?.status)
-        ? t("Approved", "已批准")
-        : t("Review required", "需要审核"),
-      done: ["approved", "sent"].includes(sourcingBatch?.status)
+      id: "collect",
+      stage: "S07",
+      label: t("Collect quotes", "收集报价"),
+      detail: invitedSuppliers.length
+        ? t(
+            `${sourcingResponseCount} of ${invitedSuppliers.length} received`,
+            `已收到 ${sourcingResponseCount}/${invitedSuppliers.length} 份`
+          )
+        : t("Waiting for supplier list", "等待供应商名单"),
+      done: Boolean(quoteAnalysisReady || selectedQuote)
     },
     {
-      label: t("Excel downloaded", "Excel 已下载"),
-      detail: rfqExcelFile ? rfqExcelFile.file_name : t("Download the approved .xlsx", "下载已批准的 .xlsx"),
-      done: Boolean(rfqExcelFile)
-    },
-    {
-      label: t("Quotes returned", "报价已回传"),
-      detail: t(
-        `${sourcingResponseCount}/${invitedSuppliers.length || 0} received`,
-        `已收到 ${sourcingResponseCount}/${invitedSuppliers.length || 0} 份`
-      ),
-      done: invitedSuppliers.length > 0 && sourcingResponseCount >= invitedSuppliers.length
-    },
-    {
-      label: t("AI comparison ready", "AI 比价已完成"),
+      id: "decide",
+      stage: "S08",
+      label: t("Select best quote", "选择最优报价"),
       detail:
         selectedQuote?.supplier_name ||
-        (quoteAnalysisReady ? t("Recommendation ready", "最优建议已生成") : t("Waiting for comparison", "等待比价")),
-      done: quoteAnalysisReady
+        (quoteAnalysisReady ? t("Recommendation ready", "推荐结果待批准") : t("Comparison pending", "等待比价")),
+      done: Boolean(selectedQuote)
     }
   ];
+  const sourcingNextAction = selectedQuote
+    ? {
+        phase: "decide",
+        label: t("Supplier appointed", "供应商已选定"),
+        detail: selectedQuote.supplier_name || selectedQuote.suppliers?.name || "-",
+        complete: true
+      }
+    : quoteAnalysisReady
+      ? {
+          phase: "decide",
+          label: t("Approve the winning supplier", "批准中选供应商"),
+          detail: t("AI comparison is ready for Cho's commercial decision.", "AI 比价已完成，等待 Cho 作商业决策。")
+        }
+      : sourcingLatestQuotes.length >= 2
+        ? {
+            phase: "decide",
+            label: t("Compare returned quotations", "比较已回传报价"),
+            detail: t(
+              "Normalize price, lead time and commercial risk before selection.",
+              "统一比较价格、交期与商务风险。"
+            )
+          }
+        : sourcingHasReleasedRfq
+          ? {
+              phase: "collect",
+              label: t("Upload supplier returns", "上传供应商回传"),
+              detail: t(
+                `${Math.max(0, 2 - sourcingLatestQuotes.length)} more quotation(s) unlock AI comparison.`,
+                `再录入 ${Math.max(0, 2 - sourcingLatestQuotes.length)} 份报价即可启用 AI 比价。`
+              )
+            }
+          : sourcingHasDocument
+            ? {
+                phase: "prepare",
+                label: t("Review and release the RFQ", "审核并发出询价"),
+                detail: t(
+                  "Confirm the approved intake data, supplier list and commercial terms.",
+                  "确认已批准的订单资料、供应商名单与商务条件。"
+                )
+              }
+            : {
+                phase: "prepare",
+                label: t("Create RFQ from approved intake", "从已批准订单生成询价"),
+                detail: t(
+                  `${sourcingItemCount} approved line item(s) are ready to reuse.`,
+                  `可直接引用前一阶段的 ${sourcingItemCount} 项已批准明细。`
+                )
+              };
+
+  useEffect(() => {
+    if (flow !== "sourcing" || !projectId) return;
+    if (sourcingProjectRef.current !== projectId) {
+      sourcingProjectRef.current = projectId;
+      setSourcingView(sourcingSuggestedView);
+      setShowSupplierDirectory(false);
+      return;
+    }
+    const rank = { prepare: 0, collect: 1, decide: 2 };
+    setSourcingView((current) => (rank[sourcingSuggestedView] > rank[current] ? sourcingSuggestedView : current));
+  }, [flow, projectId, sourcingSuggestedView]);
 
   if (!dbConnected)
     return localize(
@@ -1299,44 +1387,99 @@ export default function AdminWorkflowWorkspace({
 
   if (flow === "sourcing") {
     return localize(
-      <div className="admin-ops-workspace">
-        {toolbar}
+      <div className="admin-ops-workspace sourcing-next-workspace">
         {statusBanner}
-        <section className="sourcing-flow-overview">
-          <div className="sourcing-flow-heading">
-            <div>
-              <span>{t("RFQ WORKFLOW", "询价工作流")}</span>
-              <h3>{t("Supplier RFQ & Best Quote", "供应商询价与最优报价")}</h3>
-            </div>
+        <section className="sourcing-next-hero">
+          <div className="sourcing-next-hero-copy">
+            <span className="sourcing-next-kicker">{t("ACTIVE SOURCING · S06–S08", "当前采购 · S06–S08")}</span>
+            <h2>{project?.orderId || project?.projectName || t("Supplier sourcing", "供应商采购")}</h2>
             <p>
               {t(
-                "Generate RFQ → approve → download Excel → import supplier returns → AI comparison → Cho decision",
-                "生成询盘 → 批准 → 下载 Excel → 录入供应商回传 → AI 比价 → Cho 决策"
+                "Reuse the approved order package, collect comparable supplier returns, then make one traceable commercial decision.",
+                "直接引用已批准的订单资料，收集可比较的供应商报价，再作出一次可追溯的商业决策。"
               )}
             </p>
           </div>
-          <div className="sourcing-flow-steps">
-            {sourcingSteps.map((step, index) => (
-              <article
-                className={step.done ? "done" : index === sourcingSteps.findIndex((row) => !row.done) ? "current" : ""}
-                key={step.label}
+          <div className="sourcing-next-hero-action">
+            <span className={`sourcing-next-status ${sourcingNextAction.complete ? "complete" : ""}`}>
+              {sourcingNextAction.complete ? t("SELECTED", "已选定") : t("NEXT ACTION", "下一步")}
+            </span>
+            <strong>{sourcingNextAction.label}</strong>
+            <small>{sourcingNextAction.detail}</small>
+            <button
+              type="button"
+              className="sourcing-next-primary"
+              disabled={Boolean(sourcingNextAction.complete)}
+              onClick={() => setSourcingView(sourcingNextAction.phase)}
+            >
+              {sourcingNextAction.complete
+                ? t("Decision recorded", "决策已记录")
+                : t("Open current task", "打开当前任务")}
+            </button>
+          </div>
+          <div className="sourcing-next-metrics">
+            <div>
+              <strong>{sourcingItemCount}</strong>
+              <span>{t("LINE ITEMS", "订单明细")}</span>
+            </div>
+            <div>
+              <strong>{sourcingPieceCount}</strong>
+              <span>{t("PIECES", "家具件数")}</span>
+            </div>
+            <div>
+              <strong>{invitedSuppliers.length || 0}</strong>
+              <span>{t("SUPPLIERS", "询价供应商")}</span>
+            </div>
+            <div className={sourcingResponseCount ? "attention" : ""}>
+              <strong>{sourcingResponseCount}</strong>
+              <span>{t("QUOTES RETURNED", "已回传报价")}</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="sourcing-next-stage-card">
+          <div className="sourcing-next-section-title">
+            <div>
+              <span>{t("PURCHASING FLOW", "采购流程")}</span>
+              <h3>{t("Prepare, collect, decide", "准备、收集、决策")}</h3>
+            </div>
+            <div className="sourcing-next-secondary-actions">
+              <button type="button" onClick={() => setShowSupplierDirectory((current) => !current)}>
+                {showSupplierDirectory ? t("Hide suppliers", "收起供应商") : t("Manage suppliers", "管理供应商")}
+              </button>
+              <button type="button" onClick={loadData} disabled={loading}>
+                {t("Refresh", "刷新")}
+              </button>
+            </div>
+          </div>
+          <div className="sourcing-next-stage-track" role="tablist" aria-label={t("Sourcing phases", "采购阶段")}>
+            {sourcingPhases.map((phase) => (
+              <button
+                key={phase.id}
+                type="button"
+                role="tab"
+                aria-selected={sourcingView === phase.id}
+                className={`${phase.done ? "complete" : ""} ${sourcingView === phase.id ? "current" : ""}`.trim()}
+                onClick={() => setSourcingView(phase.id)}
               >
-                <b>{String(index + 1).padStart(2, "0")}</b>
-                <div>
-                  <strong>{step.label}</strong>
-                  <span>{step.detail}</span>
-                </div>
-              </article>
+                <span className="sourcing-next-stage-line" />
+                <small>{phase.stage}</small>
+                <strong>{phase.label}</strong>
+                <p>{phase.detail}</p>
+              </button>
             ))}
           </div>
         </section>
-        <div className="admin-ops-grid">
+
+        <div className="admin-ops-grid sourcing-next-grid">
           <StageSection
             stage="SUPPLIERS"
             title="Supplier directory"
             status={`${suppliers.length} active`}
             description="Reusable supplier contacts, capability tags and performance scores."
             wide
+            hidden={!showSupplierDirectory}
+            className="sourcing-next-panel sourcing-next-supplier-panel"
             actions={
               <button
                 onClick={() =>
@@ -1509,6 +1652,8 @@ export default function AdminWorkflowWorkspace({
             status={data.rfq_batches[0]?.status || "pending"}
             description="Generate and approve a bilingual RFQ, then download the supplier-fillable Excel file for sending from your own mailbox."
             wide
+            hidden={sourcingView !== "prepare"}
+            className="sourcing-next-panel sourcing-next-prepare-panel"
           >
             <AiRfqWorkspace
               lang={lang}
@@ -1521,6 +1666,7 @@ export default function AdminWorkflowWorkspace({
               specifications={project?.specifications || []}
               suppliers={suppliers}
               onChanged={loadData}
+              displayMode="hierarchical"
             />
           </StageSection>
 
@@ -1530,6 +1676,8 @@ export default function AdminWorkflowWorkspace({
             status={`${scoredQuotes.length} quotes`}
             description="Upload several supplier quotation workbooks. The system reads and records the prices automatically, then AI compares the offers."
             wide
+            hidden={sourcingView !== "collect"}
+            className="sourcing-next-panel sourcing-next-collect-panel"
             actions={
               <button
                 onClick={() => (activeForm === "quote" ? setActiveForm("") : openQuoteForm(sourcingBatch?.id || ""))}
@@ -1629,13 +1777,13 @@ export default function AdminWorkflowWorkspace({
                         const quote = sourcingQuotes.find((row) => row.supplier_id === supplier.id);
                         const overdue =
                           !quote &&
-                          Boolean(rfqExcelFile) &&
+                          sourcingHasReleasedRfq &&
                           sourcingBatch?.due_at &&
                           new Date(sourcingBatch.due_at).getTime() < Date.now();
                         const responseStatus = quote
                           ? t("Recorded", "已录入")
-                          : !rfqExcelFile
-                            ? t("Excel not downloaded", "尚未下载 Excel")
+                          : !sourcingHasReleasedRfq
+                            ? t("RFQ not released", "询价尚未发出")
                             : overdue
                               ? t("Overdue", "已逾期")
                               : t("Waiting for upload", "等待上传");
@@ -1649,11 +1797,13 @@ export default function AdminWorkflowWorkspace({
                               </small>
                             </td>
                             <td>
-                              {rfqExcelFile ? (
+                              {sourcingHasReleasedRfq ? (
                                 <>
-                                  <strong>{t("Ready", "已生成")}</strong>
+                                  <strong>
+                                    {sourcingBatch?.status === "sent" ? t("Sent", "已发送") : t("Ready", "已生成")}
+                                  </strong>
                                   <br />
-                                  <small>{shortDate(rfqExcelFile.created_at)}</small>
+                                  <small>{shortDate(sourcingBatch?.sent_at || rfqExcelFile?.created_at)}</small>
                                 </>
                               ) : (
                                 "-"
@@ -1919,6 +2069,7 @@ export default function AdminWorkflowWorkspace({
               projectFiles={data.project_files}
               autoAnalyzeToken={quoteAutoAnalyzeToken}
               onChanged={loadData}
+              displayMode="hierarchical"
             />
           </StageSection>
 
@@ -1928,6 +2079,8 @@ export default function AdminWorkflowWorkspace({
             status={selectedQuote ? "approved" : "needs review"}
             description="Human gate: review normalized terms and approve the winning supplier."
             wide
+            hidden={sourcingView !== "decide"}
+            className="sourcing-next-panel sourcing-next-decision-panel"
           >
             {sourcingScoredQuotes.length > 0 && !quoteAnalysisReady && (
               <Notice tone="error">
@@ -1976,6 +2129,74 @@ export default function AdminWorkflowWorkspace({
               <Empty>At least one quote is required before Cho can approve a supplier.</Empty>
             )}
           </StageSection>
+        </div>
+        <div className="sourcing-next-disclosures">
+          <details>
+            <summary>
+              <span>
+                <strong>{t("RFQ and quote records", "询价与报价文件")}</strong>
+                <small>
+                  {t(
+                    `${data.project_files.filter((file) => ["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(file.file_group)).length} traceable records`,
+                    `${data.project_files.filter((file) => ["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(file.file_group)).length} 份可追溯记录`
+                  )}
+                </small>
+              </span>
+              <b aria-hidden="true">›</b>
+            </summary>
+            <div className="sourcing-next-record-list">
+              {data.project_files
+                .filter((file) =>
+                  ["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(
+                    file.file_group
+                  )
+                )
+                .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+                .map((file) => (
+                  <div key={file.id}>
+                    <span>{String(file.file_group || "FILE").replaceAll("_", " ")}</span>
+                    <strong>{file.file_name || "-"}</strong>
+                    <small>{shortDate(file.created_at)}</small>
+                  </div>
+                ))}
+              {!data.project_files.some((file) =>
+                ["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(
+                  file.file_group
+                )
+              ) && <Empty>{t("No sourcing records yet.", "当前还没有采购文件记录。")}</Empty>}
+            </div>
+          </details>
+          <details>
+            <summary>
+              <span>
+                <strong>{t("Sourcing activity", "采购活动记录")}</strong>
+                <small>
+                  {t(
+                    `${data.workflow_events.filter((event) => ["S06", "S07", "S08"].includes(event.stage_id)).length} events`,
+                    `${data.workflow_events.filter((event) => ["S06", "S07", "S08"].includes(event.stage_id)).length} 条事件`
+                  )}
+                </small>
+              </span>
+              <b aria-hidden="true">›</b>
+            </summary>
+            <div className="sourcing-next-record-list">
+              {data.workflow_events
+                .filter((event) => ["S06", "S07", "S08"].includes(event.stage_id))
+                .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+                .map((event) => (
+                  <div key={event.id}>
+                    <span>{event.stage_id}</span>
+                    <strong>
+                      {lang === "Cn" ? event.message_cn || event.message_en : event.message_en || event.message_cn}
+                    </strong>
+                    <small>{shortDate(event.created_at)}</small>
+                  </div>
+                ))}
+              {!data.workflow_events.some((event) => ["S06", "S07", "S08"].includes(event.stage_id)) && (
+                <Empty>{t("No sourcing activity yet.", "当前还没有采购活动记录。")}</Empty>
+              )}
+            </div>
+          </details>
         </div>
       </div>
     );

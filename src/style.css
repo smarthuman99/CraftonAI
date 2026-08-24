@@ -20665,3 +20665,871 @@ select:focus,
     transition: none;
   }
 }
+
+/* Supplier RFQ & Best Quote — progressive sourcing workspace */
+.sourcing-next-workspace {
+  --sourcing-cream: #efe7d6;
+  --sourcing-paper: #fbf6ec;
+  --sourcing-paper-muted: #f5eedf;
+  --sourcing-ink: #232220;
+  --sourcing-walnut: #4a3525;
+  --sourcing-stone: #8f8064;
+  --sourcing-body: #5b5446;
+  --sourcing-line: rgba(74, 53, 37, 0.16);
+  --sourcing-line-strong: rgba(74, 53, 37, 0.3);
+  gap: 18px;
+  color: var(--sourcing-ink);
+  font-family: "Inter", "Noto Sans TC", sans-serif;
+}
+
+.sourcing-next-workspace button,
+.sourcing-next-workspace input,
+.sourcing-next-workspace select,
+.sourcing-next-workspace textarea,
+.sourcing-next-workspace summary {
+  font: inherit;
+}
+
+.sourcing-next-hero,
+.sourcing-next-stage-card,
+.sourcing-next-panel,
+.sourcing-next-disclosures {
+  border: 1px solid var(--sourcing-line);
+  border-radius: 14px;
+  background: rgba(251, 246, 236, 0.97);
+  box-shadow: 0 16px 40px rgba(74, 53, 37, 0.05);
+}
+
+.sourcing-next-hero {
+  padding: clamp(24px, 3vw, 42px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 310px);
+  gap: 28px 42px;
+}
+
+.sourcing-next-kicker,
+.sourcing-next-source-strip span,
+.sourcing-next-record-list span {
+  color: var(--sourcing-stone);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sourcing-next-hero-copy h2 {
+  max-width: 900px;
+  margin: 8px 0 10px;
+  color: var(--sourcing-ink);
+  font-family: "Fraunces", Georgia, serif;
+  font-size: clamp(2.3rem, 4.3vw, 4.6rem);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+
+.sourcing-next-hero-copy p {
+  max-width: 790px;
+  margin: 0;
+  color: var(--sourcing-body);
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.sourcing-next-hero-action {
+  padding-left: 28px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-direction: column;
+  border-left: 1px solid var(--sourcing-line);
+}
+
+.sourcing-next-status {
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--sourcing-line-strong);
+  border-radius: 999px;
+  color: var(--sourcing-walnut);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+}
+
+.sourcing-next-status.complete {
+  background: var(--sourcing-walnut);
+  color: var(--sourcing-paper);
+}
+
+.sourcing-next-hero-action > strong {
+  color: var(--sourcing-ink);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.sourcing-next-hero-action > small {
+  margin-top: 5px;
+  color: var(--sourcing-body);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.sourcing-next-primary,
+.sourcing-next-panel .btn-premium {
+  min-height: 46px;
+  border: 1px solid var(--sourcing-walnut) !important;
+  border-radius: 999px !important;
+  background: var(--sourcing-walnut) !important;
+  color: var(--sourcing-paper) !important;
+  font-weight: 700 !important;
+}
+
+.sourcing-next-primary {
+  width: 100%;
+  margin-top: 17px;
+  padding: 0 20px;
+  cursor: pointer;
+}
+
+.sourcing-next-primary:hover:not(:disabled),
+.sourcing-next-panel .btn-premium:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(74, 53, 37, 0.14);
+}
+
+.sourcing-next-primary:disabled {
+  cursor: default;
+  opacity: 0.78;
+}
+
+.sourcing-next-metrics {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--sourcing-line);
+}
+
+.sourcing-next-metrics > div {
+  min-height: 92px;
+  padding: 22px 24px 4px;
+}
+
+.sourcing-next-metrics > div + div {
+  border-left: 1px solid var(--sourcing-line);
+}
+
+.sourcing-next-metrics strong,
+.sourcing-next-metrics span {
+  display: block;
+}
+
+.sourcing-next-metrics strong {
+  color: var(--sourcing-ink);
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 2.35rem;
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.sourcing-next-metrics span {
+  margin-top: 9px;
+  color: var(--sourcing-stone);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.11em;
+}
+
+.sourcing-next-stage-card {
+  padding: 26px 30px 30px;
+}
+
+.sourcing-next-section-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.sourcing-next-section-title > div:first-child > span {
+  color: var(--sourcing-stone);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+}
+
+.sourcing-next-section-title h3,
+.sourcing-next-panel > header h3 {
+  margin: 5px 0 0;
+  color: var(--sourcing-ink);
+  font-family: "Fraunces", Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.sourcing-next-section-title h3 {
+  font-size: 1.65rem;
+}
+
+.sourcing-next-secondary-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sourcing-next-secondary-actions button,
+.sourcing-next-panel button:not(.btn-premium),
+.sourcing-next-more-menu > summary {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--sourcing-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sourcing-ink);
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.sourcing-next-stage-track {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sourcing-next-stage-track > button {
+  min-width: 0;
+  min-height: 112px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sourcing-stone);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sourcing-next-stage-line {
+  display: block;
+  height: 8px;
+  margin-bottom: 15px;
+  border-radius: 999px;
+  background: #ddd6c6;
+}
+
+.sourcing-next-stage-track > button.complete .sourcing-next-stage-line,
+.sourcing-next-stage-track > button.current .sourcing-next-stage-line {
+  background: var(--sourcing-walnut);
+}
+
+.sourcing-next-stage-track > button.current .sourcing-next-stage-line {
+  box-shadow: 0 0 0 3px rgba(74, 53, 37, 0.1);
+}
+
+.sourcing-next-stage-track small,
+.sourcing-next-stage-track strong,
+.sourcing-next-stage-track p {
+  display: block;
+}
+
+.sourcing-next-stage-track small {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+}
+
+.sourcing-next-stage-track strong {
+  margin-top: 7px;
+  color: var(--sourcing-ink);
+  font-size: 0.84rem;
+}
+
+.sourcing-next-stage-track p {
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--sourcing-body);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourcing-next-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sourcing-next-panel {
+  overflow: visible;
+  order: 1;
+}
+
+.sourcing-next-supplier-panel {
+  order: 10;
+}
+
+.sourcing-next-panel > header {
+  padding: 22px 26px;
+  border-bottom: 1px solid var(--sourcing-line);
+  border-radius: 14px 14px 0 0;
+  background: var(--sourcing-paper);
+}
+
+.sourcing-next-panel > header span {
+  color: var(--sourcing-stone);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.11em;
+}
+
+.sourcing-next-panel > header h3 {
+  font-size: 1.45rem;
+}
+
+.sourcing-next-panel > header p {
+  max-width: 760px;
+  color: var(--sourcing-body);
+  font-size: 0.78rem;
+}
+
+.sourcing-next-panel .admin-ops-stage-actions b {
+  border-color: var(--sourcing-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sourcing-stone);
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+}
+
+.sourcing-next-panel .admin-ops-body {
+  padding: 24px 26px 28px;
+  gap: 16px;
+}
+
+.sourcing-next-panel .admin-ops-notice,
+.sourcing-next-channel-note {
+  border: 1px solid var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper-muted);
+  color: var(--sourcing-body);
+}
+
+.sourcing-next-channel-note {
+  padding: 14px 16px;
+  display: grid;
+  gap: 3px;
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.sourcing-next-channel-note strong {
+  color: var(--sourcing-ink);
+}
+
+.sourcing-next-source-strip {
+  display: grid;
+  grid-template-columns: 2fr repeat(3, minmax(120px, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper-muted);
+}
+
+.sourcing-next-source-strip > div {
+  min-width: 0;
+  padding: 15px 16px;
+}
+
+.sourcing-next-source-strip > div + div {
+  border-left: 1px solid var(--sourcing-line);
+}
+
+.sourcing-next-source-strip strong,
+.sourcing-next-source-strip span {
+  display: block;
+}
+
+.sourcing-next-source-strip strong {
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--sourcing-ink);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-rfq-workspace.is-hierarchical .ai-rfq-controls {
+  grid-template-columns: minmax(220px, 0.55fr) minmax(140px, 0.25fr);
+  padding: 18px;
+  gap: 14px;
+  border-color: var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper);
+}
+
+.ai-rfq-workspace.is-hierarchical .ai-rfq-controls input,
+.ai-rfq-workspace.is-hierarchical .ai-rfq-controls select,
+.sourcing-next-panel .admin-ops-form input,
+.sourcing-next-panel .admin-ops-form select,
+.sourcing-next-panel .admin-ops-form textarea,
+.ai-rfq-workspace.is-hierarchical .ai-rfq-document input,
+.ai-rfq-workspace.is-hierarchical .ai-rfq-document textarea {
+  min-height: 44px;
+  border-color: var(--sourcing-line);
+  border-radius: 8px;
+  background: var(--sourcing-paper);
+  color: var(--sourcing-ink);
+}
+
+.ai-rfq-workspace.is-hierarchical .admin-ops-checks {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+}
+
+.ai-rfq-workspace.is-hierarchical .admin-ops-checks label {
+  min-height: 56px;
+  padding: 10px 12px;
+  align-content: center;
+  border: 1px solid var(--sourcing-line);
+  border-radius: 8px;
+  background: var(--sourcing-paper-muted);
+}
+
+.ai-rfq-workspace.is-hierarchical .ai-rfq-primary-actions {
+  padding-top: 4px;
+}
+
+.ai-rfq-workspace.is-hierarchical .ai-rfq-document {
+  overflow: visible;
+  border-color: var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper);
+}
+
+.ai-rfq-workspace.is-hierarchical .ai-rfq-document-toolbar {
+  padding: 16px 18px;
+  border-color: var(--sourcing-line);
+  border-radius: 10px 10px 0 0;
+  background: var(--sourcing-paper-muted);
+}
+
+.ai-rfq-workspace.is-hierarchical .ai-rfq-document-toolbar > div:last-child {
+  justify-content: flex-end;
+}
+
+.sourcing-next-sent-label {
+  color: var(--sourcing-walnut) !important;
+  font-size: 0.72rem !important;
+  font-weight: 600;
+}
+
+.sourcing-next-more-menu {
+  position: relative;
+}
+
+.sourcing-next-more-menu > summary {
+  display: grid;
+  place-items: center;
+  list-style: none;
+}
+
+.sourcing-next-more-menu > summary::-webkit-details-marker,
+.ai-rfq-document-details > summary::-webkit-details-marker,
+.ai-rfq-history.is-disclosure > summary::-webkit-details-marker,
+.ai-comparison-details > summary::-webkit-details-marker,
+.sourcing-next-disclosures summary::-webkit-details-marker {
+  display: none;
+}
+
+.sourcing-next-more-menu > div {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 210px;
+  padding: 7px;
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper);
+  box-shadow: 0 14px 30px rgba(74, 53, 37, 0.12);
+}
+
+.sourcing-next-more-menu > div button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.ai-rfq-document-details > summary,
+.ai-rfq-history.is-disclosure > summary,
+.ai-comparison-details > summary,
+.sourcing-next-disclosures > details > summary {
+  min-height: 66px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  list-style: none;
+  color: var(--sourcing-ink);
+  cursor: pointer;
+}
+
+.ai-rfq-document-details > summary,
+.ai-comparison-details > summary {
+  border-top: 1px solid var(--sourcing-line);
+}
+
+.ai-rfq-document-details > summary span,
+.ai-rfq-history.is-disclosure > summary span,
+.ai-comparison-details > summary span,
+.sourcing-next-disclosures summary span {
+  display: grid;
+  gap: 3px;
+}
+
+.ai-rfq-document-details > summary small,
+.ai-rfq-history.is-disclosure > summary small,
+.ai-comparison-details > summary small,
+.sourcing-next-disclosures summary small {
+  color: var(--sourcing-stone);
+  font-size: 0.7rem;
+  font-weight: 400;
+}
+
+.ai-rfq-document-details > summary > b,
+.ai-rfq-history.is-disclosure > summary > b,
+.ai-comparison-details > summary > b,
+.sourcing-next-disclosures summary > b {
+  color: var(--sourcing-stone);
+  font-size: 1.4rem;
+  font-weight: 400;
+  transition: transform 220ms ease;
+}
+
+.ai-rfq-document-details[open] > summary > b,
+.ai-rfq-history.is-disclosure[open] > summary > b,
+.ai-comparison-details[open] > summary > b,
+.sourcing-next-disclosures details[open] > summary > b {
+  transform: rotate(90deg);
+}
+
+.ai-rfq-workspace:not(.is-hierarchical) .ai-rfq-document-details > summary {
+  display: none;
+}
+
+.ai-rfq-workspace.is-hierarchical .ai-rfq-history {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper);
+}
+
+.ai-rfq-workspace.is-hierarchical .ai-rfq-history > div {
+  padding: 0 18px 16px;
+}
+
+.sourcing-next-panel .admin-mini-table {
+  color: var(--sourcing-body);
+}
+
+.sourcing-next-panel .admin-mini-table th {
+  color: var(--sourcing-stone);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.61rem;
+  letter-spacing: 0.08em;
+}
+
+.sourcing-next-panel .admin-mini-table th,
+.sourcing-next-panel .admin-mini-table td {
+  border-color: var(--sourcing-line);
+}
+
+.sourcing-next-panel .admin-mini-table tr:hover td {
+  background: var(--sourcing-paper-muted);
+}
+
+.sourcing-next-panel .bulk-quote-intake {
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.42fr);
+  margin: 0;
+  padding: 18px;
+  border-color: var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper-muted);
+}
+
+.sourcing-next-panel .bulk-quote-intake-copy span {
+  color: var(--sourcing-stone);
+}
+
+.sourcing-next-panel .bulk-quote-intake-copy strong,
+.sourcing-next-panel .supplier-response-heading strong {
+  color: var(--sourcing-ink);
+}
+
+.sourcing-next-panel .bulk-quote-dropzone {
+  min-height: 108px;
+  border-color: var(--sourcing-line-strong);
+  border-radius: 9px;
+  background: var(--sourcing-paper);
+  color: var(--sourcing-walnut);
+}
+
+.sourcing-next-panel .supplier-response-tracker {
+  border-color: var(--sourcing-line);
+  border-radius: 10px;
+}
+
+.sourcing-next-panel .supplier-response-heading {
+  padding: 14px 16px;
+  background: var(--sourcing-paper-muted);
+}
+
+.ai-quote-workspace.is-hierarchical .ai-workflow-commandbar {
+  padding: 16px;
+  border: 1px solid var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper-muted);
+}
+
+.ai-quote-workspace.is-hierarchical .ai-recommendation-banner {
+  border-color: var(--sourcing-line-strong);
+  border-radius: 10px;
+  background: var(--sourcing-walnut);
+  color: var(--sourcing-paper);
+}
+
+.ai-quote-workspace.is-hierarchical .ai-recommendation-banner h4,
+.ai-quote-workspace.is-hierarchical .ai-recommendation-banner p,
+.ai-quote-workspace.is-hierarchical .ai-recommendation-banner strong,
+.ai-quote-workspace.is-hierarchical .ai-recommendation-banner small,
+.ai-quote-workspace.is-hierarchical .ai-recommendation-banner span {
+  color: inherit;
+}
+
+.ai-comparison-details {
+  overflow: hidden;
+  border: 1px solid var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper);
+}
+
+.sourcing-next-decision-panel .admin-ops-quote-cards {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.sourcing-next-decision-panel .admin-ops-quote-cards article {
+  padding: 18px;
+  border-color: var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper);
+}
+
+.sourcing-next-decision-panel .admin-ops-quote-cards article.recommended,
+.sourcing-next-decision-panel .admin-ops-quote-cards article.selected {
+  border-color: var(--sourcing-walnut);
+  box-shadow: inset 3px 0 0 var(--sourcing-walnut);
+}
+
+.sourcing-next-decision-panel .admin-ops-quote-cards h4 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.25rem;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.sourcing-next-disclosures {
+  overflow: hidden;
+}
+
+.sourcing-next-disclosures > details + details {
+  border-top: 1px solid var(--sourcing-line);
+}
+
+.sourcing-next-record-list {
+  border-top: 1px solid var(--sourcing-line);
+}
+
+.sourcing-next-record-list > div {
+  min-height: 60px;
+  padding: 12px 18px;
+  display: grid;
+  grid-template-columns: minmax(115px, 0.22fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--sourcing-line);
+}
+
+.sourcing-next-record-list > div:last-child {
+  border-bottom: 0;
+}
+
+.sourcing-next-record-list strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sourcing-ink);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourcing-next-record-list small {
+  color: var(--sourcing-stone);
+  font-size: 0.68rem;
+}
+
+.sourcing-next-workspace button:focus-visible,
+.sourcing-next-workspace input:focus-visible,
+.sourcing-next-workspace select:focus-visible,
+.sourcing-next-workspace textarea:focus-visible,
+.sourcing-next-workspace summary:focus-visible {
+  outline: 2px solid var(--sourcing-walnut);
+  outline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .sourcing-next-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .sourcing-next-hero-action {
+    padding: 22px 0 0;
+    border-top: 1px solid var(--sourcing-line);
+    border-left: 0;
+  }
+
+  .sourcing-next-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sourcing-next-metrics > div:nth-child(3) {
+    border-left: 0;
+  }
+
+  .sourcing-next-metrics > div:nth-child(n + 3) {
+    border-top: 1px solid var(--sourcing-line);
+  }
+
+  .sourcing-next-source-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sourcing-next-source-strip > div:nth-child(3) {
+    border-left: 0;
+  }
+
+  .sourcing-next-source-strip > div:nth-child(n + 3) {
+    border-top: 1px solid var(--sourcing-line);
+  }
+
+  .sourcing-next-panel .bulk-quote-intake {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-rfq-workspace.is-hierarchical .ai-rfq-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-rfq-workspace.is-hierarchical .ai-rfq-controls > * {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .sourcing-next-hero,
+  .sourcing-next-stage-card {
+    padding: 20px 16px;
+    border-radius: 11px;
+  }
+
+  .sourcing-next-hero-copy h2 {
+    font-size: 2.25rem;
+  }
+
+  .sourcing-next-metrics > div {
+    min-height: 76px;
+    padding: 16px 10px 4px;
+  }
+
+  .sourcing-next-metrics > div:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .sourcing-next-section-title {
+    flex-direction: column;
+  }
+
+  .sourcing-next-secondary-actions {
+    width: 100%;
+  }
+
+  .sourcing-next-secondary-actions button {
+    flex: 1;
+  }
+
+  .sourcing-next-stage-track {
+    grid-template-columns: 1fr;
+  }
+
+  .sourcing-next-stage-track > button {
+    min-height: 88px;
+  }
+
+  .sourcing-next-panel > header,
+  .sourcing-next-panel .admin-ops-body {
+    padding-inline: 16px;
+  }
+
+  .sourcing-next-panel > header,
+  .ai-rfq-workspace.is-hierarchical .ai-rfq-document-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sourcing-next-source-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .sourcing-next-source-strip > div + div,
+  .sourcing-next-source-strip > div:nth-child(3) {
+    border-top: 1px solid var(--sourcing-line);
+    border-left: 0;
+  }
+
+  .ai-rfq-workspace.is-hierarchical .admin-ops-checks {
+    grid-template-columns: 1fr;
+  }
+
+  .sourcing-next-more-menu > div {
+    right: auto;
+    left: 0;
+  }
+
+  .sourcing-next-record-list > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .sourcing-next-record-list strong {
+    white-space: normal;
+  }
+
+  .sourcing-next-panel .admin-ops-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sourcing-next-primary,
+  .sourcing-next-workspace button,
+  .sourcing-next-workspace summary > b {
+    transition: none;
+  }
+}

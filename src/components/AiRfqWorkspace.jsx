@@ -40,16 +40,19 @@ export default function AiRfqWorkspace({
   intakeJobs = [],
   specifications = [],
   suppliers = [],
-  onChanged
+  onChanged,
+  displayMode = "standard"
 }) {
   const zh = lang === "Cn";
   const t = (en, cn) => (zh ? cn : en);
+  const hierarchical = displayMode === "hierarchical";
   const [document, setDocument] = useState(null);
   const [generation, setGeneration] = useState(null);
   const [activeBatchId, setActiveBatchId] = useState(null);
   const [status, setStatus] = useState("draft");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  const [dispatchService, setDispatchService] = useState(null);
   const [attachmentUrls, setAttachmentUrls] = useState({});
   const [form, setForm] = useState({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: [] });
   const autoUpgradeRef = useRef("");
@@ -131,6 +134,7 @@ export default function AiRfqWorkspace({
     () => currentProjectFiles.filter((file) => file.file_group === "rfq_document"),
     [currentProjectFiles]
   );
+  const selectedSuppliers = suppliers.filter((supplier) => form.supplierIds.includes(supplier.id));
   const highWarnings = (document?.missingInformation || []).filter((warning) => warning.severity === "high").length;
 
   useEffect(() => {
@@ -141,6 +145,7 @@ export default function AiRfqWorkspace({
     setActiveBatchId(null);
     setStatus("draft");
     setMessage("");
+    setDispatchService(null);
     setAttachmentUrls({});
     autoUpgradeRef.current = "";
     setForm({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: suggestedSupplierIds });
@@ -193,6 +198,20 @@ export default function AiRfqWorkspace({
       active = false;
     };
   }, [document?.attachments, supabaseClient]);
+
+  useEffect(() => {
+    let active = true;
+    post(AI_API_URL, { action: "rfq_dispatch_status" })
+      .then((result) => {
+        if (active) setDispatchService(result);
+      })
+      .catch(() => {
+        if (active) setDispatchService({ configured: false, unavailable: true });
+      });
+    return () => {
+      active = false;
+    };
+  }, [project.id]);
 
   async function token() {
     const { data, error } = await supabaseClient.auth.getSession();
@@ -436,6 +455,92 @@ export default function AiRfqWorkspace({
     }
   }
 
+  async function dispatch() {
+    if (!activeBatchId || status !== "approved") {
+      setMessage(t("Approve and save this RFQ before dispatch.", "请先保存并批准这份 RFQ，再发送给供应商。"));
+      return;
+    }
+    if (!dispatchService?.configured) {
+      setMessage(
+        t(
+          "Direct email sending is not configured. Download the RFQ Excel and send it from your mailbox instead.",
+          "直接邮件发送尚未配置，请下载 RFQ Excel 后使用自己的邮箱发送。"
+        )
+      );
+      return;
+    }
+    const withoutEmail = selectedSuppliers.filter((supplier) => !(supplier.contact_email || supplier.email));
+    if (!selectedSuppliers.length || withoutEmail.length) {
+      setMessage(
+        withoutEmail.length
+          ? t(
+              `Add email addresses for: ${withoutEmail.map((row) => row.name).join(", ")}.`,
+              `请先补充以下供应商的邮箱：${withoutEmail.map((row) => row.name).join("、")}。`
+            )
+          : t("Select at least one supplier.", "请至少选择一家供应商。")
+      );
+      return;
+    }
+
+    setBusy("send");
+    setMessage("");
+    try {
+      const batch = projectBatches.find((row) => row.id === activeBatchId) || { id: activeBatchId, rfq_code: "RFQ" };
+      const receipt = await post(AI_API_URL, {
+        action: "dispatch_rfq",
+        projectId: project.id,
+        rfqCode: batch.rfq_code,
+        document,
+        suppliers: selectedSuppliers.map((supplier) => ({
+          id: supplier.id,
+          name: supplier.name,
+          email: supplier.contact_email || supplier.email
+        }))
+      });
+      const { error } = await supabaseClient
+        .from("rfq_batches")
+        .update({
+          status: "sent",
+          sent_at: receipt.sentAt,
+          supplier_ids: form.supplierIds,
+          supplier_count: form.supplierIds.length,
+          invited_count: receipt.recipients.length,
+          payload: { ...(batch.payload || {}), document, generation, status: "sent", dispatch: receipt }
+        })
+        .eq("id", activeBatchId);
+      if (error) throw error;
+      const hash = await sha256(receipt);
+      const { error: receiptError } = await supabaseClient.from("project_files").insert({
+        project_id: project.id,
+        stage_id: "S06",
+        file_group: "rfq_dispatch",
+        file_name: `${batch.rfq_code}-dispatch.json`,
+        sha256: hash,
+        audit_hash: hash,
+        payload: { rfq_batch_id: activeBatchId, ...receipt }
+      });
+      if (receiptError) throw receiptError;
+      await event(
+        "rfq_dispatched",
+        `${batch.rfq_code} 已发送给 ${receipt.recipients.length} 家供应商。`,
+        `${batch.rfq_code} sent to ${receipt.recipients.length} suppliers.`,
+        receipt
+      );
+      setStatus("sent");
+      setMessage(
+        t(
+          `RFQ sent to ${receipt.recipients.length} suppliers; the receipt is saved.`,
+          `RFQ 已发送给 ${receipt.recipients.length} 家供应商，发送回执已保存。`
+        )
+      );
+      await onChanged?.();
+    } catch (error) {
+      setMessage(error.message || String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+
   function loadBatch(batch) {
     if (!batch.payload?.document) {
       generate(batch);
@@ -625,7 +730,27 @@ export default function AiRfqWorkspace({
   const statusCn = { draft: "草稿", approved: "已批准", sent: "已发送" };
 
   return (
-    <div className="ai-rfq-workspace">
+    <div className={`ai-rfq-workspace ${hierarchical ? "is-hierarchical" : ""}`.trim()}>
+      {hierarchical && (
+        <div className="sourcing-next-source-strip">
+          <div>
+            <span>{t("APPROVED SOURCE", "已批准资料")}</span>
+            <strong>{project.orderId || project.projectName || project.id}</strong>
+          </div>
+          <div>
+            <span>{t("LINE ITEMS", "订单明细")}</span>
+            <strong>{project.items?.length || 0}</strong>
+          </div>
+          <div>
+            <span>{t("SOURCE FILES", "来源文件")}</span>
+            <strong>{Math.max(sourceFiles.length, document?.attachments?.length || 0)}</strong>
+          </div>
+          <div>
+            <span>{t("RFQ STATUS", "询价状态")}</span>
+            <strong>{zh ? statusCn[status] || status : status}</strong>
+          </div>
+        </div>
+      )}
       <div className="ai-rfq-controls">
         <label>
           <span>{t("Quotation due", "报价截止")}</span>
@@ -695,31 +820,45 @@ export default function AiRfqWorkspace({
         </div>
       )}
 
-      <div className="manual-rfq-guide" aria-label={t("Manual RFQ workflow", "手动 RFQ 工作流程")}>
-        <article>
-          <b>01</b>
+      {!hierarchical && (
+        <div className="manual-rfq-guide" aria-label={t("Manual RFQ workflow", "手动 RFQ 工作流程")}>
+          <article>
+            <b>01</b>
+            <span>
+              <strong>{t("Approve the RFQ", "批准询价内容")}</strong>
+              <small>{t("Confirm items, quantities and commercial terms.", "确认品项、数量与商务要求。")}</small>
+            </span>
+          </article>
+          <article>
+            <b>02</b>
+            <span>
+              <strong>{t("Download Excel", "下载 Excel")}</strong>
+              <small>{t("Send the same editable .xlsx from your mailbox.", "用自己的邮箱发送可填写的 .xlsx。")}</small>
+            </span>
+          </article>
+          <article>
+            <b>03</b>
+            <span>
+              <strong>{t("Import supplier returns", "录入供应商回传")}</strong>
+              <small>
+                {t("Match each returned file to its supplier below.", "在下方把每份回传文件归入对应供应商。")}
+              </small>
+            </span>
+          </article>
+        </div>
+      )}
+
+      {hierarchical && dispatchService && !dispatchService.configured && (
+        <div className="sourcing-next-channel-note">
+          <strong>{t("Direct email is not configured", "直接邮件发送尚未配置")}</strong>
           <span>
-            <strong>{t("Approve the RFQ", "批准询价内容")}</strong>
-            <small>{t("Confirm items, quantities and commercial terms.", "确认品项、数量与商务要求。")}</small>
+            {t(
+              "The workflow will use the archived Excel package for manual email delivery. Configure Resend later to enable one-click sending.",
+              "当前会生成并归档 Excel 询价包，供管理员用邮箱发送；日后配置 Resend 后即可启用一键发送。"
+            )}
           </span>
-        </article>
-        <article>
-          <b>02</b>
-          <span>
-            <strong>{t("Download Excel", "下载 Excel")}</strong>
-            <small>{t("Send the same editable .xlsx from your mailbox.", "用自己的邮箱发送可填写的 .xlsx。")}</small>
-          </span>
-        </article>
-        <article>
-          <b>03</b>
-          <span>
-            <strong>{t("Import supplier returns", "录入供应商回传")}</strong>
-            <small>
-              {t("Match each returned file to its supplier below.", "在下方把每份回传文件归入对应供应商。")}
-            </small>
-          </span>
-        </article>
-      </div>
+        </div>
+      )}
 
       {document && (
         <div className="ai-rfq-document">
@@ -734,185 +873,259 @@ export default function AiRfqWorkspace({
             </div>
             <div>
               <b data-status={status}>{zh ? statusCn[status] || status : status}</b>
-              <button type="button" disabled={Boolean(busy)} onClick={printRfq}>
-                {t("Print / Save PDF", "打印 / 保存 PDF")}
-              </button>
-              <button type="button" disabled={Boolean(busy)} onClick={save}>
-                {busy === "save" ? t("Saving...", "保存中...") : t("Save version", "保存版本")}
-              </button>
-              <button type="button" disabled={Boolean(busy)} onClick={approve}>
-                {busy === "approve" ? t("Approving...", "批准中...") : t("Approve RFQ", "批准 RFQ")}
-              </button>
-              <button
-                className="btn-premium"
-                type="button"
-                disabled={Boolean(busy) || !["approved", "sent"].includes(status)}
-                onClick={downloadRfqExcel}
-              >
-                {busy === "excel"
-                  ? t("Creating Excel...", "正在生成 Excel...")
-                  : t("Download RFQ Excel", "下载 RFQ Excel")}
-              </button>
+              {hierarchical ? (
+                <>
+                  {status === "draft" && (
+                    <button className="btn-premium" type="button" disabled={Boolean(busy)} onClick={approve}>
+                      {busy === "approve" ? t("Approving...", "批准中...") : t("Approve RFQ", "批准询价")}
+                    </button>
+                  )}
+                  {status === "approved" && dispatchService?.configured && (
+                    <button className="btn-premium" type="button" disabled={Boolean(busy)} onClick={dispatch}>
+                      {busy === "send" ? t("Sending...", "发送中...") : t("Send to suppliers", "发送给供应商")}
+                    </button>
+                  )}
+                  {["approved", "sent"].includes(status) && !dispatchService?.configured && (
+                    <button className="btn-premium" type="button" disabled={Boolean(busy)} onClick={downloadRfqExcel}>
+                      {busy === "excel"
+                        ? t("Creating Excel...", "正在生成 Excel...")
+                        : t("Download RFQ Excel", "下载询价 Excel")}
+                    </button>
+                  )}
+                  {status === "sent" && (
+                    <span className="sourcing-next-sent-label">
+                      {t("Sent to selected suppliers", "已发送给所选供应商")}
+                    </span>
+                  )}
+                  <details className="sourcing-next-more-menu">
+                    <summary>{t("More", "更多")}</summary>
+                    <div>
+                      <button type="button" disabled={Boolean(busy)} onClick={printRfq}>
+                        {t("Print / Save PDF", "打印 / 保存 PDF")}
+                      </button>
+                      <button type="button" disabled={Boolean(busy)} onClick={save}>
+                        {busy === "save" ? t("Saving...", "保存中...") : t("Save version", "保存版本")}
+                      </button>
+                      {["approved", "sent"].includes(status) && (
+                        <button type="button" disabled={Boolean(busy)} onClick={downloadRfqExcel}>
+                          {t("Download RFQ Excel", "下载询价 Excel")}
+                        </button>
+                      )}
+                    </div>
+                  </details>
+                </>
+              ) : (
+                <>
+                  <button type="button" disabled={Boolean(busy)} onClick={printRfq}>
+                    {t("Print / Save PDF", "打印 / 保存 PDF")}
+                  </button>
+                  <button type="button" disabled={Boolean(busy)} onClick={save}>
+                    {busy === "save" ? t("Saving...", "保存中...") : t("Save version", "保存版本")}
+                  </button>
+                  <button type="button" disabled={Boolean(busy)} onClick={approve}>
+                    {busy === "approve" ? t("Approving...", "批准中...") : t("Approve RFQ", "批准 RFQ")}
+                  </button>
+                  <button
+                    className="btn-premium"
+                    type="button"
+                    disabled={Boolean(busy) || !["approved", "sent"].includes(status)}
+                    onClick={downloadRfqExcel}
+                  >
+                    {busy === "excel"
+                      ? t("Creating Excel...", "正在生成 Excel...")
+                      : t("Download RFQ Excel", "下载 RFQ Excel")}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="ai-rfq-title-block">
-            <span>THE CRAFTON · REQUEST FOR QUOTATION</span>
-            <input value={document.titleCn} onChange={(e) => updateDocument("titleCn", e.target.value)} />
-            <input value={document.titleEn} onChange={(e) => updateDocument("titleEn", e.target.value)} />
-            <div>
-              <b>{t("Project", "项目")}</b> {project.orderId || project.id}
-              <b>{t("Client", "客户")}</b> {project.clientName || "-"}
-              <b>{t("Due", "截止")}</b> {displayDate(form.dueAt, lang)}
-              <b>{t("Currency", "币种")}</b> {form.currency}
-            </div>
-          </div>
-          <div className="ai-rfq-introduction">
-            <textarea
-              value={document.introductionCn}
-              onChange={(e) => updateDocument("introductionCn", e.target.value)}
-            />
-            <textarea
-              value={document.introductionEn}
-              onChange={(e) => updateDocument("introductionEn", e.target.value)}
-            />
-          </div>
-
-          <div className="admin-table-wrap ai-rfq-items-table">
-            <table className="admin-mini-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>{t("Item", "品项")}</th>
-                  <th>{t("Qty", "数量")}</th>
-                  <th>{t("Dimensions / tolerance", "尺寸 / 公差")}</th>
-                  <th>{t("Material", "材质")}</th>
-                  <th>{t("Finish / hardware", "饰面 / 五金")}</th>
-                  <th>{t("Compliance / notes", "合规 / 报价备注")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {document.items.map((item, index) => (
-                  <tr key={`${item.itemNo}-${index}`}>
-                    <td>{item.itemNo}</td>
-                    <td>
-                      <input value={item.nameCn} onChange={(e) => updateItem(index, "nameCn", e.target.value)} />
-                      <input value={item.nameEn} onChange={(e) => updateItem(index, "nameEn", e.target.value)} />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) => updateItem(index, "quantity", Number(e.target.value))}
-                      />
-                      <small>{item.unit}</small>
-                    </td>
-                    <td>
-                      <input
-                        value={item.dimensions}
-                        onChange={(e) => updateItem(index, "dimensions", e.target.value)}
-                      />
-                      <input value={item.tolerance} onChange={(e) => updateItem(index, "tolerance", e.target.value)} />
-                    </td>
-                    <td>
-                      <input
-                        value={item.materialCn}
-                        onChange={(e) => updateItem(index, "materialCn", e.target.value)}
-                      />
-                      <input
-                        value={item.materialEn}
-                        onChange={(e) => updateItem(index, "materialEn", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={item.finishColor}
-                        onChange={(e) => updateItem(index, "finishColor", e.target.value)}
-                      />
-                      <input value={item.hardware} onChange={(e) => updateItem(index, "hardware", e.target.value)} />
-                    </td>
-                    <td>
-                      <input
-                        value={item.compliance}
-                        onChange={(e) => updateItem(index, "compliance", e.target.value)}
-                      />
-                      <textarea
-                        value={item.supplierNotes}
-                        onChange={(e) => updateItem(index, "supplierNotes", e.target.value)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="ai-rfq-lower-grid">
-            <section>
-              <h4>{t("Commercial requirements", "商务要求")}</h4>
-              {document.commercialRequirements.map((row, index) => (
-                <label key={`${row.labelEn}-${index}`}>
-                  <span>
-                    {row.labelCn}
-                    <small>{row.labelEn}</small>
-                  </span>
-                  <input value={row.value} onChange={(e) => updateCommercial(index, e.target.value)} />
-                </label>
-              ))}
-            </section>
-            <section>
-              <h4>{t("Supplier must return", "供应商必须回复")}</h4>
-              <div className="ai-rfq-response-fields">
-                {document.supplierResponseFields.map((row) => (
-                  <span key={row.key}>
-                    {row.labelCn}
-                    <small>{row.labelEn}</small>
-                  </span>
-                ))}
+          <details className="ai-rfq-document-details" open={!hierarchical ? true : undefined}>
+            <summary>
+              <span>
+                <strong>{t("Review RFQ contents", "复核询价内容")}</strong>
+                <small>
+                  {t(
+                    `${document.items.length} items · ${document.missingInformation.length} warning(s)`,
+                    `${document.items.length} 项明细 · ${document.missingInformation.length} 条提示`
+                  )}
+                </small>
+              </span>
+              <b aria-hidden="true">›</b>
+            </summary>
+            <div className="ai-rfq-title-block">
+              <span>THE CRAFTON · REQUEST FOR QUOTATION</span>
+              <input value={document.titleCn} onChange={(e) => updateDocument("titleCn", e.target.value)} />
+              <input value={document.titleEn} onChange={(e) => updateDocument("titleEn", e.target.value)} />
+              <div>
+                <b>{t("Project", "项目")}</b> {project.orderId || project.id}
+                <b>{t("Client", "客户")}</b> {project.clientName || "-"}
+                <b>{t("Due", "截止")}</b> {displayDate(form.dueAt, lang)}
+                <b>{t("Currency", "币种")}</b> {form.currency}
               </div>
-            </section>
-            <section>
-              <h4>{t("Reference attachments", "参考附件")}</h4>
-              {document.attachments.length ? (
-                <ul>
-                  {document.attachments.map((file, index) => (
-                    <li key={`${file.name}-${index}`}>
-                      {attachmentUrls[file.id || file.name] &&
-                        (file.type?.startsWith("image/") || /\.(png|jpe?g|webp|avif|heic)$/i.test(file.name)) && (
-                          <img src={attachmentUrls[file.id || file.name]} alt={file.name} />
-                        )}
-                      <strong>{file.name}</strong>
-                      <span>
-                        {file.type} · {file.note}
-                      </span>
-                    </li>
+            </div>
+            <div className="ai-rfq-introduction">
+              <textarea
+                value={document.introductionCn}
+                onChange={(e) => updateDocument("introductionCn", e.target.value)}
+              />
+              <textarea
+                value={document.introductionEn}
+                onChange={(e) => updateDocument("introductionEn", e.target.value)}
+              />
+            </div>
+
+            <div className="admin-table-wrap ai-rfq-items-table">
+              <table className="admin-mini-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>{t("Item", "品项")}</th>
+                    <th>{t("Qty", "数量")}</th>
+                    <th>{t("Dimensions / tolerance", "尺寸 / 公差")}</th>
+                    <th>{t("Material", "材质")}</th>
+                    <th>{t("Finish / hardware", "饰面 / 五金")}</th>
+                    <th>{t("Compliance / notes", "合规 / 报价备注")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {document.items.map((item, index) => (
+                    <tr key={`${item.itemNo}-${index}`}>
+                      <td>{item.itemNo}</td>
+                      <td>
+                        <input value={item.nameCn} onChange={(e) => updateItem(index, "nameCn", e.target.value)} />
+                        <input value={item.nameEn} onChange={(e) => updateItem(index, "nameEn", e.target.value)} />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(index, "quantity", Number(e.target.value))}
+                        />
+                        <small>{item.unit}</small>
+                      </td>
+                      <td>
+                        <input
+                          value={item.dimensions}
+                          onChange={(e) => updateItem(index, "dimensions", e.target.value)}
+                        />
+                        <input
+                          value={item.tolerance}
+                          onChange={(e) => updateItem(index, "tolerance", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={item.materialCn}
+                          onChange={(e) => updateItem(index, "materialCn", e.target.value)}
+                        />
+                        <input
+                          value={item.materialEn}
+                          onChange={(e) => updateItem(index, "materialEn", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={item.finishColor}
+                          onChange={(e) => updateItem(index, "finishColor", e.target.value)}
+                        />
+                        <input value={item.hardware} onChange={(e) => updateItem(index, "hardware", e.target.value)} />
+                      </td>
+                      <td>
+                        <input
+                          value={item.compliance}
+                          onChange={(e) => updateItem(index, "compliance", e.target.value)}
+                        />
+                        <textarea
+                          value={item.supplierNotes}
+                          onChange={(e) => updateItem(index, "supplierNotes", e.target.value)}
+                        />
+                      </td>
+                    </tr>
                   ))}
-                </ul>
-              ) : (
-                <p>{t("No attachment found.", "未找到附件。")}</p>
-              )}
-            </section>
-            <section className="ai-rfq-warnings">
-              <h4>{t("AI review warnings", "AI 审核警示")}</h4>
-              {document.missingInformation.length ? (
-                <ul>
-                  {document.missingInformation.map((warning, index) => (
-                    <li data-severity={warning.severity} key={`${warning.field}-${index}`}>
-                      <b>{warning.severity}</b>
-                      <span>{zh ? warning.messageCn : warning.messageEn}</span>
-                    </li>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="ai-rfq-lower-grid">
+              <section>
+                <h4>{t("Commercial requirements", "商务要求")}</h4>
+                {document.commercialRequirements.map((row, index) => (
+                  <label key={`${row.labelEn}-${index}`}>
+                    <span>
+                      {row.labelCn}
+                      <small>{row.labelEn}</small>
+                    </span>
+                    <input value={row.value} onChange={(e) => updateCommercial(index, e.target.value)} />
+                  </label>
+                ))}
+              </section>
+              <section>
+                <h4>{t("Supplier must return", "供应商必须回复")}</h4>
+                <div className="ai-rfq-response-fields">
+                  {document.supplierResponseFields.map((row) => (
+                    <span key={row.key}>
+                      {row.labelCn}
+                      <small>{row.labelEn}</small>
+                    </span>
                   ))}
-                </ul>
-              ) : (
-                <p>{t("No missing information detected.", "未发现缺失资料。")}</p>
-              )}
-            </section>
-          </div>
+                </div>
+              </section>
+              <section>
+                <h4>{t("Reference attachments", "参考附件")}</h4>
+                {document.attachments.length ? (
+                  <ul>
+                    {document.attachments.map((file, index) => (
+                      <li key={`${file.name}-${index}`}>
+                        {attachmentUrls[file.id || file.name] &&
+                          (file.type?.startsWith("image/") || /\.(png|jpe?g|webp|avif|heic)$/i.test(file.name)) && (
+                            <img src={attachmentUrls[file.id || file.name]} alt={file.name} />
+                          )}
+                        <strong>{file.name}</strong>
+                        <span>
+                          {file.type} · {file.note}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{t("No attachment found.", "未找到附件。")}</p>
+                )}
+              </section>
+              <section className="ai-rfq-warnings">
+                <h4>{t("AI review warnings", "AI 审核警示")}</h4>
+                {document.missingInformation.length ? (
+                  <ul>
+                    {document.missingInformation.map((warning, index) => (
+                      <li data-severity={warning.severity} key={`${warning.field}-${index}`}>
+                        <b>{warning.severity}</b>
+                        <span>{zh ? warning.messageCn : warning.messageEn}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{t("No missing information detected.", "未发现缺失资料。")}</p>
+                )}
+              </section>
+            </div>
+          </details>
         </div>
       )}
 
-      <div className="ai-rfq-history">
+      <details
+        className={`ai-rfq-history ${hierarchical ? "is-disclosure" : ""}`.trim()}
+        open={!hierarchical ? true : undefined}
+      >
+        {hierarchical && (
+          <summary>
+            <span>
+              <strong>{t("RFQ version history", "询价版本记录")}</strong>
+              <small>{t(`${projectBatches.length} saved batch(es)`, `${projectBatches.length} 个已保存批次`)}</small>
+            </span>
+            <b aria-hidden="true">›</b>
+          </summary>
+        )}
         <div>
           <strong>{t("RFQ history", "RFQ 历史记录")}</strong>
           <span>
@@ -965,7 +1178,7 @@ export default function AiRfqWorkspace({
             {t("No RFQ documents saved for this project.", "当前项目尚未保存 RFQ 询价文件。")}
           </div>
         )}
-      </div>
+      </details>
     </div>
   );
 }

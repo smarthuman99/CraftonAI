@@ -32,10 +32,12 @@ export default function AiQuoteComparison({
   quotes = [],
   projectFiles = [],
   autoAnalyzeToken = "",
-  onChanged
+  onChanged,
+  displayMode = "standard"
 }) {
   const zh = lang === "Cn";
   const t = (en, cn) => (zh ? cn : en);
+  const hierarchical = displayMode === "hierarchical";
   const firstBatchWithQuotes = batches.find((batch) => quotes.some((quote) => quote.rfq_batch_id === batch.id));
   const defaultBatchId = firstBatchWithQuotes?.id || batches[0]?.id || "";
   const [batchId, setBatchId] = useState(defaultBatchId);
@@ -207,7 +209,7 @@ export default function AiQuoteComparison({
   const analysisMethod = result?.generation?.method;
 
   return (
-    <div className="ai-quote-workspace">
+    <div className={`ai-quote-workspace ${hierarchical ? "is-hierarchical" : ""}`.trim()}>
       <div className="ai-workflow-commandbar">
         <label>
           <span>{t("RFQ batch", "询价批次")}</span>
@@ -339,95 +341,111 @@ export default function AiQuoteComparison({
             </div>
           )}
 
-          <div className="admin-table-wrap">
-            <table className="admin-mini-table ai-comparison-table">
-              <thead>
-                <tr>
-                  <th>{t("Overall rank", "综合排名")}</th>
-                  <th>{t("Supplier", "供应商")}</th>
-                  <th>{t("Price", "价格")}</th>
-                  <th>{t("MOQ / lead", "起订量 / 交期")}</th>
-                  <th>{t("Score evidence", "评分依据")}</th>
-                  <th>{t("AI assessment", "AI 分析")}</th>
-                  <th>{t("Risks", "风险")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.quotes.map((quote) => (
-                  <tr key={quote.id} className={quote.id === result.recommendation?.quoteId ? "recommended" : ""}>
-                    <td>
-                      <strong>#{quote.rank}</strong>
-                      <br />
-                      <small>{quote.totalScore}/100</small>
-                    </td>
-                    <td>
-                      <strong>{quote.supplierName}</strong>
-                      <br />
-                      <small>{quote.quoteCode}</small>
-                    </td>
-                    <td>
-                      <strong>{money(quote.normalizedTotal, quote.currency)}</strong>
-                      <br />
-                      <small>
-                        {quote.priceDeltaPercent == null
-                          ? t("currency not normalized", "币种未统一")
-                          : quote.priceDeltaPercent > 0
-                            ? `+${quote.priceDeltaPercent}%`
-                            : t("lowest", "最低")}
-                      </small>
-                    </td>
-                    <td>
-                      MOQ {quote.moq || "-"}
-                      <br />
-                      <small>
-                        {quote.leadTimeDays || "-"} {t("days", "天")} · {quote.lineItemCoverage}% BOM
-                      </small>
-                    </td>
-                    <td>
-                      <small>
-                        {t("Price", "价格")} {quote.scoreBreakdown.price} · {t("Lead", "交期")}{" "}
-                        {quote.scoreBreakdown.leadTime}
-                      </small>
-                      <br />
-                      <small>
-                        {t("Quality", "质量")} {quote.scoreBreakdown.quality} · {t("Reliability", "可靠性")}{" "}
-                        {quote.scoreBreakdown.reliability}
-                      </small>
-                      <br />
-                      <small>
-                        {t("Commercial", "商务")} {quote.scoreBreakdown.commercialCompleteness} ·{" "}
-                        {t("Material", "材质")} {quote.scoreBreakdown.materialCompliance}
-                      </small>
-                    </td>
-                    <td>
-                      {(zh ? quote.aiSummaryCn : quote.aiSummaryEn) && (
-                        <small className="ai-summary-line">{zh ? quote.aiSummaryCn : quote.aiSummaryEn}</small>
-                      )}
-                      {displayedAdvantages(quote, zh).map((advantage) => (
-                        <small key={advantage} className="ai-ok">
-                          + {advantage}
-                        </small>
-                      ))}
-                      {!(zh ? quote.aiSummaryCn : quote.aiSummaryEn) && !displayedAdvantages(quote, zh).length && (
-                        <small>{t("Verified score only", "仅显示可核验评分")}</small>
-                      )}
-                    </td>
-                    <td>
-                      {displayedRisks(quote, zh).length ? (
-                        displayedRisks(quote, zh).map((risk) => (
-                          <small key={risk} className="ai-risk-line">
-                            {risk}
-                          </small>
-                        ))
-                      ) : (
-                        <small className="ai-ok">{t("No material commercial risk", "未发现重大商业风险")}</small>
-                      )}
-                    </td>
+          <details className="ai-comparison-details" open={!hierarchical ? true : undefined}>
+            {hierarchical && (
+              <summary>
+                <span>
+                  <strong>{t("Compare every quotation", "查看全部报价对比")}</strong>
+                  <small>
+                    {t(
+                      `${result.quotes.length} normalized offers with score evidence`,
+                      `${result.quotes.length} 份已标准化报价与评分依据`
+                    )}
+                  </small>
+                </span>
+                <b aria-hidden="true">›</b>
+              </summary>
+            )}
+            <div className="admin-table-wrap">
+              <table className="admin-mini-table ai-comparison-table">
+                <thead>
+                  <tr>
+                    <th>{t("Overall rank", "综合排名")}</th>
+                    <th>{t("Supplier", "供应商")}</th>
+                    <th>{t("Price", "价格")}</th>
+                    <th>{t("MOQ / lead", "起订量 / 交期")}</th>
+                    <th>{t("Score evidence", "评分依据")}</th>
+                    <th>{t("AI assessment", "AI 分析")}</th>
+                    <th>{t("Risks", "风险")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {result.quotes.map((quote) => (
+                    <tr key={quote.id} className={quote.id === result.recommendation?.quoteId ? "recommended" : ""}>
+                      <td>
+                        <strong>#{quote.rank}</strong>
+                        <br />
+                        <small>{quote.totalScore}/100</small>
+                      </td>
+                      <td>
+                        <strong>{quote.supplierName}</strong>
+                        <br />
+                        <small>{quote.quoteCode}</small>
+                      </td>
+                      <td>
+                        <strong>{money(quote.normalizedTotal, quote.currency)}</strong>
+                        <br />
+                        <small>
+                          {quote.priceDeltaPercent == null
+                            ? t("currency not normalized", "币种未统一")
+                            : quote.priceDeltaPercent > 0
+                              ? `+${quote.priceDeltaPercent}%`
+                              : t("lowest", "最低")}
+                        </small>
+                      </td>
+                      <td>
+                        MOQ {quote.moq || "-"}
+                        <br />
+                        <small>
+                          {quote.leadTimeDays || "-"} {t("days", "天")} · {quote.lineItemCoverage}% BOM
+                        </small>
+                      </td>
+                      <td>
+                        <small>
+                          {t("Price", "价格")} {quote.scoreBreakdown.price} · {t("Lead", "交期")}{" "}
+                          {quote.scoreBreakdown.leadTime}
+                        </small>
+                        <br />
+                        <small>
+                          {t("Quality", "质量")} {quote.scoreBreakdown.quality} · {t("Reliability", "可靠性")}{" "}
+                          {quote.scoreBreakdown.reliability}
+                        </small>
+                        <br />
+                        <small>
+                          {t("Commercial", "商务")} {quote.scoreBreakdown.commercialCompleteness} ·{" "}
+                          {t("Material", "材质")} {quote.scoreBreakdown.materialCompliance}
+                        </small>
+                      </td>
+                      <td>
+                        {(zh ? quote.aiSummaryCn : quote.aiSummaryEn) && (
+                          <small className="ai-summary-line">{zh ? quote.aiSummaryCn : quote.aiSummaryEn}</small>
+                        )}
+                        {displayedAdvantages(quote, zh).map((advantage) => (
+                          <small key={advantage} className="ai-ok">
+                            + {advantage}
+                          </small>
+                        ))}
+                        {!(zh ? quote.aiSummaryCn : quote.aiSummaryEn) && !displayedAdvantages(quote, zh).length && (
+                          <small>{t("Verified score only", "仅显示可核验评分")}</small>
+                        )}
+                      </td>
+                      <td>
+                        {displayedRisks(quote, zh).length ? (
+                          displayedRisks(quote, zh).map((risk) => (
+                            <small key={risk} className="ai-risk-line">
+                              {risk}
+                            </small>
+                          ))
+                        ) : (
+                          <small className="ai-ok">{t("No material commercial risk", "未发现重大商业风险")}</small>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
           <p className="ai-human-gate">{zh ? result.decisionNoteCn : result.decisionNoteEn}</p>
         </>
       )}
