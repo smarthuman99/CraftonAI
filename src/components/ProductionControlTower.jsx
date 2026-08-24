@@ -148,12 +148,24 @@ function copyText(value) {
   return Promise.reject(new Error("Clipboard is unavailable."));
 }
 
+function productionDrawingStatus(status, zh) {
+  const labels = {
+    missing: ["Missing", "待上传"],
+    pending_review: ["Technical review", "等待技术审核"],
+    changes_required: ["Supplier revision required", "等待供应商修订"],
+    approved: ["Approved for manufacture", "已批准生产"]
+  };
+  return labels[status || "missing"]?.[zh ? 1 : 0] || status || "-";
+}
+
 export default function ProductionControlTower({
   lang = "En",
   project,
   supabaseClient,
   suppliers = [],
   quotes = [],
+  rfqBatches = [],
+  projectFiles = [],
   productionUpdates = [],
   onChanged
 }) {
@@ -168,6 +180,44 @@ export default function ProductionControlTower({
   const [reviewNote, setReviewNote] = useState("");
   const [reviewRiskAcknowledged, setReviewRiskAcknowledged] = useState(false);
   const [evidenceUrls, setEvidenceUrls] = useState({});
+  const [drawingReviewId, setDrawingReviewId] = useState("");
+  const [drawingReviewNote, setDrawingReviewNote] = useState("");
+  const [drawingUrls, setDrawingUrls] = useState({});
+
+  const drawingGate = useMemo(() => {
+    const latestRfq = [...rfqBatches].sort((left, right) =>
+      String(right.created_at || "").localeCompare(String(left.created_at || ""))
+    )[0];
+    const document = latestRfq?.payload?.document || latestRfq?.payload || {};
+    const items = Array.isArray(document.items) ? document.items : [];
+    const revisions = projectFiles
+      .filter(
+        (file) =>
+          file.file_group === "supplier_shop_drawing" &&
+          (!selectedSupplier || String(file.payload?.supplier_id) === String(selectedSupplier.id))
+      )
+      .sort((left, right) => {
+        const revisionDelta = Number(right.payload?.revision_number || 0) - Number(left.payload?.revision_number || 0);
+        return revisionDelta || String(right.created_at || "").localeCompare(String(left.created_at || ""));
+      });
+    const latestByCode = new Map();
+    revisions.forEach((file) => {
+      const key = String(file.payload?.item_code || "").toLowerCase();
+      if (key && !latestByCode.has(key)) latestByCode.set(key, file);
+    });
+    const rows = items.map((item, index) => {
+      const code = item.code || item.itemCode || item.item_code || `ITEM-${String(index + 1).padStart(2, "0")}`;
+      const name = item.nameEn || item.nameCn || item.name || item.item || code;
+      const file = latestByCode.get(String(code).toLowerCase()) || null;
+      return { code, name, file, status: file?.payload?.review_status || "missing" };
+    });
+    return {
+      rows,
+      revisions,
+      approved: rows.length > 0 && rows.every((row) => row.status === "approved"),
+      approvedCount: rows.filter((row) => row.status === "approved").length
+    };
+  }, [projectFiles, rfqBatches, selectedSupplier]);
 
   const dashboard = useMemo(() => {
     const selectedTasks = productionUpdates.filter(
@@ -267,6 +317,23 @@ export default function ProductionControlTower({
     };
   }, [dashboard.tasks, supabaseClient]);
 
+  useEffect(() => {
+    let active = true;
+    const files = drawingGate.revisions.filter((file) => file.file_path);
+    Promise.all(
+      files.map(async (file) => {
+        const bucket = file.payload?.storage_bucket || "intake-files";
+        const { data } = await supabaseClient.storage.from(bucket).createSignedUrl(file.file_path, 60 * 60);
+        return [file.id, data?.signedUrl || ""];
+      })
+    )
+      .then((entries) => active && setDrawingUrls(Object.fromEntries(entries)))
+      .catch(() => active && setDrawingUrls({}));
+    return () => {
+      active = false;
+    };
+  }, [drawingGate.revisions, supabaseClient]);
+
   async function createAccess() {
     if (!selectedSupplier) return;
     setBusy("account");
@@ -332,6 +399,36 @@ export default function ProductionControlTower({
         )
       );
       onChanged?.();
+    } catch (error) {
+      setMessage(error.message || String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function reviewShopDrawing(decision) {
+    if (!drawingReviewId) return;
+    if (decision === "changes_required" && !drawingReviewNote.trim()) {
+      setMessage(t("Explain what the supplier must correct.", "请说明供应商需要修正的内容。"));
+      return;
+    }
+    setBusy(`drawing-${drawingReviewId}`);
+    setMessage("");
+    try {
+      await callWorkflowAi(supabaseClient, {
+        action: "review_supplier_shop_drawing",
+        projectFileId: drawingReviewId,
+        decision,
+        note: drawingReviewNote.trim()
+      });
+      setMessage(
+        decision === "approved"
+          ? t("Shop drawing approved for manufacture.", "施工图已批准用于生产。")
+          : t("Revision returned to the supplier.", "该版本已退回供应商修订。")
+      );
+      setDrawingReviewId("");
+      setDrawingReviewNote("");
+      await onChanged?.();
     } catch (error) {
       setMessage(error.message || String(error));
     } finally {
@@ -489,6 +586,104 @@ export default function ProductionControlTower({
         </div>
       )}
 
+      <section className={`production-drawing-gate ${drawingGate.approved ? "approved" : "blocked"}`}>
+        <header>
+          <div>
+            <span>{t("SUPPLIER SHOP-DRAWING GATE", "供应商施工图闸口")}</span>
+            <h4>
+              {drawingGate.approved
+                ? t("All current revisions are approved for manufacture", "全部最新版本已批准用于生产")
+                : t("Manufacturing release is locked", "生产放行仍被锁定")}
+            </h4>
+            <p>
+              {t(
+                "AI concept views are never approved as production geometry. Review the appointed supplier's latest CAD/shop-drawing revision for every item.",
+                "AI 概念视图永远不会被批准为生产几何。请逐项审核中选供应商最新的 CAD／施工图版本。"
+              )}
+            </p>
+          </div>
+          <strong>
+            {drawingGate.approvedCount}/{drawingGate.rows.length || "—"}
+            <small>{t("items approved", "项已批准")}</small>
+          </strong>
+        </header>
+        {!drawingGate.rows.length ? (
+          <div className="production-drawing-empty">
+            {t(
+              "Create the RFQ item package before opening the drawing gate.",
+              "请先建立 RFQ item 资料包，再开启施工图闸口。"
+            )}
+          </div>
+        ) : (
+          <div className="production-drawing-list">
+            {drawingGate.rows.map((row) => (
+              <article className={`status-${row.status}`} key={`admin-drawing-${row.code}`}>
+                <div>
+                  <code>{row.code}</code>
+                  <strong>{row.name}</strong>
+                  <small>
+                    {row.file
+                      ? `${row.file.payload?.revision || "R00"} · ${row.file.file_name}`
+                      : t("Awaiting supplier upload", "等待供应商上传")}
+                  </small>
+                  {row.file?.payload?.review_note && <p>{row.file.payload.review_note}</p>}
+                </div>
+                <span>{productionDrawingStatus(row.status, zh)}</span>
+                <div>
+                  {row.file && drawingUrls[row.file.id] && (
+                    <a href={drawingUrls[row.file.id]} target="_blank" rel="noreferrer">
+                      {t("Open revision", "查看版本")}
+                    </a>
+                  )}
+                  {row.file && row.status !== "approved" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDrawingReviewId(row.file.id);
+                        setDrawingReviewNote(row.file.payload?.review_note || "");
+                        setMessage("");
+                      }}
+                    >
+                      {t("Technical review", "技术审核")}
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+        {drawingReviewId && (
+          <div className="production-drawing-review">
+            <label>
+              <span>{t("Technical review note / correction instruction", "技术审核备注／修正指示")}</span>
+              <textarea
+                value={drawingReviewNote}
+                onChange={(event) => setDrawingReviewNote(event.target.value)}
+                placeholder={t(
+                  "Check geometry, dimensions, construction, tolerances and revision scope.",
+                  "检查几何、尺寸、结构、公差及本次版本范围。"
+                )}
+              />
+            </label>
+            <div>
+              <button type="button" disabled={Boolean(busy)} onClick={() => reviewShopDrawing("changes_required")}>
+                {t("Return for revision", "退回修订")}
+              </button>
+              <button
+                className="approve"
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => reviewShopDrawing("approved")}
+              >
+                {busy === `drawing-${drawingReviewId}`
+                  ? t("Saving review...", "正在保存审核……")
+                  : t("Approve for manufacture", "批准用于生产")}
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className={`production-schedule-approval schedule-${dashboard.schedule.status}`}>
         <header>
           <div>
@@ -544,7 +739,14 @@ export default function ProductionControlTower({
                   "首版供应商排产获批之前，系统不会按 AI 预测日期产生逾期警报。"
                 )}
           </p>
-          <button type="button" disabled={Boolean(busy) || !dashboard.schedule.canApprove} onClick={approveSchedule}>
+          <button
+            type="button"
+            disabled={Boolean(busy) || !dashboard.schedule.canApprove || !drawingGate.approved}
+            onClick={approveSchedule}
+            title={
+              !drawingGate.approved ? t("Approve every supplier shop drawing first.", "请先批准全部供应商施工图。") : ""
+            }
+          >
             {busy === "schedule"
               ? t("Approving baseline...", "正在批准基准……")
               : t("Cho approves production baseline", "Cho 批准为正式生产基准")}

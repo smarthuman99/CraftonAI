@@ -16,8 +16,11 @@ import {
   approveSupplierProductionPlan,
   createSupplierPortalAccount,
   loadSupplierProductionWorkspace,
+  loadProjectShopDrawings,
   monitorActiveProduction,
   reviewSupplierProductionEvidence,
+  reviewSupplierShopDrawing,
+  submitSupplierShopDrawing,
   submitSupplierProductionEvidence,
   submitSupplierProductionPlan
 } from "./lib/supplierProductionPortal.mjs";
@@ -101,9 +104,15 @@ const server = http.createServer(async (req, res) => {
       } else if (body.action === "supplier_production_workspace") {
         const { supabase, user } = await requireAuthenticatedUser(req);
         result = await loadSupplierProductionWorkspace({ supabase, user });
+      } else if (body.action === "project_shop_drawings") {
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        result = await loadProjectShopDrawings({ supabase, user, projectId: body.projectId });
       } else if (body.action === "submit_supplier_production_evidence") {
         const { supabase, user } = await requireAuthenticatedUser(req);
         result = await submitSupplierProductionEvidence({ supabase, user, body });
+      } else if (body.action === "submit_supplier_shop_drawing") {
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        result = await submitSupplierShopDrawing({ supabase, user, body });
       } else if (body.action === "submit_supplier_production_plan") {
         const { supabase, user } = await requireAuthenticatedUser(req);
         result = await submitSupplierProductionPlan({ supabase, user, body });
@@ -124,6 +133,9 @@ const server = http.createServer(async (req, res) => {
       } else if (body.action === "review_production_evidence") {
         const { supabase, user } = await requireCraftonStaff(req);
         result = await reviewSupplierProductionEvidence({ supabase, user, body });
+      } else if (body.action === "review_supplier_shop_drawing") {
+        const { supabase, user } = await requireCraftonStaff(req);
+        result = await reviewSupplierShopDrawing({ supabase, user, body });
       } else if (body.action === "change_project_lifecycle") {
         const { supabase, user } = await requireCraftonStaff(req);
         result = await changeProjectLifecycle({ supabase, actor: user, body });

@@ -10,7 +10,11 @@ const DRAWING_BUCKET = "intake-files";
 const DRAWING_PROMPT_VERSION = "three-view-v1";
 const DEFAULT_PUBLIC_APP_URL = "https://129.121.98.185:8443/";
 
-const clean = (value, maxLength = 500) => String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+const clean = (value, maxLength = 500) =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
 
 const escapeXml = (value) =>
   clean(value, 2000)
@@ -75,8 +79,12 @@ const itemTraceability = ({ item = {}, job = {}, itemIndex = 0 } = {}) => {
     .replace(/[^A-Za-z0-9]/g, "")
     .toUpperCase()
     .slice(0, 3);
-  const savedSku = clean(item.sku || item.sku_code || item.skuCode || item.item_no || item.itemNo || item.item_code, 80);
-  const sku = savedSku.toUpperCase() || `CRF-${projectInitials || "PRJ"}-${stableIdentityToken(`${identity}|sku`, 5)}-R01`;
+  const savedSku = clean(
+    item.sku || item.sku_code || item.skuCode || item.item_no || item.itemNo || item.item_code,
+    80
+  );
+  const sku =
+    savedSku.toUpperCase() || `CRF-${projectInitials || "PRJ"}-${stableIdentityToken(`${identity}|sku`, 5)}-R01`;
   const savedTrackingId = clean(item.tracking_id || item.trackingId || item.qr_tracking_id || item.qrTrackingId, 100);
   const trackingId =
     savedTrackingId.toUpperCase() ||
@@ -102,7 +110,7 @@ const trackingQrDataUrl = (trackingUrl) => {
 
 export function technicalDrawingEligible({ item = {}, file = null } = {}) {
   const drawing = normalizeDrawing(item.technical_drawing || item.technicalDrawing);
-  if (["system_generated", "formal"].includes(drawing.status)) return false;
+  if (["system_generated", "ai_concept", "formal", "approved_for_manufacture"].includes(drawing.status)) return false;
   const retryAfter = new Date(drawing.retry_after || 0).getTime();
   if (retryAfter && retryAfter > Date.now()) return false;
   if (drawing.status === "generating") {
@@ -113,10 +121,10 @@ export function technicalDrawingEligible({ item = {}, file = null } = {}) {
   if (Number(drawing.attempts || 0) >= positiveNumber(process.env.THREE_VIEW_MAX_ATTEMPTS, 3)) return false;
   return Boolean(
     item.image_storage_path ||
-      item.image_url ||
-      item.imageUrl ||
-      (Array.isArray(item.image_storage_paths) && item.image_storage_paths.length) ||
-      (file?.mime_type?.startsWith("image/") && file.storage_bucket && file.storage_path)
+    item.image_url ||
+    item.imageUrl ||
+    (Array.isArray(item.image_storage_paths) && item.image_storage_paths.length) ||
+    (file?.mime_type?.startsWith("image/") && file.storage_bucket && file.storage_path)
   );
 }
 
@@ -207,7 +215,10 @@ function sourceStorageReferences({ item, file }) {
             path: reference.path || reference.storage_path,
             mimeType: reference.mime_type || reference.mimeType
           };
-    if (!normalized.path || references.some((entry) => entry.bucket === normalized.bucket && entry.path === normalized.path)) {
+    if (
+      !normalized.path ||
+      references.some((entry) => entry.bucket === normalized.bucket && entry.path === normalized.path)
+    ) {
       return;
     }
     references.push(normalized);
@@ -356,18 +367,30 @@ function trackingPanelSvg({ sku, trackingId, trackingUrl }) {
     <image href="${trackingQrDataUrl(trackingUrl)}" x="1757" y="783" width="168" height="168"/>`;
 }
 
-export function buildTechnicalDrawingSvg({ item = {}, job = {}, references = [], generatedImage, formal = false, itemIndex = 0 }) {
+export function buildTechnicalDrawingSvg({
+  item = {},
+  job = {},
+  references = [],
+  generatedImage,
+  formal = false,
+  itemIndex = 0
+}) {
   const generatedDataUrl = `data:${generatedImage.mimeType};base64,${generatedImage.dataBase64}`;
-  const statusCn = formal ? "正式图纸" : "系统自动生成";
-  const statusEn = formal ? "FORMAL DRAWING" : "SYSTEM AUTO-GENERATED";
-  const statusNote = formal ? "CONFIRMED BY CRAFTON" : "PENDING ADMIN CONFIRMATION";
+  const statusCn = formal ? "供应商施工图" : "AI 概念视图";
+  const statusEn = formal ? "SUPPLIER SHOP DRAWING" : "AI CONCEPT VIEW";
+  const statusNote = formal ? "APPROVED FOR MANUFACTURE" : "REFERENCE ONLY · NOT FOR MANUFACTURE";
   const statusColor = formal ? "#3f6249" : "#9a5e3d";
   const name = itemName(item);
   const material = itemMaterial(item);
   const quantity = item.quantity_text || item.qtyDisplay || item.quantity || item.qty || "To confirm";
   const projectName = job.project_name || job.projectName || job.result_json?.project?.name || "Crafton project";
   const rawProjectCode = clean(job.project_code || job.projectCode || job.project_id || job.id || "", 80);
-  const projectCode = rawProjectCode ? `#${rawProjectCode.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}` : "";
+  const projectCode = rawProjectCode
+    ? `#${rawProjectCode
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .slice(0, 8)
+        .toUpperCase()}`
+    : "";
   const displayMaterial = compactText(material, 32);
   const generatedAt = new Date().toISOString().slice(0, 10);
   const traceability = itemTraceability({ item, job, itemIndex });
@@ -375,7 +398,7 @@ export function buildTechnicalDrawingSvg({ item = {}, job = {}, references = [],
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1300" viewBox="0 0 2000 1300" role="img" aria-labelledby="title desc">
   <title id="title">${svgText(name)} three-view furniture drawing</title>
-  <desc id="desc">${svgText(statusEn)}. Dimensions are taken from the submitted FF&amp;E source.</desc>
+  <desc id="desc">${svgText(statusEn)}. ${formal ? "Supplier geometry approved for manufacture." : "AI-generated geometry for visual reference only; specifications are taken from the submitted FF&amp;E source."}</desc>
   <defs>
     <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#eeeae3" stroke-width="1"/></pattern>
     <style>
@@ -404,22 +427,27 @@ export function buildTechnicalDrawingSvg({ item = {}, job = {}, references = [],
   <text x="1470" y="1068" class="label">QUANTITY / 数量</text><text x="1470" y="1108" class="value">${svgText(quantity)}</text>
   <text x="80" y="1188" class="label">PROJECT CODE</text><text x="80" y="1228" class="value">${svgText(projectCode || "PENDING")}</text>
   <text x="540" y="1188" class="label">MATERIAL / FINISH</text><text x="540" y="1228" class="value">${svgText(displayMaterial)}</text>
-  <text x="1000" y="1188" class="label">DRAWING BASIS</text><text x="1000" y="1228" class="value">CLIENT FF&amp;E DIMENSIONS</text>
+  <text x="1000" y="1188" class="label">DRAWING BASIS</text><text x="1000" y="1228" class="value">${formal ? "SUPPLIER CAD / SHOP DRAWING" : "CLIENT FF&amp;E · AI CONCEPT"}</text>
   <text x="1470" y="1188" class="label">ISSUED</text><text x="1470" y="1228" class="value">${generatedAt}</text>
 </svg>`;
 }
 
 export function buildTechnicalDrawingOverlaySvg({ item = {}, job = {}, formal = false, itemIndex = 0 }) {
-  const statusCn = formal ? "正式图纸" : "系统自动生成";
-  const statusEn = formal ? "FORMAL DRAWING" : "SYSTEM AUTO-GENERATED";
-  const statusNote = formal ? "CONFIRMED BY CRAFTON" : "PENDING ADMIN CONFIRMATION";
+  const statusCn = formal ? "供应商施工图" : "AI 概念视图";
+  const statusEn = formal ? "SUPPLIER SHOP DRAWING" : "AI CONCEPT VIEW";
+  const statusNote = formal ? "APPROVED FOR MANUFACTURE" : "REFERENCE ONLY · NOT FOR MANUFACTURE";
   const statusColor = formal ? "#3f6249" : "#9a5e3d";
   const name = itemName(item);
   const material = compactText(itemMaterial(item), 32);
   const quantity = item.quantity_text || item.qtyDisplay || item.quantity || item.qty || "To confirm";
   const projectName = job.project_name || job.projectName || job.result_json?.project?.name || "Crafton project";
   const rawProjectCode = clean(job.project_code || job.projectCode || job.project_id || job.id || "", 80);
-  const projectCode = rawProjectCode ? `#${rawProjectCode.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}` : "PENDING";
+  const projectCode = rawProjectCode
+    ? `#${rawProjectCode
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .slice(0, 8)
+        .toUpperCase()}`
+    : "PENDING";
   const issued = new Date().toISOString().slice(0, 10);
   const traceability = itemTraceability({ item, job, itemIndex });
 
@@ -449,14 +477,17 @@ export function buildTechnicalDrawingOverlaySvg({ item = {}, job = {}, formal = 
     <text x="1470" y="1068" class="label">QUANTITY / 数量</text><text x="1470" y="1108" class="value">${svgText(quantity)}</text>
     <text x="80" y="1188" class="label">PROJECT CODE</text><text x="80" y="1228" class="value">${svgText(projectCode)}</text>
     <text x="540" y="1188" class="label">MATERIAL / FINISH</text><text x="540" y="1228" class="value">${svgText(material)}</text>
-    <text x="1000" y="1188" class="label">DRAWING BASIS</text><text x="1000" y="1228" class="value">CLIENT FF&amp;E DIMENSIONS</text>
+    <text x="1000" y="1188" class="label">DRAWING BASIS</text><text x="1000" y="1228" class="value">${formal ? "SUPPLIER CAD / SHOP DRAWING" : "CLIENT FF&amp;E · AI CONCEPT"}</text>
     <text x="1470" y="1188" class="label">ISSUED</text><text x="1470" y="1228" class="value">${issued}</text>
   </svg>`;
 }
 
 export async function refreshTechnicalDrawingPng(png, options = {}) {
   const overlay = Buffer.from(buildTechnicalDrawingOverlaySvg(options), "utf8");
-  return sharp(png).composite([{ input: overlay, top: 0, left: 0 }]).png({ compressionLevel: 9 }).toBuffer();
+  return sharp(png)
+    .composite([{ input: overlay, top: 0, left: 0 }])
+    .png({ compressionLevel: 9 })
+    .toBuffer();
 }
 
 export async function renderTechnicalDrawingPng(svg) {
@@ -485,7 +516,6 @@ export async function generateTechnicalDrawingForItem({ supabase, job, result, i
   const itemToken = clean(item.id || item.item_code || `item-${itemIndex + 1}`, 80).replace(/[^a-zA-Z0-9_-]+/g, "-");
   const basePath = `${userId || "unowned"}/derived/${job.id}/technical-drawings/${itemToken}-${DRAWING_PROMPT_VERSION}`;
   const draftPath = `${basePath}-draft.png`;
-  const formalPath = `${basePath}-formal.png`;
   const sourceSummary = references.map((reference) => ({
     storage_bucket: reference.bucket || "",
     storage_path: reference.path || "",
@@ -494,24 +524,30 @@ export async function generateTechnicalDrawingForItem({ supabase, job, result, i
   const drawingJob = { ...job, result_json: result };
   const traceability = itemTraceability({ item, job: drawingJob, itemIndex });
   const draftSvg = buildTechnicalDrawingSvg({ item, job: drawingJob, references, generatedImage, itemIndex });
-  const formalSvg = buildTechnicalDrawingSvg({
-    item,
-    job: drawingJob,
-    references,
-    generatedImage,
-    formal: true,
-    itemIndex
-  });
   await uploadDrawing({ supabase, path: draftPath, svg: draftSvg });
-  await uploadDrawing({ supabase, path: formalPath, svg: formalSvg });
+
+  const generatedAt = new Date().toISOString();
+  const conceptRevision = {
+    revision: "R00",
+    kind: "ai_concept",
+    source: "ai",
+    review_status: "reference_only",
+    storage_bucket: DRAWING_BUCKET,
+    storage_path: draftPath,
+    created_at: generatedAt
+  };
 
   return {
-    status: "system_generated",
-    review_status: "pending_admin",
+    status: "ai_concept",
+    drawing_kind: "ai_concept",
+    lifecycle_stage: "concept_reference",
+    review_status: "reference_only",
+    current_revision: "R00",
+    revisions: [conceptRevision],
     storage_bucket: DRAWING_BUCKET,
     drawing_storage_path: draftPath,
     draft_storage_path: draftPath,
-    formal_storage_path: formalPath,
+    formal_storage_path: "",
     source_images: sourceSummary,
     source_count: references.length,
     dimensions_source: "client_ffe",
@@ -524,18 +560,27 @@ export async function generateTechnicalDrawingForItem({ supabase, job, result, i
     item_index: itemIndex,
     intake_job_id: job.id,
     attempts: Number(item.technical_drawing?.attempts || 0) + 1,
-    generated_at: new Date().toISOString()
+    generated_at: generatedAt
   };
 }
 
 export function formalizeTechnicalDrawing(drawing = {}, { approvedBy = "Cho", approvedById = null } = {}) {
   const normalized = normalizeDrawing(drawing);
-  if (!normalized.formal_storage_path) throw new Error("The formal drawing asset has not been generated.");
+  const supplierRevision = (Array.isArray(normalized.revisions) ? normalized.revisions : [])
+    .filter((revision) => revision?.kind === "supplier_shop_drawing" && revision?.review_status === "approved")
+    .sort((left, right) => String(right.revision || "").localeCompare(String(left.revision || "")))[0];
+  if (!supplierRevision?.storage_path) {
+    throw new Error("An approved supplier shop-drawing revision is required before manufacture release.");
+  }
   return {
     ...normalized,
-    status: "formal",
+    status: "approved_for_manufacture",
+    drawing_kind: "supplier_shop_drawing",
+    lifecycle_stage: "approved_for_manufacture",
     review_status: "approved",
-    drawing_storage_path: normalized.formal_storage_path,
+    current_revision: supplierRevision.revision,
+    drawing_storage_path: supplierRevision.storage_path,
+    storage_bucket: supplierRevision.storage_bucket || normalized.storage_bucket,
     approved_by: approvedBy,
     approved_by_id: approvedById,
     approved_at: new Date().toISOString()

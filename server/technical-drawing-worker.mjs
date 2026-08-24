@@ -59,7 +59,9 @@ async function processPendingItem({ job, item, index }) {
     technical_drawing: {
       ...previousDrawing,
       status: "generating",
-      review_status: "pending_admin",
+      drawing_kind: "ai_concept",
+      lifecycle_stage: "concept_generation",
+      review_status: "not_applicable",
       attempts: Number(previousDrawing.attempts || 0) + 1,
       started_at: new Date().toISOString()
     }
@@ -94,7 +96,9 @@ async function processPendingItem({ job, item, index }) {
       technical_drawing: {
         ...previousDrawing,
         status: waitingForQuota ? "waiting_for_quota" : "generation_failed",
-        review_status: "pending_admin",
+        drawing_kind: "ai_concept",
+        lifecycle_stage: "concept_generation",
+        review_status: "not_applicable",
         attempts: waitingForQuota ? Number(previousDrawing.attempts || 0) : Number(previousDrawing.attempts || 0) + 1,
         error_code: waitingForQuota
           ? "provider_quota_exceeded"

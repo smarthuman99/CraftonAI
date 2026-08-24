@@ -2014,6 +2014,8 @@ export default function AdminWorkflowWorkspace({
               supabaseClient={supabaseClient}
               suppliers={suppliers}
               quotes={data.supplier_quotes}
+              rfqBatches={data.rfq_batches}
+              projectFiles={data.project_files}
               productionUpdates={data.production_updates}
               onChanged={loadData}
             />

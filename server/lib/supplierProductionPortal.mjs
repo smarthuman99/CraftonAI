@@ -3,6 +3,29 @@ import { randomBytes } from "node:crypto";
 const DAY = 86_400_000;
 const SUPPLIER_ROLE = "supplier";
 const EVIDENCE_BUCKET = "intake-files";
+const SHOP_DRAWING_GROUP = "supplier_shop_drawing";
+const SHOP_DRAWING_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "application/dwg",
+  "application/x-dwg",
+  "application/acad",
+  "image/vnd.dwg",
+  "image/vnd.dxf",
+  "application/dxf",
+  "application/x-dxf"
+]);
+const SHOP_DRAWING_BUCKET_MIME_TYPES = [
+  ...SHOP_DRAWING_MIME_TYPES,
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/csv",
+  "text/plain",
+  "application/octet-stream"
+];
 const SHIPPING_BUFFER_DAYS = 10;
 const UPDATE_FREQUENCIES = new Set(["daily", "every_2_days", "twice_weekly", "weekly"]);
 const PROCESS_ORDER = [
@@ -599,6 +622,7 @@ export async function createSupplierPortalAccount({ supabase, supplierId, projec
 export async function loadSupplierProductionWorkspace({ supabase, user }) {
   const identity = supplierIdentity(user);
   if (!identity) throw httpError(403, "This account is not linked to a supplier factory.");
+  await ensureShopDrawingBucketConfig(supabase);
   const supplier = await single(
     supabase.from("suppliers").select("*").eq("id", identity.supplierId).maybeSingle(),
     "supplier"
@@ -624,7 +648,7 @@ export async function loadSupplierProductionWorkspace({ supabase, user }) {
     };
   }
 
-  const [projects, tasks, rfqs] = await Promise.all([
+  const [projects, tasks, rfqs, drawingFiles] = await Promise.all([
     many(supabase.from("projects").select("*").in("id", projectIds), "projects"),
     many(
       supabase
@@ -638,14 +662,25 @@ export async function loadSupplierProductionWorkspace({ supabase, user }) {
     many(
       supabase.from("rfq_batches").select("*").in("project_id", projectIds).order("created_at", { ascending: false }),
       "approved order specifications"
+    ),
+    many(
+      supabase
+        .from("project_files")
+        .select("*")
+        .in("project_id", projectIds)
+        .eq("file_group", SHOP_DRAWING_GROUP)
+        .order("created_at", { ascending: false }),
+      "supplier shop drawings"
     )
   ]);
   const analysis = buildProjectProductionAnalysis(productionFrameworkTasks(tasks));
   const tasksWithLinks = await Promise.all(analysis.tasks.map((task) => attachEvidenceLinks(supabase, task)));
+  const linkedDrawingFiles = await Promise.all(drawingFiles.map((file) => attachShopDrawingLink(supabase, file)));
   const projectsSafe = projects.map((project) => {
     const projectTasks = tasksWithLinks.filter((task) => task.project_id === project.id);
     const projectAnalysis = buildProjectProductionAnalysis(projectTasks);
     const latestRfq = rfqs.find((rfq) => rfq.project_id === project.id);
+    const projectDrawings = linkedDrawingFiles.filter((file) => file.project_id === project.id);
     return {
       id: project.id,
       name: project.name || project.project_name || project.order_id || `Order ${project.id.slice(0, 8)}`,
@@ -653,6 +688,7 @@ export async function loadSupplierProductionWorkspace({ supabase, user }) {
       currentStage: project.current_stage || 9,
       targetDeliveryDate: project.desired_delivery_date || project.delivery_date || null,
       specification: safeRfq(latestRfq),
+      shopDrawings: shopDrawingRegister(projectDrawings),
       tasks: projectTasks,
       summary: projectAnalysis.summary
     };
@@ -664,6 +700,229 @@ export async function loadSupplierProductionWorkspace({ supabase, user }) {
     summary: refreshedAnalysis.summary,
     generatedAt: new Date().toISOString()
   };
+}
+
+export async function loadProjectShopDrawings({ supabase, user, projectId }) {
+  projectId = clean(projectId);
+  if (!projectId) throw httpError(400, "A project ID is required.");
+  const project = await single(
+    supabase.from("projects").select("id,user_id").eq("id", projectId).maybeSingle(),
+    "project"
+  );
+  if (!project) throw httpError(404, "Project not found.");
+  const isStaff = clean(user?.email).toLowerCase().endsWith("@crafton.com");
+  if (!isStaff && clean(project.user_id) !== clean(user?.id)) {
+    throw httpError(403, "This project does not belong to the signed-in account.");
+  }
+  const files = await many(
+    supabase
+      .from("project_files")
+      .select("*")
+      .eq("project_id", projectId)
+      .eq("file_group", SHOP_DRAWING_GROUP)
+      .order("created_at", { ascending: false }),
+    "project shop drawings"
+  );
+  const linked = await Promise.all(files.map((file) => attachShopDrawingLink(supabase, file)));
+  return { projectId, files: linked.map((file) => ({ ...file, file_url: file.downloadUrl || file.file_url || "" })) };
+}
+
+export async function submitSupplierShopDrawing({ supabase, user, body = {} }) {
+  const identity = supplierIdentity(user);
+  if (!identity) throw httpError(403, "This account is not linked to a supplier factory.");
+  const projectId = clean(body.projectId);
+  const itemCode = clean(body.itemCode, 160);
+  const file = body.file || {};
+  if (!projectId || !itemCode) throw httpError(400, "A project and item code are required.");
+
+  const [supplier, selectedQuote, latestRfq, existingFiles] = await Promise.all([
+    single(supabase.from("suppliers").select("id,name,status").eq("id", identity.supplierId).maybeSingle(), "supplier"),
+    single(
+      supabase
+        .from("supplier_quotes")
+        .select("id,supplier_id")
+        .eq("project_id", projectId)
+        .eq("supplier_id", identity.supplierId)
+        .eq("status", "selected")
+        .maybeSingle(),
+      "active supplier assignment"
+    ),
+    single(
+      supabase
+        .from("rfq_batches")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      "approved order specification"
+    ),
+    many(
+      supabase.from("project_files").select("*").eq("project_id", projectId).eq("file_group", SHOP_DRAWING_GROUP),
+      "existing shop-drawing revisions"
+    )
+  ]);
+  if (!supplier || supplier.status === "inactive") throw httpError(403, "Supplier access is inactive.");
+  if (!selectedQuote) throw httpError(403, "This supplier is no longer assigned to the order.");
+
+  const specification = safeRfq(latestRfq);
+  const specificationItem = specification?.items?.find(
+    (item) => clean(item.code).toLowerCase() === itemCode.toLowerCase()
+  );
+  if (!specificationItem) throw httpError(409, "This item is not part of the latest approved RFQ specification.");
+
+  const bucket = clean(file.bucket, 100);
+  const storagePath = clean(file.path, 2000);
+  const fileName = clean(file.name, 240);
+  const mimeType = clean(file.mimeType, 160).toLowerCase();
+  const extension = fileName.split(".").pop()?.toLowerCase() || "";
+  const acceptedExtension = ["pdf", "png", "jpg", "jpeg", "webp", "dwg", "dxf"].includes(extension);
+  if (bucket !== EVIDENCE_BUCKET || !storagePath || !fileName || !acceptedExtension) {
+    throw httpError(400, "Upload a PDF, image, DWG or DXF shop-drawing file.");
+  }
+  if (mimeType && !SHOP_DRAWING_MIME_TYPES.has(mimeType) && !["dwg", "dxf"].includes(extension)) {
+    throw httpError(400, "The uploaded shop-drawing file type is not supported.");
+  }
+  const expectedPrefix = `${identity.userId}/supplier-shop-drawings/${projectId}/`;
+  if (!storagePath.startsWith(expectedPrefix))
+    throw httpError(400, "The shop drawing is outside the supplier upload area.");
+  await verifyStoredObject(supabase, bucket, storagePath);
+
+  const itemRevisions = existingFiles.filter(
+    (entry) => clean(entry.payload?.item_code).toLowerCase() === itemCode.toLowerCase()
+  );
+  const revisionNumber = Math.max(0, ...itemRevisions.map((entry) => Number(entry.payload?.revision_number || 0))) + 1;
+  const revision = `R${String(revisionNumber).padStart(2, "0")}`;
+  const uploadedAt = new Date().toISOString();
+  const payload = {
+    storage_bucket: bucket,
+    supplier_id: identity.supplierId,
+    item_code: specificationItem.code,
+    item_name: specificationItem.name,
+    drawing_kind: "supplier_shop_drawing",
+    lifecycle_stage: "technical_review",
+    revision,
+    revision_number: revisionNumber,
+    review_status: "pending_review",
+    mime_type: mimeType || "application/octet-stream",
+    file_size: Number(file.size || 0),
+    uploaded_by: identity.userId,
+    uploaded_at: uploadedAt,
+    supplier_note: clean(body.note, 2000)
+  };
+  const saved = await single(
+    supabase
+      .from("project_files")
+      .insert({
+        project_id: projectId,
+        stage_id: "S09",
+        file_group: SHOP_DRAWING_GROUP,
+        file_name: fileName,
+        file_path: storagePath,
+        sha256: clean(file.sha256, 160),
+        audit_hash: clean(file.sha256, 160),
+        payload
+      })
+      .select("*")
+      .single(),
+    "supplier shop-drawing revision"
+  );
+  await insertEvent(supabase, {
+    project_id: projectId,
+    stage_id: "S09",
+    event_type: "supplier_shop_drawing_submitted",
+    actor: supplier.name || user.email || "Supplier",
+    message_cn: `${supplier.name || "供应商"} 已为 ${specificationItem.name} 提交施工图 ${revision}，等待 Cho 技术审核。`,
+    message_en: `${supplier.name || "Supplier"} submitted ${specificationItem.name} shop drawing ${revision} for Cho technical review.`,
+    payload: {
+      supplier_id: identity.supplierId,
+      project_file_id: saved.id,
+      item_code: specificationItem.code,
+      revision
+    }
+  });
+  return { ok: true, drawing: await attachShopDrawingLink(supabase, saved) };
+}
+
+export async function reviewSupplierShopDrawing({ supabase, user, body = {} }) {
+  const projectFileId = clean(body.projectFileId);
+  const decision = clean(body.decision).toLowerCase();
+  const note = clean(body.note, 2000);
+  if (!projectFileId || !["approved", "changes_required"].includes(decision)) {
+    throw httpError(400, "A shop-drawing revision and review decision are required.");
+  }
+  if (decision === "changes_required" && !note) {
+    throw httpError(400, "Explain what the supplier must correct in the next revision.");
+  }
+  const drawing = await single(
+    supabase.from("project_files").select("*").eq("id", projectFileId).maybeSingle(),
+    "supplier shop drawing"
+  );
+  if (!drawing || drawing.file_group !== SHOP_DRAWING_GROUP) throw httpError(404, "Shop-drawing revision not found.");
+  const selectedQuote = await single(
+    supabase
+      .from("supplier_quotes")
+      .select("supplier_id")
+      .eq("project_id", drawing.project_id)
+      .eq("status", "selected")
+      .maybeSingle(),
+    "active supplier assignment"
+  );
+  if (!selectedQuote || clean(selectedQuote.supplier_id) !== clean(drawing.payload?.supplier_id)) {
+    throw httpError(409, "This revision is not from the currently appointed supplier.");
+  }
+  const reviewedAt = new Date().toISOString();
+  const reviewerName = clean(user?.user_metadata?.full_name) || clean(user?.email) || "Cho";
+  const payload = {
+    ...(drawing.payload || {}),
+    review_status: decision,
+    lifecycle_stage: decision === "approved" ? "approved_for_manufacture" : "supplier_revision_required",
+    review_note: note,
+    reviewed_by: user?.id || null,
+    reviewed_by_name: reviewerName,
+    reviewed_at: reviewedAt
+  };
+  const updated = await single(
+    supabase.from("project_files").update({ payload }).eq("id", drawing.id).select("*").single(),
+    "reviewed shop drawing"
+  );
+  if (decision === "approved") {
+    const { error: approvalError } = await supabase.from("approvals").insert({
+      project_id: drawing.project_id,
+      stage_id: "S09",
+      approval_type: "supplier_shop_drawing",
+      status: "approved",
+      reviewer_id: user?.id || null,
+      reviewer_name: reviewerName,
+      notes: note || `${payload.item_name || payload.item_code} ${payload.revision} approved for manufacture.`,
+      reviewed_at: reviewedAt,
+      payload: {
+        project_file_id: drawing.id,
+        supplier_id: payload.supplier_id,
+        item_code: payload.item_code,
+        revision: payload.revision,
+        supersedes_ai_concept: true
+      }
+    });
+    if (approvalError)
+      throw new Error(`The drawing was reviewed, but the approval record failed: ${approvalError.message}`);
+  }
+  await insertEvent(supabase, {
+    project_id: drawing.project_id,
+    stage_id: "S09",
+    event_type: decision === "approved" ? "supplier_shop_drawing_approved" : "supplier_shop_drawing_changes_required",
+    actor: reviewerName,
+    message_cn:
+      decision === "approved"
+        ? `${payload.item_name || payload.item_code} 施工图 ${payload.revision} 已批准用于生产。`
+        : `${payload.item_name || payload.item_code} 施工图 ${payload.revision} 已退回供应商修订：${note}`,
+    message_en:
+      decision === "approved"
+        ? `${payload.item_name || payload.item_code} shop drawing ${payload.revision} was approved for manufacture.`
+        : `${payload.item_name || payload.item_code} shop drawing ${payload.revision} was returned for revision: ${note}`,
+    payload: { project_file_id: drawing.id, decision, item_code: payload.item_code, revision: payload.revision }
+  });
+  return { ok: true, drawing: await attachShopDrawingLink(supabase, updated) };
 }
 
 export async function submitSupplierProductionPlan({ supabase, user, body = {} }) {
@@ -793,14 +1052,40 @@ export async function approveSupplierProductionPlan({ supabase, user, body = {} 
     "active supplier assignment"
   );
   if (!selectedQuote?.supplier_id) throw httpError(409, "No supplier is currently approved for production.");
-  const loadedTasks = await many(
-    supabase
-      .from("production_updates")
-      .select("*")
-      .eq("project_id", projectId)
-      .eq("supplier_id", selectedQuote.supplier_id),
-    "production work packages"
-  );
+  const [loadedTasks, latestRfq, drawingFiles] = await Promise.all([
+    many(
+      supabase
+        .from("production_updates")
+        .select("*")
+        .eq("project_id", projectId)
+        .eq("supplier_id", selectedQuote.supplier_id),
+      "production work packages"
+    ),
+    single(
+      supabase
+        .from("rfq_batches")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      "approved order specification"
+    ),
+    many(
+      supabase.from("project_files").select("*").eq("project_id", projectId).eq("file_group", SHOP_DRAWING_GROUP),
+      "supplier shop drawings"
+    )
+  ]);
+  const drawingGate = shopDrawingApprovalGate({ specification: safeRfq(latestRfq), files: drawingFiles });
+  if (!drawingGate.allowed) {
+    const blockers = [...drawingGate.missing, ...drawingGate.pending, ...drawingGate.changesRequired]
+      .map((row) => `${row.itemCode} (${row.status})`)
+      .join(", ");
+    throw httpError(
+      409,
+      `Production release is blocked until every supplier shop drawing is approved for manufacture: ${blockers || "no approved item drawings"}.`
+    );
+  }
   const tasks = productionFrameworkTasks(loadedTasks);
   if (!tasks.length) throw httpError(409, "No production work-package framework has been released.");
   const state = productionPlanState(tasks);
@@ -842,7 +1127,16 @@ export async function approveSupplierProductionPlan({ supabase, user, body = {} 
     reviewer_name: clean(user?.user_metadata?.full_name) || clean(user?.email) || "Cho",
     notes: clean(body.notes) || `Approved supplier factory schedule v${state.version}.`,
     reviewed_at: approvedAt,
-    payload: { supplier_id: supplierId, version: state.version, previous_approved_version: state.approvedVersion }
+    payload: {
+      supplier_id: supplierId,
+      version: state.version,
+      previous_approved_version: state.approvedVersion,
+      approved_shop_drawings: drawingGate.rows.map((row) => ({
+        item_code: row.itemCode,
+        project_file_id: row.drawing?.id,
+        revision: row.drawing?.revision
+      }))
+    }
   });
   if (approvalError)
     throw new Error(`The schedule was approved, but the approval record failed: ${approvalError.message}`);
@@ -853,7 +1147,12 @@ export async function approveSupplierProductionPlan({ supabase, user, body = {} 
     actor: clean(user?.user_metadata?.full_name) || clean(user?.email) || "Cho",
     message_cn: `Cho 已批准供应商第 ${state.version} 版真实生产排期；该版本现为正式跟单基准。`,
     message_en: `Cho approved supplier factory schedule v${state.version}; it is now the active production baseline.`,
-    payload: { supplier_id: supplierId, version: state.version, previous_approved_version: state.approvedVersion }
+    payload: {
+      supplier_id: supplierId,
+      version: state.version,
+      previous_approved_version: state.approvedVersion,
+      approved_shop_drawing_count: drawingGate.rows.length
+    }
   });
   const refreshed = await many(
     supabase.from("production_updates").select("*").eq("project_id", projectId),
@@ -1077,6 +1376,29 @@ export async function submitSupplierProductionEvidence({ supabase, user, body = 
     "active supplier assignment"
   );
   if (!selectedQuote) throw httpError(403, "This supplier is no longer assigned to the order.");
+  const [latestRfq, drawingFiles] = await Promise.all([
+    single(
+      supabase
+        .from("rfq_batches")
+        .select("*")
+        .eq("project_id", task.project_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      "approved order specification"
+    ),
+    many(
+      supabase.from("project_files").select("*").eq("project_id", task.project_id).eq("file_group", SHOP_DRAWING_GROUP),
+      "supplier shop drawings"
+    )
+  ]);
+  const drawingGate = shopDrawingApprovalGate({ specification: safeRfq(latestRfq), files: drawingFiles });
+  if (!drawingGate.allowed) {
+    throw httpError(
+      409,
+      "Production reporting is locked until every current supplier shop-drawing revision is approved for manufacture."
+    );
+  }
   const file = body.file || {};
   const bucket = clean(file.bucket);
   const storagePath = clean(file.path);
@@ -1302,6 +1624,97 @@ function safeRfq(rfq) {
       notes: item.notesEn || item.notesCn || item.notes || ""
     }))
   };
+}
+
+function normalizeShopDrawing(file = {}) {
+  const payload = file.payload || {};
+  return {
+    id: file.id,
+    projectId: file.project_id,
+    itemCode: payload.item_code || "",
+    itemName: payload.item_name || "",
+    revision: payload.revision || "R00",
+    revisionNumber: Number(payload.revision_number || 0),
+    status: payload.review_status || "pending_review",
+    lifecycleStage: payload.lifecycle_stage || "technical_review",
+    kind: payload.drawing_kind || "supplier_shop_drawing",
+    fileName: file.file_name,
+    bucket: payload.storage_bucket || EVIDENCE_BUCKET,
+    path: file.file_path,
+    mimeType: payload.mime_type || "application/octet-stream",
+    sha256: file.sha256 || "",
+    supplierId: payload.supplier_id || "",
+    supplierNote: payload.supplier_note || "",
+    reviewNote: payload.review_note || "",
+    uploadedAt: payload.uploaded_at || file.created_at,
+    reviewedAt: payload.reviewed_at || null,
+    reviewedBy: payload.reviewed_by_name || "",
+    downloadUrl: file.downloadUrl || file.file_url || null
+  };
+}
+
+function shopDrawingRegister(files = []) {
+  const revisions = files
+    .map(normalizeShopDrawing)
+    .sort(
+      (left, right) =>
+        right.revisionNumber - left.revisionNumber ||
+        String(right.uploadedAt || "").localeCompare(String(left.uploadedAt || ""))
+    );
+  const latestByItem = new Map();
+  revisions.forEach((drawing) => {
+    const key = clean(drawing.itemCode).toLowerCase();
+    if (key && !latestByItem.has(key)) latestByItem.set(key, drawing);
+  });
+  return {
+    revisions,
+    latest: [...latestByItem.values()],
+    approvedCount: [...latestByItem.values()].filter((drawing) => drawing.status === "approved").length,
+    pendingCount: [...latestByItem.values()].filter((drawing) => drawing.status === "pending_review").length,
+    changesRequiredCount: [...latestByItem.values()].filter((drawing) => drawing.status === "changes_required").length
+  };
+}
+
+export function shopDrawingApprovalGate({ specification = null, files = [] } = {}) {
+  const items = Array.isArray(specification?.items) ? specification.items : [];
+  const register = shopDrawingRegister(files);
+  const latestByCode = new Map(register.latest.map((drawing) => [clean(drawing.itemCode).toLowerCase(), drawing]));
+  const rows = items.map((item) => {
+    const drawing = latestByCode.get(clean(item.code).toLowerCase()) || null;
+    return {
+      itemCode: item.code,
+      itemName: item.name,
+      drawing,
+      status: drawing?.status || "missing"
+    };
+  });
+  return {
+    allowed: rows.length > 0 && rows.every((row) => row.status === "approved"),
+    rows,
+    missing: rows.filter((row) => row.status === "missing"),
+    pending: rows.filter((row) => row.status === "pending_review"),
+    changesRequired: rows.filter((row) => row.status === "changes_required")
+  };
+}
+
+async function attachShopDrawingLink(supabase, file) {
+  if (!file?.file_path) return file;
+  const bucket = file.payload?.storage_bucket || EVIDENCE_BUCKET;
+  const { data } = await supabase.storage.from(bucket).createSignedUrl(file.file_path, 60 * 60);
+  return { ...file, downloadUrl: data?.signedUrl || null };
+}
+
+async function ensureShopDrawingBucketConfig(supabase) {
+  try {
+    const { error } = await supabase.storage.updateBucket(EVIDENCE_BUCKET, {
+      public: false,
+      fileSizeLimit: 52_428_800,
+      allowedMimeTypes: SHOP_DRAWING_BUCKET_MIME_TYPES
+    });
+    if (error) console.warn(`Shop-drawing storage configuration was not refreshed: ${error.message}`);
+  } catch (error) {
+    console.warn(`Shop-drawing storage configuration was not refreshed: ${error.message || error}`);
+  }
 }
 
 async function attachEvidenceLinks(supabase, task) {

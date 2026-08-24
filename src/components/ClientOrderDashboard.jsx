@@ -224,8 +224,40 @@ const getItemTrackingUrl = (trackingId) => {
 
 const getItemDrawingUrl = (item) => {
   const drawing = item.technicalDrawing || {};
-  return drawing.status === "formal" ? drawing.formalUrl || drawing.url : drawing.draftUrl || drawing.url;
+  return ["formal", "approved_for_manufacture"].includes(drawing.status)
+    ? drawing.formalUrl || drawing.url
+    : drawing.draftUrl || drawing.url;
 };
+
+const isManufacturingDrawing = (drawing = {}) =>
+  drawing.lifecycleStage === "approved_for_manufacture" ||
+  ["formal", "approved_for_manufacture"].includes(drawing.status);
+
+const drawingIdentity = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\p{L}]+/gu, " ")
+    .trim();
+
+const getSupplierDrawingRevisions = (project, job, item) => {
+  const sku = getItemSku(project, job, item);
+  const codes = [sku, item.id, item.itemCode, item.item_code].map(drawingIdentity).filter(Boolean);
+  const names = [item.typeEn, item.typeCn].map(drawingIdentity).filter(Boolean);
+  return getProgressRows(project, "projectFiles")
+    .filter((file) => file.file_group === "supplier_shop_drawing")
+    .filter((file) => {
+      const payloadCode = drawingIdentity(file.payload?.item_code);
+      const payloadName = drawingIdentity(file.payload?.item_name);
+      return codes.includes(payloadCode) || names.includes(payloadName);
+    })
+    .sort(
+      (left, right) =>
+        Number(right.payload?.revision_number || 0) - Number(left.payload?.revision_number || 0) ||
+        String(right.created_at || "").localeCompare(String(left.created_at || ""))
+    );
+};
+
+const isDrawingPreviewImage = (file) => String(file?.payload?.mime_type || "").startsWith("image/");
 
 const getDrawingQrElementId = (trackingId) =>
   `cho-drawing-qr-${String(trackingId || "item").replace(/[^A-Za-z0-9_-]/g, "-")}`;
@@ -333,8 +365,13 @@ function ItemTrackingSheet({ lang, project, job, item, onOpenDrawing, onClose })
   const itemName = lang === "Cn" ? item.typeCn : item.typeEn;
   const material = lang === "Cn" ? item.materialCn : item.materialEn;
   const drawing = item.technicalDrawing || {};
-  const drawingUrl = getItemDrawingUrl(item);
-  const drawingIsFormal = drawing.status === "formal";
+  const conceptDrawingUrl = getItemDrawingUrl(item);
+  const supplierDrawingRevisions = getSupplierDrawingRevisions(project, job, item);
+  const latestApprovedSupplierDrawing = supplierDrawingRevisions.find(
+    (file) => file.payload?.review_status === "approved"
+  );
+  const drawingUrl = latestApprovedSupplierDrawing?.file_url || conceptDrawingUrl;
+  const drawingIsFormal = Boolean(latestApprovedSupplierDrawing) || isManufacturingDrawing(drawing);
   const stage = getOrderStage(job);
   const status = getOrderStatus(job, lang);
   const qrElementId = `cho-item-qr-${trackingId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
@@ -407,14 +444,31 @@ function ItemTrackingSheet({ lang, project, job, item, onOpenDrawing, onClose })
               <strong>
                 {drawingIsFormal
                   ? copy(lang, "Crafton 已批准", "Crafton approved")
-                  : copy(lang, "系统生成 · 待管理员批准", "System generated · Pending approval")}
+                  : copy(lang, "AI 概念参考 · 不可用于生产", "AI concept reference · Not for manufacture")}
               </strong>
             </div>
             <span className={`cho-item-passport-drawing-status ${drawingIsFormal ? "is-formal" : "is-draft"}`}>
-              {drawingIsFormal ? copy(lang, "正式", "FORMAL") : copy(lang, "草稿", "DRAFT")}
+              {drawingIsFormal ? copy(lang, "生产批准", "MFG APPROVED") : copy(lang, "概念", "CONCEPT")}
             </span>
           </div>
-          {drawingUrl ? (
+          {drawingUrl && latestApprovedSupplierDrawing ? (
+            <a
+              className={`cho-item-passport-drawing-preview${isDrawingPreviewImage(latestApprovedSupplierDrawing) ? "" : " is-document"}`}
+              href={drawingUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {isDrawingPreviewImage(latestApprovedSupplierDrawing) ? (
+                <img src={drawingUrl} alt={`${itemName} ${copy(lang, "供应商施工图", "supplier shop drawing")}`} />
+              ) : (
+                <i className="fa-regular fa-file-lines" aria-hidden="true"></i>
+              )}
+              <span>
+                <i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                {copy(lang, "打开已批准的供应商版本", "Open approved supplier revision")}
+              </span>
+            </a>
+          ) : drawingUrl ? (
             <button
               type="button"
               className="cho-item-passport-drawing-preview"
@@ -442,6 +496,40 @@ function ItemTrackingSheet({ lang, project, job, item, onOpenDrawing, onClose })
             </div>
           )}
         </section>
+
+        {supplierDrawingRevisions.length > 0 && (
+          <section
+            className="cho-item-passport-revisions"
+            aria-label={copy(lang, "图纸版本记录", "Drawing revision history")}
+          >
+            <div>
+              <span>{copy(lang, "图纸版本记录", "DRAWING REVISION HISTORY")}</span>
+              <strong>{supplierDrawingRevisions.length + 1}</strong>
+            </div>
+            <article>
+              <code>R00</code>
+              <span>
+                <strong>{copy(lang, "AI 概念参考", "AI concept reference")}</strong>
+                <small>{copy(lang, "仅供沟通 · 不可生产", "Reference only · Not for manufacture")}</small>
+              </span>
+            </article>
+            {supplierDrawingRevisions.map((file) => (
+              <a href={file.file_url || undefined} target="_blank" rel="noreferrer" key={file.id}>
+                <code>{file.payload?.revision || "R--"}</code>
+                <span>
+                  <strong>{file.file_name}</strong>
+                  <small>
+                    {file.payload?.review_status === "approved"
+                      ? copy(lang, "已批准用于生产", "Approved for manufacture")
+                      : file.payload?.review_status === "changes_required"
+                        ? copy(lang, "已退回修订", "Returned for revision")
+                        : copy(lang, "等待技术审核", "Pending technical review")}
+                  </small>
+                </span>
+              </a>
+            ))}
+          </section>
+        )}
 
         <div className="cho-item-tracking-qr-card">
           <QRCodeSVG
@@ -491,7 +579,11 @@ function ItemTrackingSheet({ lang, project, job, item, onOpenDrawing, onClose })
           <div>
             <dt>{copy(lang, "图纸版本", "Drawing version")}</dt>
             <dd>
-              {drawingIsFormal ? copy(lang, "已批准正式版", "Approved formal") : copy(lang, "AI 草稿", "AI draft")}
+              {latestApprovedSupplierDrawing
+                ? `${latestApprovedSupplierDrawing.payload?.revision || "R--"} · ${copy(lang, "供应商施工图已批准", "Supplier shop drawing approved")}`
+                : drawingIsFormal
+                  ? copy(lang, "供应商施工图 · 已批准生产", "Supplier shop drawing · Approved for manufacture")
+                  : copy(lang, "AI 概念 R00 · 仅供参考", "AI concept R00 · Reference only")}
             </dd>
           </div>
         </dl>
@@ -1086,9 +1178,12 @@ function ClientProjectDetail({
               const itemStatus = getOrderStatus(job, lang);
               const material = lang === "Cn" ? item.materialCn : item.materialEn;
               const drawing = item.technicalDrawing || {};
-              const drawingUrl =
-                drawing.status === "formal" ? drawing.formalUrl || drawing.url : drawing.draftUrl || drawing.url;
-              const drawingIsFormal = drawing.status === "formal";
+              const drawingUrl = getItemDrawingUrl(item);
+              const supplierDrawingRevisions = getSupplierDrawingRevisions(project, job, item);
+              const approvedSupplierDrawing = supplierDrawingRevisions.find(
+                (file) => file.payload?.review_status === "approved"
+              );
+              const drawingIsFormal = Boolean(approvedSupplierDrawing) || isManufacturingDrawing(drawing);
               return (
                 <div
                   className={`cho-project-table-row${itemActions.length ? " has-action" : ""}`}
@@ -1126,7 +1221,25 @@ function ClientProjectDetail({
                     </small>
                   </span>
                   <div className="cho-project-drawing-cell" role="cell" data-label={copy(lang, "三视图", "Drawing")}>
-                    {drawingUrl ? (
+                    {approvedSupplierDrawing?.file_url ? (
+                      <a
+                        className="cho-project-drawing-thumb is-supplier"
+                        href={approvedSupplierDrawing.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={copy(lang, "打开已批准的供应商施工图", "Open approved supplier shop drawing")}
+                      >
+                        {isDrawingPreviewImage(approvedSupplierDrawing) ? (
+                          <img src={approvedSupplierDrawing.file_url} alt="" aria-hidden="true" />
+                        ) : (
+                          <i className="fa-regular fa-file-lines" aria-hidden="true"></i>
+                        )}
+                        <span>
+                          {approvedSupplierDrawing.payload?.revision || "R--"} ·{" "}
+                          {copy(lang, "生产批准", "MFG APPROVED")}
+                        </span>
+                      </a>
+                    ) : drawingUrl ? (
                       <button
                         type="button"
                         className="cho-project-drawing-thumb"
@@ -1145,9 +1258,7 @@ function ClientProjectDetail({
                       >
                         <img src={drawingUrl} alt="" aria-hidden="true" />
                         <span>
-                          {drawingIsFormal
-                            ? copy(lang, "正式图纸", "Formal")
-                            : copy(lang, "系统自动生成", "Auto-generated")}
+                          {drawingIsFormal ? copy(lang, "正式图纸", "Formal") : copy(lang, "AI 概念参考", "AI concept")}
                         </span>
                       </button>
                     ) : (
@@ -1326,9 +1437,9 @@ function ClientProjectDetail({
               <header>
                 <div>
                   <span className="cho-client-kicker">
-                    {drawingPreview.drawing.status === "formal"
-                      ? copy(lang, "Crafton 正式图纸", "CRAFTON FORMAL DRAWING")
-                      : copy(lang, "系统自动生成 · 待管理员确认", "SYSTEM AUTO-GENERATED · PENDING ADMIN CONFIRMATION")}
+                    {isManufacturingDrawing(drawingPreview.drawing)
+                      ? copy(lang, "供应商施工图 · 已批准生产", "SUPPLIER SHOP DRAWING · APPROVED FOR MANUFACTURE")
+                      : copy(lang, "AI 概念视图 · 仅供参考", "AI CONCEPT VIEW · REFERENCE ONLY")}
                   </span>
                   <h2 id="cho-drawing-dialog-title">{drawingPreview.itemName}</h2>
                 </div>
@@ -1357,12 +1468,16 @@ function ClientProjectDetail({
               <footer>
                 <div className="cho-drawing-footer-copy">
                   <p>
-                    {drawingPreview.drawing.status === "formal"
-                      ? copy(lang, "该图纸已由 Crafton 管理员确认。", "This drawing has been confirmed by Crafton.")
+                    {isManufacturingDrawing(drawingPreview.drawing)
+                      ? copy(
+                          lang,
+                          "该供应商施工图已经技术审核，可用于生产。",
+                          "This supplier shop drawing has passed technical review and is approved for manufacture."
+                        )
                       : copy(
                           lang,
-                          "此为系统根据客户 FF&E 图片与尺寸生成的概念图，管理员确认后会自动更新为正式图纸。",
-                          "This concept drawing was generated from the submitted FF&E images and dimensions. It will update to a formal drawing after administrator confirmation."
+                          "此为 AI 根据客户 FF&E 图片与尺寸生成的概念参考，只用于沟通外观，不能用于开料或生产。选定供应商后，将由供应商 CAD／施工图新版本取代。",
+                          "This AI concept was generated from submitted FF&E images and dimensions for visual communication only. It must not be used for manufacture; an approved supplier CAD/shop-drawing revision will replace it after supplier appointment."
                         )}
                   </p>
                   <span className={`cho-drawing-download-status is-${drawingDownloadState.status}`} aria-live="polite">

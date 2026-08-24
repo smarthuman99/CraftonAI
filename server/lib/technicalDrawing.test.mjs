@@ -31,7 +31,7 @@ test("extracts an image from Gemini interaction output", () => {
   assert.deepEqual(result, image);
 });
 
-test("builds separate system-generated and formal drawing sheets", () => {
+test("separates AI concept references from supplier manufacturing drawings", () => {
   const input = {
     item: {
       item_type_en: "Curved Lounge Chair",
@@ -45,10 +45,12 @@ test("builds separate system-generated and formal drawing sheets", () => {
   };
   const draft = buildTechnicalDrawingSvg(input);
   const formal = buildTechnicalDrawingSvg({ ...input, formal: true });
-  assert.match(draft, /系统自动生成/);
-  assert.match(draft, /PENDING ADMIN CONFIRMATION/);
-  assert.match(formal, /正式图纸/);
-  assert.match(formal, /CONFIRMED BY CRAFTON/);
+  assert.match(draft, /AI 概念视图/);
+  assert.match(draft, /REFERENCE ONLY · NOT FOR MANUFACTURE/);
+  assert.match(draft, /CLIENT FF&amp;E · AI CONCEPT/);
+  assert.match(formal, /供应商施工图/);
+  assert.match(formal, /APPROVED FOR MANUFACTURE/);
+  assert.match(formal, /SUPPLIER CAD \/ SHOP DRAWING/);
   assert.match(formal, /W 650 x D 650 x H 690 mm/);
   assert.match(draft, /ITEM TRACEABILITY/);
   assert.match(draft, /CRF-LP-/);
@@ -76,6 +78,12 @@ test("only queues items with a reference and no active drawing", () => {
     }),
     false
   );
+  assert.equal(
+    technicalDrawingEligible({
+      item: { image_storage_path: "client/item.png", technical_drawing: { status: "ai_concept" } }
+    }),
+    false
+  );
   assert.equal(technicalDrawingEligible({ item: {} }), false);
   assert.equal(
     technicalDrawingEligible({
@@ -88,12 +96,32 @@ test("only queues items with a reference and no active drawing", () => {
   );
 });
 
-test("formalizes the prebuilt formal asset", () => {
+test("formalizes only an approved supplier shop-drawing revision", () => {
   const formal = formalizeTechnicalDrawing(
-    { status: "system_generated", draft_storage_path: "draft.svg", formal_storage_path: "formal.svg" },
+    {
+      status: "ai_concept",
+      storage_bucket: "intake-files",
+      draft_storage_path: "concept.png",
+      revisions: [
+        {
+          kind: "ai_concept",
+          revision: "R00",
+          review_status: "reference_only",
+          storage_path: "concept.png"
+        },
+        {
+          kind: "supplier_shop_drawing",
+          revision: "R01",
+          review_status: "approved",
+          storage_bucket: "intake-files",
+          storage_path: "supplier/R01.pdf"
+        }
+      ]
+    },
     { approvedBy: "Cho" }
   );
-  assert.equal(formal.status, "formal");
-  assert.equal(formal.drawing_storage_path, "formal.svg");
+  assert.equal(formal.status, "approved_for_manufacture");
+  assert.equal(formal.current_revision, "R01");
+  assert.equal(formal.drawing_storage_path, "supplier/R01.pdf");
   assert.equal(formal.approved_by, "Cho");
 });

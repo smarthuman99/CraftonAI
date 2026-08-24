@@ -489,7 +489,14 @@ const normalizeTechnicalDrawing = (item = {}) => {
   const drawing = safeJsonObject(item.technical_drawing || item.technicalDrawing, {});
   return {
     status: drawing.status || "not_started",
+    drawingKind:
+      drawing.drawing_kind ||
+      drawing.drawingKind ||
+      (["system_generated", "ai_concept"].includes(drawing.status) ? "ai_concept" : ""),
+    lifecycleStage: drawing.lifecycle_stage || drawing.lifecycleStage || "",
     reviewStatus: drawing.review_status || drawing.reviewStatus || "pending_admin",
+    currentRevision: drawing.current_revision || drawing.currentRevision || "R00",
+    revisions: Array.isArray(drawing.revisions) ? drawing.revisions : [],
     url: drawing.drawing_url || drawing.url || "",
     draftUrl: drawing.draft_url || drawing.draftUrl || "",
     formalUrl: drawing.formal_url || drawing.formalUrl || "",
@@ -512,6 +519,13 @@ const normalizeTechnicalDrawing = (item = {}) => {
     attempts: Number(drawing.attempts || 0)
   };
 };
+
+const isAiConceptDrawing = (drawing = {}) =>
+  drawing.drawingKind === "ai_concept" || ["system_generated", "ai_concept"].includes(drawing.status);
+
+const isManufacturingDrawing = (drawing = {}) =>
+  drawing.lifecycleStage === "approved_for_manufacture" ||
+  ["formal", "approved_for_manufacture"].includes(drawing.status);
 
 const getIntakeJobOwnerId = (job = {}) => {
   return getPortalJobOwnerId(job);
@@ -1186,7 +1200,6 @@ function App() {
   const [intakeBomDraftGenerated, setIntakeBomDraftGenerated] = useState(false);
   const [intakeBomDraftSaving, setIntakeBomDraftSaving] = useState(false);
   const [intakeBomDraftMessage, setIntakeBomDraftMessage] = useState("");
-  const [technicalDrawingAction, setTechnicalDrawingAction] = useState({ itemKey: "", status: "", message: "" });
   const [intakeItemFilter, setIntakeItemFilter] = useState("all");
   const [intakeDetailKey, setIntakeDetailKey] = useState("");
   const [intakeDisclosure, setIntakeDisclosure] = useState("");
@@ -4678,8 +4691,9 @@ function App() {
       stageIndexes: [0, 1, 2, 3, 4],
       titleCn: "接收客户订单",
       titleEn: "Client Order Intake",
-      descCn: "客户需求接入、规格补齐、BOM、Cho 图纸/技术审核与 Crib 5 合规闸口。",
-      descEn: "Client requirements, spec completion, BOM, Cho drawing review, and Crib 5 compliance gate."
+      descCn: "客户需求接入、规格补齐、BOM、产品数据审核与 Crib 5 合规闸口；AI 图仅作概念参考。",
+      descEn:
+        "Client requirements, spec completion, BOM, item-data review and Crib 5 compliance; AI views are reference-only."
     },
     {
       id: "sourcing",
@@ -5733,6 +5747,25 @@ function App() {
                 }
               })
             );
+
+            try {
+              const signedRegisters = await Promise.all(
+                projectIds.map((projectId) =>
+                  callWorkflowAi(client, { action: "project_shop_drawings", projectId }).catch((fileError) => {
+                    console.warn("Client shop-drawing register could not be signed:", fileError.message || fileError);
+                    return { files: [] };
+                  })
+                )
+              );
+              const signedById = new Map(
+                signedRegisters.flatMap((register) => register.files || []).map((file) => [String(file.id), file])
+              );
+              progressRows.projectFiles = (progressRows.projectFiles || []).map(
+                (file) => signedById.get(String(file.id)) || file
+              );
+            } catch (fileError) {
+              console.warn("Client shop-drawing register could not be loaded:", fileError.message || fileError);
+            }
           }
 
           const clientRowsWithProgress = clientRowsWithPreviews.map((row) => ({
@@ -5909,79 +5942,6 @@ function App() {
     });
   };
 
-  const handleConfirmTechnicalDrawing = async (item, fallbackIndex = 0) => {
-    const drawing = item?.technicalDrawing || normalizeTechnicalDrawing(item);
-    const jobId = drawing.intakeJobId || item?.sourceJobIds?.[0] || reviewDraft?.jobIds?.[0] || reviewDraft?.id;
-    const sourceJob = getAdminWorkspaceJobs().find((job) => String(job.id) === String(jobId));
-    const itemKey = `${jobId || "job"}-${item?.id || fallbackIndex}`;
-
-    if (!sourceJob || !drawing.formalStoragePath) {
-      setTechnicalDrawingAction({
-        itemKey,
-        status: "error",
-        message: "The generated formal drawing asset is not available yet."
-      });
-      return;
-    }
-
-    setTechnicalDrawingAction({ itemKey, status: "saving", message: "Confirming formal drawing..." });
-    try {
-      const result = safeJsonObject(sourceJob.result_json, {});
-      const items = Array.isArray(result.items) ? [...result.items] : [];
-      let itemIndex = Number.isInteger(drawing.itemIndex) ? drawing.itemIndex : -1;
-      if (itemIndex < 0 || !items[itemIndex]) {
-        itemIndex = items.findIndex((candidate) => String(candidate.id || "") === String(item?.id || ""));
-      }
-      if (itemIndex < 0 || !items[itemIndex]) throw new Error("The source furniture line could not be matched.");
-
-      const storedDrawing = { ...safeJsonObject(items[itemIndex].technical_drawing, {}) };
-      delete storedDrawing.drawing_url;
-      delete storedDrawing.draft_url;
-      delete storedDrawing.formal_url;
-      const approvedAt = new Date().toISOString();
-      const formalDrawing = {
-        ...storedDrawing,
-        status: "formal",
-        review_status: "approved",
-        drawing_storage_path: storedDrawing.formal_storage_path || drawing.formalStoragePath,
-        approved_by: user?.name || user?.email || "Cho",
-        approved_by_id: supabaseSessionUser?.id || null,
-        approved_at: approvedAt
-      };
-      items[itemIndex] = { ...items[itemIndex], technical_drawing: formalDrawing };
-      await persistIntakeJobUpdate(sourceJob, { result_json: { ...result, items } });
-
-      setReviewDraft((previous) =>
-        previous
-          ? {
-              ...previous,
-              items: previous.items.map((candidate, index) =>
-                candidate.id === item.id || index === fallbackIndex
-                  ? {
-                      ...candidate,
-                      technicalDrawing: {
-                        ...candidate.technicalDrawing,
-                        status: "formal",
-                        reviewStatus: "approved",
-                        url: candidate.technicalDrawing?.formalUrl || drawing.formalUrl,
-                        storagePath: drawing.formalStoragePath,
-                        approvedAt,
-                        approvedBy: user?.name || user?.email || "Cho"
-                      }
-                    }
-                  : candidate
-              )
-            }
-          : previous
-      );
-      setTechnicalDrawingAction({ itemKey, status: "success", message: "Formal drawing confirmed and published." });
-      await loadPrequoteWorkspace();
-    } catch (error) {
-      console.error("Technical drawing confirmation failed:", error);
-      setTechnicalDrawingAction({ itemKey, status: "error", message: error.message || "Drawing confirmation failed." });
-    }
-  };
-
   const ensureIntakeProject = async (job, draft, stage = 4, relatedJobs = []) => {
     if (!dbConnected) return job?.project_id || draft?.projectId || null;
 
@@ -6113,19 +6073,11 @@ function App() {
       setPrequoteNotice(`Approval is blocked: ${blockingQuestions.length} client clarification(s) remain.`);
       return;
     }
-    const pendingDrawings = (draft.items || []).filter((item) => item.technicalDrawing?.status === "system_generated");
-    if (pendingDrawings.length > 0) {
-      setPrequoteNotice(
-        `Approval is blocked: confirm ${pendingDrawings.length} system-generated drawing${pendingDrawings.length === 1 ? "" : "s"} first.`
-      );
-      return;
-    }
-
     const updates = {
       status: "completed",
       step: "cho_review_approved",
       review_status: "approved",
-      review_notes: reviewNote || "Approved for RFQ preparation.",
+      review_notes: reviewNote || "Item identity, quantities and specifications approved for RFQ preparation.",
       reviewed_at: new Date().toISOString()
     };
 
@@ -6161,7 +6113,9 @@ function App() {
             payload: {
               intake_job_id: job.id,
               intake_job_ids: draft.jobIds || updatedJobs.map((updatedJob) => updatedJob.id),
-              bom_items: draft.items?.length || 0
+              bom_items: draft.items?.length || 0,
+              approval_scope: "item_data_for_rfq",
+              ai_concept_geometry_approved: false
             }
           });
           if (approvalError) throw approvalError;
@@ -6170,7 +6124,9 @@ function App() {
       setReviewDraft((previous) =>
         previous ? { ...previous, projectId, reviewStatus: "approved", reviewNotes: updates.review_notes } : previous
       );
-      setPrequoteNotice("Intake draft approved. Specs are ready for RFQ package preparation.");
+      setPrequoteNotice(
+        "Item data approved for RFQ. AI concept views remain reference-only and do not form part of the manufacturing approval."
+      );
       setCurrentStageIndex(3);
       addLog("Cho", "Intake draft approved for RFQ preparation.", "Intake draft approved for RFQ preparation.");
       await loadPrequoteWorkspace();
@@ -8360,11 +8316,11 @@ function App() {
     };
     const intakeItemRecords = bomItems.map((item, index) => {
       const drawing = item.technicalDrawing || normalizeTechnicalDrawing(item);
-      const drawingUrl =
-        drawing.status === "formal" ? drawing.formalUrl || drawing.url : drawing.draftUrl || drawing.url;
+      const drawingUrl = isManufacturingDrawing(drawing)
+        ? drawing.formalUrl || drawing.url
+        : drawing.draftUrl || drawing.url;
       const key = String(item.id || item.sku || item.skuCode || `${item.typeEn || item.typeCn || "item"}-${index}`);
-      const drawingActionKey = `${drawing.intakeJobId || item.sourceJobIds?.[0] || "job"}-${item.id || index}`;
-      return { item, index, key, drawing, drawingUrl, drawingActionKey };
+      return { item, index, key, drawing, drawingUrl };
     });
     const itemQuestionMap = new Map(intakeItemRecords.map((record) => [record.key, []]));
     const projectQuestions = [];
@@ -8415,12 +8371,10 @@ function App() {
           questionIndex: `derived-material-${record.index}`
         });
       }
-      const drawingNeedsConfirmation = record.drawing.status === "system_generated";
       return {
         ...record,
         questions,
-        actionCount: questions.length + (drawingNeedsConfirmation ? 1 : 0),
-        drawingNeedsConfirmation
+        actionCount: questions.length
       };
     });
     const filteredIntakeItems = enrichedIntakeItems.filter((record) => {
@@ -8430,13 +8384,12 @@ function App() {
     });
     const itemActionCount = enrichedIntakeItems.reduce((total, record) => total + record.actionCount, 0);
     const totalActionCount = projectQuestions.length + itemActionCount;
-    const pendingDrawingCount = enrichedIntakeItems.filter((record) => record.drawingNeedsConfirmation).length;
-    const approvalBlockerCount = missingQuestions.length + pendingDrawingCount + (bomRows.length ? 0 : 1);
+    const conceptDrawingCount = enrichedIntakeItems.filter((record) => isAiConceptDrawing(record.drawing)).length;
+    const approvalBlockerCount = missingQuestions.length + (bomRows.length ? 0 : 1);
     const approvalBlockerCopy = [
       missingQuestions.length
         ? `${missingQuestions.length} client clarification${missingQuestions.length === 1 ? "" : "s"}`
         : "",
-      pendingDrawingCount ? `${pendingDrawingCount} drawing confirmation${pendingDrawingCount === 1 ? "" : "s"}` : "",
       !bomRows.length ? "a generated BOM" : ""
     ]
       .filter(Boolean)
@@ -8445,11 +8398,6 @@ function App() {
       if (hasMissingInfo) {
         setPrequoteNotice(`Approval is not ready. Required before approval: ${approvalBlockerCopy}.`);
         setIntakeDisclosure(hasClarificationAnalysis ? "clarification" : "approval");
-        return;
-      }
-      if (pendingDrawingCount > 0) {
-        setPrequoteNotice(`Approval is not ready. Required before approval: ${approvalBlockerCopy}.`);
-        setIntakeDisclosure("drawings");
         return;
       }
       if (!bomRows.length) {
@@ -8462,11 +8410,6 @@ function App() {
     const totalPieces = bomItems.reduce((total, item) => total + parseIntakeQuantity(item), 0);
     const completenessDone = completenessItems.filter((item) => item.state === "done").length;
     const selectedIntakeItem = enrichedIntakeItems.find((record) => record.key === intakeDetailKey) || null;
-    const selectedDrawingAction = selectedIntakeItem
-      ? technicalDrawingAction.itemKey === selectedIntakeItem.drawingActionKey
-        ? technicalDrawingAction
-        : null
-      : null;
     const isProjectDetailOpen = intakeDetailKey === "project";
     const currentProjectName =
       draft?.projectName || (!dbConnected ? order.orderId : "") || (lang === "Cn" ? "当前客户项目" : "Client project");
@@ -8494,7 +8437,7 @@ function App() {
       },
       {
         code: "S03",
-        label: "BOM & drawings",
+        label: "BOM & concept views",
         detail: intakeBomDraftGenerated ? "Draft generated" : "Ready after review"
       },
       { code: "S04", label: "Approval", detail: isIntakeApproved ? "Approved by Cho" : "Awaiting approval" },
@@ -8514,7 +8457,7 @@ function App() {
           }
         : !bomRows.length
           ? { label: "Waiting for parsed items", onClick: () => {}, disabled: true }
-          : isIntakeApproved && pendingDrawingCount === 0
+          : isIntakeApproved
             ? { label: "Create RFQ package", onClick: handleCreateRfqDraft, disabled: intakeApprovalSaving }
             : !intakeBomDraftGenerated && !isIntakeApproved
               ? {
@@ -8522,17 +8465,11 @@ function App() {
                   onClick: handleGenerateBomDraft,
                   disabled: intakeBomDraftSaving
                 }
-              : pendingDrawingCount > 0
-                ? {
-                    label: `Review ${pendingDrawingCount} drawing${pendingDrawingCount === 1 ? "" : "s"}`,
-                    onClick: () => setIntakeDisclosure("drawings"),
-                    disabled: false
-                  }
-                : {
-                    label: intakeApprovalSaving ? "Saving approval..." : "Approve checked package",
-                    onClick: handleApproveIntakeReview,
-                    disabled: intakeApprovalSaving
-                  };
+              : {
+                  label: intakeApprovalSaving ? "Saving approval..." : "Approve checked package",
+                  onClick: handleApproveIntakeReview,
+                  disabled: intakeApprovalSaving
+                };
 
     if (hasVerifiedAdminAccess && hasActiveIntake) {
       return (
@@ -8733,7 +8670,7 @@ function App() {
                   <span>Decision</span>
                 </div>
                 {filteredIntakeItems.map((record) => {
-                  const { item, index, drawing, drawingUrl, actionCount, drawingActionKey } = record;
+                  const { item, index, drawing, drawingUrl, actionCount } = record;
                   const itemImageUrl = item.imageUrl || item.image_url || "";
                   const itemName =
                     item.typeEn ||
@@ -8750,8 +8687,6 @@ function App() {
                     item.dimensions_text ||
                     formatDimensionPayload(item.dimensions || {}) ||
                     "Dimensions pending";
-                  const rowDrawingAction =
-                    technicalDrawingAction.itemKey === drawingActionKey ? technicalDrawingAction : null;
                   return (
                     <article className={`intake-next-item-row ${actionCount ? "needs-action" : ""}`} key={record.key}>
                       <div className="intake-next-item-identity">
@@ -8787,10 +8722,10 @@ function App() {
                           </span>
                         )}
                         <small>
-                          {drawing.status === "formal"
-                            ? "Formal"
-                            : drawing.status === "system_generated"
-                              ? "Review"
+                          {isManufacturingDrawing(drawing)
+                            ? "Supplier approved"
+                            : isAiConceptDrawing(drawing)
+                              ? "AI concept"
                               : drawing.status === "generating"
                                 ? "Generating"
                                 : "Pending"}
@@ -8805,7 +8740,6 @@ function App() {
                           {actionCount ? `Need action · ${actionCount}` : "View details"}
                           <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
                         </button>
-                        {rowDrawingAction?.message && <small>{rowDrawingAction.message}</small>}
                       </div>
                     </article>
                   );
@@ -8877,9 +8811,9 @@ function App() {
               aria-expanded={intakeDisclosure === "drawings"}
             >
               <span>
-                <strong>BOM & drawing review</strong>
+                <strong>BOM & concept references</strong>
                 <small>
-                  {enrichedIntakeItems.length} item drawing{enrichedIntakeItems.length === 1 ? "" : "s"}
+                  {conceptDrawingCount} AI concept view{conceptDrawingCount === 1 ? "" : "s"} · not for manufacture
                 </small>
               </span>
               <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
@@ -8899,10 +8833,10 @@ function App() {
                       </span>
                       <strong>{itemName}</strong>
                       <small>
-                        {record.drawing.status === "formal"
-                          ? "Formal drawing"
-                          : record.drawing.status === "system_generated"
-                            ? "Awaiting confirmation"
+                        {isManufacturingDrawing(record.drawing)
+                          ? "Supplier drawing · approved"
+                          : isAiConceptDrawing(record.drawing)
+                            ? "AI concept · reference only"
                             : "Drawing pending"}
                       </small>
                     </button>
@@ -8998,7 +8932,7 @@ function App() {
                     value={reviewNote}
                     onChange={(event) => setReviewNote(event.target.value)}
                     disabled={intakeApprovalSaving}
-                    placeholder="Note drawing, material, dimensions, tolerance or RFQ readiness..."
+                    placeholder="Note item identity, quantity, material, dimensions, tolerance or RFQ readiness..."
                   />
                 </label>
                 <div>
@@ -9190,28 +9124,21 @@ function App() {
                         <div>
                           <span>Drawing status</span>
                           <strong>
-                            {selectedIntakeItem.drawing.status === "formal"
-                              ? "Formal drawing"
-                              : selectedIntakeItem.drawing.status === "system_generated"
-                                ? "System-generated · review required"
+                            {isManufacturingDrawing(selectedIntakeItem.drawing)
+                              ? "Supplier shop drawing · approved for manufacture"
+                              : isAiConceptDrawing(selectedIntakeItem.drawing)
+                                ? "AI concept reference · not for manufacture"
                                 : selectedIntakeItem.drawing.status === "generating"
                                   ? "Generating"
                                   : "Pending"}
                           </strong>
                         </div>
-                        {selectedIntakeItem.drawingNeedsConfirmation && (
-                          <button
-                            type="button"
-                            className="btn-premium"
-                            onClick={() =>
-                              handleConfirmTechnicalDrawing(selectedIntakeItem.item, selectedIntakeItem.index)
-                            }
-                            disabled={selectedDrawingAction?.status === "saving"}
-                          >
-                            {selectedDrawingAction?.status === "saving" ? "Confirming..." : "Confirm as formal drawing"}
-                          </button>
+                        {isAiConceptDrawing(selectedIntakeItem.drawing) && (
+                          <small>
+                            Review the dimensions, quantity and specification above. Supplier CAD becomes the
+                            manufacturing drawing after supplier appointment and technical approval.
+                          </small>
                         )}
-                        {selectedDrawingAction?.message && <small role="status">{selectedDrawingAction.message}</small>}
                       </section>
                     </div>
                   ) : null}
@@ -9609,12 +9536,9 @@ function App() {
                   <div className="intake-drawing-review-grid">
                     {bomItems.map((item, index) => {
                       const drawing = item.technicalDrawing || normalizeTechnicalDrawing(item);
-                      const drawingUrl =
-                        drawing.status === "formal"
-                          ? drawing.formalUrl || drawing.url
-                          : drawing.draftUrl || drawing.url;
-                      const actionKey = `${drawing.intakeJobId || item.sourceJobIds?.[0] || "job"}-${item.id || index}`;
-                      const actionState = technicalDrawingAction.itemKey === actionKey ? technicalDrawingAction : null;
+                      const drawingUrl = isManufacturingDrawing(drawing)
+                        ? drawing.formalUrl || drawing.url
+                        : drawing.draftUrl || drawing.url;
                       return (
                         <article className="intake-drawing-review-card" key={`drawing-${item.id || index}`}>
                           <div className="intake-drawing-review-preview">
@@ -9637,10 +9561,10 @@ function App() {
                           </div>
                           <div className="intake-drawing-review-copy">
                             <span className={`intake-drawing-status status-${drawing.status}`}>
-                              {drawing.status === "formal"
-                                ? "Formal drawing"
-                                : drawing.status === "system_generated"
-                                  ? "System auto-generated"
+                              {isManufacturingDrawing(drawing)
+                                ? "Supplier drawing · approved for manufacture"
+                                : isAiConceptDrawing(drawing)
+                                  ? "AI concept · reference only"
                                   : drawing.status === "generating"
                                     ? "Generating"
                                     : "Pending"}
@@ -9650,19 +9574,9 @@ function App() {
                             <small>
                               {drawing.sourceCount ? `${drawing.sourceCount} source image(s)` : "Source image pending"}
                             </small>
-                            {drawing.status === "system_generated" && (
-                              <button
-                                type="button"
-                                className="btn-premium"
-                                onClick={() => handleConfirmTechnicalDrawing(item, index)}
-                                disabled={actionState?.status === "saving"}
-                              >
-                                {actionState?.status === "saving" ? "Confirming..." : "Confirm as formal drawing"}
-                              </button>
-                            )}
-                            {actionState?.message && (
-                              <small className={`intake-drawing-action-message ${actionState.status}`} role="status">
-                                {actionState.message}
+                            {isAiConceptDrawing(drawing) && (
+                              <small>
+                                Verify item data only. Geometry will be replaced by supplier CAD after award.
                               </small>
                             )}
                           </div>

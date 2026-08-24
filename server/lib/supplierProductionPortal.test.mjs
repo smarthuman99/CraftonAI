@@ -7,9 +7,41 @@ import {
   productionEvidenceApprovalGate,
   productionEvidenceReviewState,
   productionPlanState,
+  shopDrawingApprovalGate,
   supplierIdentity,
   validateSupplierProductionPlan
 } from "./supplierProductionPortal.mjs";
+
+test("requires the latest supplier shop-drawing revision for every RFQ item", () => {
+  const specification = {
+    items: [
+      { code: "CHAIR-01", name: "Chair" },
+      { code: "TABLE-01", name: "Table" }
+    ]
+  };
+  const files = [
+    {
+      id: "old-chair",
+      payload: { item_code: "CHAIR-01", revision: "R01", revision_number: 1, review_status: "approved" }
+    },
+    {
+      id: "new-chair",
+      payload: { item_code: "CHAIR-01", revision: "R02", revision_number: 2, review_status: "pending_review" }
+    },
+    {
+      id: "table",
+      payload: { item_code: "TABLE-01", revision: "R01", revision_number: 1, review_status: "approved" }
+    }
+  ];
+  const blocked = shopDrawingApprovalGate({ specification, files });
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.pending[0].drawing.id, "new-chair");
+
+  files[1].payload.review_status = "approved";
+  const released = shopDrawingApprovalGate({ specification, files });
+  assert.equal(released.allowed, true);
+  assert.equal(released.rows.length, 2);
+});
 
 const plannedEvidence = {
   type: "ai_plan",

@@ -7714,6 +7714,283 @@ select:focus,
 }
 
 /* Supplier production portal */
+.supplier-shop-drawing-gate,
+.production-drawing-gate {
+  margin: 1.25rem 0;
+  border: 1px solid rgba(74, 53, 37, 0.18);
+  border-radius: 18px;
+  background: rgba(255, 252, 245, 0.78);
+  overflow: hidden;
+}
+
+.supplier-shop-drawing-gate > header,
+.production-drawing-gate > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.35rem 1.5rem;
+  border-bottom: 1px solid rgba(74, 53, 37, 0.14);
+}
+
+.supplier-shop-drawing-gate > header span,
+.production-drawing-gate > header span {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: #8e694c;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+}
+
+.supplier-shop-drawing-gate > header h3,
+.production-drawing-gate > header h4 {
+  margin: 0 0 0.4rem;
+}
+
+.supplier-shop-drawing-gate > header p,
+.production-drawing-gate > header p {
+  max-width: 820px;
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.supplier-shop-drawing-gate > header > strong,
+.production-drawing-gate > header > strong {
+  flex: 0 0 auto;
+  font-family: var(--font-tech);
+  font-size: 1.35rem;
+}
+
+.production-drawing-gate > header > strong small {
+  display: block;
+  margin-top: 0.25rem;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.supplier-shop-drawing-list,
+.production-drawing-list {
+  display: grid;
+}
+
+.supplier-shop-drawing-list article,
+.production-drawing-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(74, 53, 37, 0.1);
+}
+
+.supplier-shop-drawing-list article:last-child,
+.production-drawing-list article:last-child {
+  border-bottom: 0;
+}
+
+.supplier-shop-drawing-list article > div:first-child,
+.production-drawing-list article > div:first-child {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.supplier-shop-drawing-list code,
+.production-drawing-list code {
+  color: #8e694c;
+  font-size: 0.72rem;
+}
+
+.supplier-shop-drawing-list small,
+.production-drawing-list small,
+.supplier-shop-drawing-list p,
+.production-drawing-list p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.supplier-shop-drawing-list article > span,
+.production-drawing-list article > span {
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(74, 53, 37, 0.08);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.supplier-shop-drawing-list .status-approved > span,
+.production-drawing-list .status-approved > span {
+  color: #31553e;
+  background: rgba(49, 85, 62, 0.12);
+}
+
+.supplier-shop-drawing-list .status-changes_required > span,
+.production-drawing-list .status-changes_required > span {
+  color: #9a4f36;
+  background: rgba(154, 79, 54, 0.12);
+}
+
+.supplier-shop-drawing-actions,
+.production-drawing-list article > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.supplier-shop-drawing-actions a,
+.supplier-shop-drawing-actions button,
+.production-drawing-list a,
+.production-drawing-list button {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgba(74, 53, 37, 0.22);
+  border-radius: 999px;
+  background: transparent;
+  color: #4a3525;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.supplier-shop-drawing-actions button,
+.production-drawing-list button {
+  background: #4a3525;
+  color: #fffaf1;
+}
+
+.supplier-shop-drawing-warning,
+.production-drawing-empty {
+  padding: 1rem;
+  border: 1px solid rgba(154, 94, 61, 0.22);
+  background: rgba(154, 94, 61, 0.08);
+}
+
+.supplier-shop-drawing-warning p {
+  margin: 0.35rem 0 0;
+  line-height: 1.5;
+}
+
+.production-drawing-gate.blocked {
+  border-color: rgba(154, 94, 61, 0.32);
+}
+
+.production-drawing-gate.approved {
+  border-color: rgba(49, 85, 62, 0.34);
+}
+
+.production-drawing-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid rgba(74, 53, 37, 0.14);
+  background: rgba(74, 53, 37, 0.04);
+}
+
+.production-drawing-review label {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.production-drawing-review textarea {
+  min-height: 88px;
+  padding: 0.8rem;
+  border: 1px solid rgba(74, 53, 37, 0.2);
+  border-radius: 10px;
+  background: #fffdf8;
+}
+
+.production-drawing-review > div {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+
+.production-drawing-review button {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(74, 53, 37, 0.22);
+  border-radius: 999px;
+  background: transparent;
+}
+
+.production-drawing-review button.approve {
+  background: #4a3525;
+  color: white;
+}
+
+.cho-item-passport-drawing-preview.is-document {
+  display: grid;
+  min-height: 190px;
+  place-items: center;
+  color: #4a3525;
+  text-decoration: none;
+}
+
+.cho-item-passport-drawing-preview.is-document > i,
+.cho-project-drawing-thumb.is-supplier > i {
+  font-size: 2rem;
+}
+
+.cho-item-passport-revisions {
+  display: grid;
+  gap: 0;
+  border: 1px solid rgba(74, 53, 37, 0.14);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.cho-item-passport-revisions > div,
+.cho-item-passport-revisions article,
+.cho-item-passport-revisions a {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid rgba(74, 53, 37, 0.1);
+  color: inherit;
+  text-decoration: none;
+}
+
+.cho-item-passport-revisions > div {
+  grid-template-columns: 1fr auto;
+  background: rgba(74, 53, 37, 0.04);
+}
+
+.cho-item-passport-revisions > :last-child {
+  border-bottom: 0;
+}
+
+.cho-item-passport-revisions code {
+  color: #8e694c;
+  font-weight: 800;
+}
+
+.cho-item-passport-revisions article span,
+.cho-item-passport-revisions a span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.cho-item-passport-revisions small {
+  color: var(--text-secondary);
+}
+
+@media (max-width: 760px) {
+  .supplier-shop-drawing-gate > header,
+  .production-drawing-gate > header,
+  .supplier-shop-drawing-list article,
+  .production-drawing-list article,
+  .production-drawing-review {
+    grid-template-columns: 1fr;
+  }
+
+  .supplier-shop-drawing-gate > header,
+  .production-drawing-gate > header {
+    display: grid;
+  }
+}
+
 .production-control-tower {
   display: flex;
   flex-direction: column;

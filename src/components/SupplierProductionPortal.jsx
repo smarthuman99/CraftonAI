@@ -4,6 +4,8 @@ import SupplierProductionPlanForm from "./SupplierProductionPlanForm";
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const ACCEPTED_FILES = ".jpg,.jpeg,.png,.webp,.pdf,.xlsx,.xls,.csv,.docx";
+const SHOP_DRAWING_FILES = ".pdf,.png,.jpg,.jpeg,.webp,.dwg,.dxf";
+const MAX_SHOP_DRAWING_SIZE = 30 * 1024 * 1024;
 
 const dateTime = (value, zh) =>
   value ? new Date(value).toLocaleString(zh ? "zh-CN" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -56,6 +58,10 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
   const [note, setNote] = useState("");
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [drawingForm, setDrawingForm] = useState(null);
+  const [drawingFile, setDrawingFile] = useState(null);
+  const [drawingNote, setDrawingNote] = useState("");
+  const [drawingUploading, setDrawingUploading] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [passwordBusy, setPasswordBusy] = useState(false);
@@ -146,6 +152,73 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
       setMessage(error.message || String(error));
     } finally {
       setUploading(false);
+    }
+  }
+
+  function openDrawingForm(project, item) {
+    setDrawingForm({
+      projectId: project.id,
+      itemCode: item.code,
+      itemName: item.nameCn && zh ? item.nameCn : item.name
+    });
+    setDrawingFile(null);
+    setDrawingNote("");
+    setMessage("");
+  }
+
+  async function submitShopDrawing(event) {
+    event.preventDefault();
+    if (!drawingForm || !drawingFile) return;
+    if (drawingFile.size > MAX_SHOP_DRAWING_SIZE) {
+      setMessage(t("Shop-drawing files must be 30 MB or smaller.", "施工图文件不能超过 30 MB。"));
+      return;
+    }
+    setDrawingUploading(true);
+    setMessage("");
+    let storagePath = "";
+    try {
+      const cleanName = drawingFile.name.replace(/[^a-zA-Z0-9._-]+/g, "_");
+      const cleanCode = drawingForm.itemCode.replace(/[^a-zA-Z0-9._-]+/g, "_");
+      storagePath = `${user.id}/supplier-shop-drawings/${drawingForm.projectId}/${cleanCode}/${Date.now()}-${cleanName}`;
+      const sha256 = await hashFile(drawingFile);
+      const { error: uploadError } = await supabaseClient.storage
+        .from("intake-files")
+        .upload(storagePath, drawingFile, {
+          contentType: drawingFile.type || "application/octet-stream",
+          upsert: false
+        });
+      if (uploadError) throw uploadError;
+      const result = await callWorkflowAi(supabaseClient, {
+        action: "submit_supplier_shop_drawing",
+        projectId: drawingForm.projectId,
+        itemCode: drawingForm.itemCode,
+        note: drawingNote,
+        file: {
+          bucket: "intake-files",
+          path: storagePath,
+          name: drawingFile.name,
+          mimeType: drawingFile.type || "application/octet-stream",
+          size: drawingFile.size,
+          sha256
+        }
+      });
+      setMessage(
+        t(
+          `${drawingForm.itemName} ${result.drawing?.payload?.revision || "revision"} submitted for technical review.`,
+          `${drawingForm.itemName} ${result.drawing?.payload?.revision || "新版本"} 已提交技术审核。`
+        )
+      );
+      setDrawingForm(null);
+      await loadWorkspace();
+    } catch (error) {
+      if (storagePath)
+        await supabaseClient.storage
+          .from("intake-files")
+          .remove([storagePath])
+          .catch(() => null);
+      setMessage(error.message || String(error));
+    } finally {
+      setDrawingUploading(false);
     }
   }
 
@@ -299,6 +372,59 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
               </details>
             )}
 
+            {project.specification?.items?.length > 0 && (
+              <section className="supplier-shop-drawing-gate">
+                <header>
+                  <div>
+                    <span>{t("SHOP-DRAWING GATE", "供应商施工图闸口")}</span>
+                    <h3>{t("Upload professional CAD / shop drawings", "逐项上传专业 CAD／施工图")}</h3>
+                    <p>
+                      {t(
+                        "The AI concept is a visual reference only. Upload a PDF preview, image, DWG or DXF revision for every item. Production release stays locked until Cho approves the latest revision.",
+                        "AI 概念图只用于外观沟通。请为每个 item 上传 PDF 预览、图片、DWG 或 DXF；最新版本全部通过 Cho 技术审核后才会放行生产。"
+                      )}
+                    </p>
+                  </div>
+                  <strong>
+                    {project.shopDrawings?.approvedCount || 0}/{project.specification.items.length}{" "}
+                    {t("approved", "已批准")}
+                  </strong>
+                </header>
+                <div className="supplier-shop-drawing-list">
+                  {project.specification.items.map((item) => {
+                    const latest = (project.shopDrawings?.latest || []).find(
+                      (drawing) => String(drawing.itemCode).toLowerCase() === String(item.code).toLowerCase()
+                    );
+                    return (
+                      <article className={`status-${latest?.status || "missing"}`} key={`shop-${item.code}`}>
+                        <div>
+                          <code>{item.code}</code>
+                          <strong>{item.nameCn && zh ? item.nameCn : item.name}</strong>
+                          <small>
+                            {latest
+                              ? `${latest.revision} · ${latest.fileName}`
+                              : t("No supplier revision uploaded", "尚未上传供应商版本")}
+                          </small>
+                          {latest?.reviewNote && <p>{latest.reviewNote}</p>}
+                        </div>
+                        <span>{shopDrawingStatus(latest?.status, zh)}</span>
+                        <div className="supplier-shop-drawing-actions">
+                          {latest?.downloadUrl && (
+                            <a href={latest.downloadUrl} target="_blank" rel="noreferrer">
+                              {t("Open", "查看")}
+                            </a>
+                          )}
+                          <button type="button" onClick={() => openDrawingForm(project, item)}>
+                            {latest ? t("Upload new revision", "上传新版本") : t("Upload drawing", "上传施工图")}
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             {project.tasks.length > 0 && (
               <SupplierProductionPlanForm
                 project={project}
@@ -412,14 +538,26 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
                     <button
                       type="button"
                       className="supplier-task-upload"
-                      disabled={task.analysis?.completionReview?.status === "approved"}
+                      disabled={
+                        task.analysis?.completionReview?.status === "approved" || !supplierDrawingsApproved(project)
+                      }
                       onClick={() => openEvidenceForm(task)}
+                      title={
+                        !supplierDrawingsApproved(project)
+                          ? t(
+                              "Production reporting opens after every shop drawing is approved.",
+                              "全部施工图批准后才开放生产上报。"
+                            )
+                          : ""
+                      }
                     >
-                      {task.analysis?.completionReview?.status === "approved"
-                        ? t("Completion approved", "完工已批准")
-                        : task.analysis?.completionReview?.status === "changes_required"
-                          ? t("Upload corrected evidence", "上传修正证据")
-                          : t("Upload photos / report progress", "上传进度照片 / 上报进度")}
+                      {!supplierDrawingsApproved(project)
+                        ? t("Awaiting drawing approval", "等待施工图批准")
+                        : task.analysis?.completionReview?.status === "approved"
+                          ? t("Completion approved", "完工已批准")
+                          : task.analysis?.completionReview?.status === "changes_required"
+                            ? t("Upload corrected evidence", "上传修正证据")
+                            : t("Upload photos / report progress", "上传进度照片 / 上报进度")}
                     </button>
                   </article>
                 ))}
@@ -515,6 +653,73 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
           </form>
         </div>
       )}
+
+      {drawingForm && (
+        <div
+          className="supplier-evidence-modal"
+          role="presentation"
+          onMouseDown={() => !drawingUploading && setDrawingForm(null)}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            onSubmit={submitShopDrawing}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span>{t("SUPPLIER SHOP-DRAWING REVISION", "供应商施工图版本")}</span>
+                <h2>{drawingForm.itemName}</h2>
+              </div>
+              <button type="button" disabled={drawingUploading} onClick={() => setDrawingForm(null)}>
+                ×
+              </button>
+            </header>
+            <div className="supplier-shop-drawing-warning">
+              <strong>{t("Manufacturing responsibility", "生产责任说明")}</strong>
+              <p>
+                {t(
+                  "This revision must contain production-accurate geometry, dimensions, construction and tolerances. It supersedes the AI concept only after Cho approval.",
+                  "本版本必须包含可生产的准确几何、尺寸、结构与公差；只有 Cho 批准后才会取代 AI 概念参考。"
+                )}
+              </p>
+            </div>
+            <label>
+              <span>{t("PDF preview / image / DWG / DXF", "PDF 预览／图片／DWG／DXF")}</span>
+              <input
+                type="file"
+                accept={SHOP_DRAWING_FILES}
+                required
+                onChange={(event) => setDrawingFile(event.target.files?.[0] || null)}
+              />
+              <small>
+                {t(
+                  "Maximum 30 MB. Uploading creates a new immutable revision.",
+                  "最大 30 MB；每次上传都会建立一个不可覆盖的新版本。"
+                )}
+              </small>
+            </label>
+            <label>
+              <span>{t("Revision note", "版本说明")}</span>
+              <textarea
+                value={drawingNote}
+                onChange={(event) => setDrawingNote(event.target.value)}
+                placeholder={t("What changed in this revision?", "本版本修改了什么？")}
+              />
+            </label>
+            <div className="supplier-evidence-actions">
+              <button type="button" disabled={drawingUploading} onClick={() => setDrawingForm(null)}>
+                {t("Cancel", "取消")}
+              </button>
+              <button className="primary" disabled={drawingUploading || !drawingFile}>
+                {drawingUploading
+                  ? t("Uploading revision...", "正在上传版本……")
+                  : t("Submit for Cho review", "提交 Cho 审核")}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   );
 }
@@ -544,4 +749,19 @@ function analysisText(analysis, zh) {
       : `${analysis.missingEvidence.length} evidence item(s) remain`;
   }
   return zh ? "证据已接收并继续监控" : "evidence accepted and monitoring";
+}
+
+function shopDrawingStatus(status, zh) {
+  const labels = {
+    missing: ["Missing", "待上传"],
+    pending_review: ["Cho review", "等待 Cho 审核"],
+    changes_required: ["Revision required", "需要修订"],
+    approved: ["Approved for manufacture", "已批准生产"]
+  };
+  return labels[status || "missing"]?.[zh ? 1 : 0] || status || "-";
+}
+
+function supplierDrawingsApproved(project) {
+  const itemCount = project?.specification?.items?.length || 0;
+  return itemCount > 0 && Number(project?.shopDrawings?.approvedCount || 0) === itemCount;
 }
