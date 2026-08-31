@@ -18,6 +18,7 @@ export function getIntakeSourceKind(file = {}) {
   if (mime === "application/vnd.ms-excel" || /\.xls$/.test(name)) return "legacy_spreadsheet";
   if (mime === "application/pdf" || /\.pdf$/.test(name)) return "pdf";
   if (mime.includes("wordprocessingml") || /\.docx$/.test(name)) return "docx";
+  if (mime === "application/msword" || /\.doc$/.test(name)) return "legacy_doc";
   if (
     mime.startsWith("text/") ||
     ["application/json", "application/xml"].includes(mime) ||
@@ -33,7 +34,8 @@ export async function extractIntakeSource({
   buffer,
   maxTextChars = DEFAULT_MAX_TEXT_CHARS,
   maxVisionBytes = DEFAULT_MAX_VISION_BYTES,
-  maxDocumentBytes = DEFAULT_MAX_DOCUMENT_BYTES
+  maxDocumentBytes = DEFAULT_MAX_DOCUMENT_BYTES,
+  includeOfficeVisual = false
 }) {
   const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
   const kind = getIntakeSourceKind(file);
@@ -56,6 +58,7 @@ export async function extractIntakeSource({
 
   try {
     let sourceText = "";
+    let sourceMedia = null;
     let extractedImages = [];
     if (kind === "text") sourceText = bytes.toString("utf8").replace(/\0/g, "");
     if (kind === "spreadsheet") {
@@ -74,12 +77,26 @@ export async function extractIntakeSource({
       extractedImages = pdfSource.images;
     }
     if (kind === "docx") sourceText = await extractDocxText(bytes);
+    if (kind === "legacy_doc") sourceText = await extractLegacyDocText(bytes);
+
+    if (includeOfficeVisual && ["spreadsheet", "legacy_spreadsheet", "docx", "legacy_doc"].includes(kind)) {
+      try {
+        sourceMedia = await renderOfficeDocumentForVision({
+          buffer: bytes,
+          kind,
+          maxVisionBytes
+        });
+      } catch (error) {
+        console.warn(`Could not render ${kind} intake source for Gemini visual analysis:`, error.message || error);
+      }
+    }
 
     const normalized = normalizeExtractedText(sourceText).slice(0, maxTextChars);
-    return normalized || extractedImages.length
+    return normalized || extractedImages.length || sourceMedia
       ? {
           ...empty,
           sourceText: normalized,
+          sourceMedia,
           extractedImages,
           mediaIssue: normalized ? "" : `${kind}_contained_no_readable_text`
         }
@@ -169,8 +186,20 @@ async function convertLegacySpreadsheetToXlsx(buffer) {
     await new Promise((resolve, reject) => {
       execFile(
         executable,
-        ["--headless", "--nologo", "--nodefault", "--nolockcheck", "--nofirststartwizard", "--convert-to", "xlsx", "--outdir", workdir, inputPath],
-        { timeout: Number(process.env.INTAKE_XLS_CONVERSION_TIMEOUT_MS || 60000), env: { ...process.env, HOME: workdir } },
+        [
+          "--headless",
+          "--nologo",
+          "--nodefault",
+          "--nolockcheck",
+          "--nofirststartwizard",
+          `-env:UserInstallation=file:///${workdir.replaceAll("\\", "/")}/profile`,
+          "--convert-to",
+          "xlsx",
+          "--outdir",
+          workdir,
+          inputPath
+        ],
+        { timeout: Number(process.env.INTAKE_XLS_CONVERSION_TIMEOUT_MS || 60000) },
         (error) => (error ? reject(error) : resolve())
       );
     });
@@ -216,7 +245,9 @@ function formatSpreadsheetImageMarker(image) {
 }
 
 function spreadsheetImageMimeType(extension) {
-  const normalized = String(extension || "").toLowerCase().replace(/^\./, "");
+  const normalized = String(extension || "")
+    .toLowerCase()
+    .replace(/^\./, "");
   if (normalized === "png") return "image/png";
   if (["jpg", "jpeg"].includes(normalized)) return "image/jpeg";
   if (normalized === "webp") return "image/webp";
@@ -224,7 +255,9 @@ function spreadsheetImageMimeType(extension) {
 }
 
 function readRasterDimensions(data, extension) {
-  const normalized = String(extension || "").toLowerCase().replace(/^\./, "");
+  const normalized = String(extension || "")
+    .toLowerCase()
+    .replace(/^\./, "");
   if (normalized === "png" && data.length >= 24 && data.subarray(1, 4).toString("ascii") === "PNG") {
     return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
   }
@@ -252,7 +285,11 @@ function readJpegDimensions(data) {
 }
 
 function readWebpDimensions(data) {
-  if (data.length < 30 || data.subarray(0, 4).toString("ascii") !== "RIFF" || data.subarray(8, 12).toString("ascii") !== "WEBP") {
+  if (
+    data.length < 30 ||
+    data.subarray(0, 4).toString("ascii") !== "RIFF" ||
+    data.subarray(8, 12).toString("ascii") !== "WEBP"
+  ) {
     return { width: 0, height: 0 };
   }
   const kind = data.subarray(12, 16).toString("ascii");
@@ -304,23 +341,37 @@ export async function openPdfBatchReader({
     : { data: new Uint8Array(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || [])) };
   const parser = new PDFParse(loadSource);
   const info = await parser.getInfo();
+  const renderPages = async (
+    pages,
+    { desiredWidth = visualFallbackRenderWidth, maxBytes = maxVisionBytes, sourceKind = "pdf_pages" } = {}
+  ) => {
+    const selectedPages = uniquePageNumbers(pages);
+    if (!selectedPages.length) return null;
+    const rendered = await renderPdfPagesForVision({
+      parser,
+      pages: selectedPages,
+      desiredWidth,
+      maxVisionBytes: maxBytes
+    });
+    return rendered ? { ...rendered, sourceKind } : null;
+  };
 
   return {
     totalPages: Math.max(0, Number(info.total || 0)),
     fingerprints: Array.isArray(info.fingerprints) ? info.fingerprints.filter(Boolean) : [],
-    async readPages(pages) {
-      const selectedPages = [...new Set((pages || []).map(Number).filter((page) => page > 0))].sort(
-        (left, right) => left - right
-      );
+    async readPages(pages, { visualMode = "fallback", includeImages = true } = {}) {
+      const selectedPages = uniquePageNumbers(pages);
       if (!selectedPages.length) return { sourceText: "", sourceMedia: null, images: [], mediaIssue: "" };
 
       const textResult = await parser.getText({ partial: selectedPages });
-      const imageResult = await parser.getImage({
-        partial: selectedPages,
-        imageThreshold: 120,
-        imageDataUrl: false,
-        imageBuffer: true
-      });
+      const imageResult = includeImages
+        ? await parser.getImage({
+            partial: selectedPages,
+            imageThreshold: 120,
+            imageDataUrl: false,
+            imageBuffer: true
+          })
+        : { pages: [] };
       const textPages = new Map(
         (textResult.pages || []).map((page, index) => [
           Number(page.num || selectedPages[index] || index + 1),
@@ -342,34 +393,97 @@ export async function openPdfBatchReader({
         }))
       );
 
-      const visualFallbackPages = selectPdfVisualFallbackPages({
-        pages: selectedPages,
-        textByPage: textPages,
-        minTextCharsPerPage: visualFallbackMinTextCharsPerPage
-      });
+      const visualFallbackPages =
+        visualMode === "always"
+          ? selectedPages
+          : visualMode === "none"
+            ? []
+            : selectPdfVisualFallbackPages({
+                pages: selectedPages,
+                textByPage: textPages,
+                minTextCharsPerPage: visualFallbackMinTextCharsPerPage
+              });
       let sourceMedia = null;
       let mediaIssue = "";
       if (visualFallbackPages.length) {
         try {
-          sourceMedia = await renderPdfPagesForVision({
-            parser,
-            pages: visualFallbackPages,
-            desiredWidth: visualFallbackRenderWidth,
-            maxVisionBytes
-          });
+          sourceMedia = await renderPages(visualFallbackPages);
           if (!sourceMedia) mediaIssue = "pdf_visual_fallback_exceeds_inline_limit";
         } catch (error) {
-          console.warn(`Could not render PDF pages ${visualFallbackPages.join(", ")} for visual analysis:`, error.message || error);
+          console.warn(
+            `Could not render PDF pages ${visualFallbackPages.join(", ")} for visual analysis:`,
+            error.message || error
+          );
           mediaIssue = "pdf_visual_fallback_render_failed";
         }
       }
 
       return { sourceText, sourceMedia, images, mediaIssue, visualFallbackPages };
     },
+    renderPages,
     async destroy() {
       await parser.destroy();
     }
   };
+}
+
+async function renderOfficeDocumentForVision({ buffer, kind, maxVisionBytes }) {
+  const pdfBuffer = await convertOfficeDocumentToPdf(buffer, kind);
+  const reader = await openPdfBatchReader({ buffer: pdfBuffer, maxVisionBytes });
+  try {
+    const pages = Array.from({ length: reader.totalPages }, (_, index) => index + 1);
+    return await reader.renderPages(pages, { sourceKind: "office_pages" });
+  } finally {
+    await reader.destroy();
+  }
+}
+
+async function convertOfficeDocumentToPdf(buffer, kind) {
+  const [{ mkdtemp, readFile, rm, writeFile }, { tmpdir }, { join }, { execFile }] = await Promise.all([
+    import("node:fs/promises"),
+    import("node:os"),
+    import("node:path"),
+    import("node:child_process")
+  ]);
+  const extension =
+    kind === "docx" ? "docx" : kind === "legacy_doc" ? "doc" : kind === "legacy_spreadsheet" ? "xls" : "xlsx";
+  const workdir = await mkdtemp(join(tmpdir(), "crafton-office-vision-"));
+  const inputPath = join(workdir, `source.${extension}`);
+  const outputPath = join(workdir, "source.pdf");
+  const executable = process.env.LIBREOFFICE_BIN || "soffice";
+
+  try {
+    await writeFile(inputPath, buffer);
+    await new Promise((resolve, reject) => {
+      execFile(
+        executable,
+        [
+          "--headless",
+          "--nologo",
+          "--nodefault",
+          "--nolockcheck",
+          "--nofirststartwizard",
+          `-env:UserInstallation=file:///${workdir.replaceAll("\\", "/")}/profile`,
+          "--convert-to",
+          "pdf",
+          "--outdir",
+          workdir,
+          inputPath
+        ],
+        { timeout: Number(process.env.INTAKE_OFFICE_CONVERSION_TIMEOUT_MS || 90000) },
+        (error) => (error ? reject(error) : resolve())
+      );
+    });
+    return await readFile(outputPath);
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+}
+
+function uniquePageNumbers(values) {
+  return [...new Set((values || []).map(Number).filter((page) => Number.isInteger(page) && page > 0))].sort(
+    (left, right) => left - right
+  );
 }
 
 export function countPdfReadableCharacters(value) {
@@ -387,7 +501,10 @@ export function selectPdfVisualFallbackPages({ pages = [], textByPage = new Map(
 
 async function renderPdfPagesForVision({ parser, pages, desiredWidth, maxVisionBytes }) {
   const byteLimit = Math.max(1, Number(maxVisionBytes || DEFAULT_MAX_VISION_BYTES));
-  let width = Math.max(MIN_PDF_VISION_RENDER_WIDTH, Math.round(Number(desiredWidth || DEFAULT_PDF_VISION_RENDER_WIDTH)));
+  let width = Math.max(
+    MIN_PDF_VISION_RENDER_WIDTH,
+    Math.round(Number(desiredWidth || DEFAULT_PDF_VISION_RENDER_WIDTH))
+  );
   let rendered = await renderAtWidth(parser, pages, width);
   let totalBytes = rendered.reduce((sum, page) => sum + page.byteLength, 0);
 
@@ -463,6 +580,45 @@ async function extractDocxText(buffer) {
   const mammoth = mammothModule.default || mammothModule;
   const result = await mammoth.extractRawText({ buffer });
   return result.value || "";
+}
+
+async function extractLegacyDocText(buffer) {
+  const [{ mkdtemp, readFile, rm, writeFile }, { tmpdir }, { join }, { execFile }] = await Promise.all([
+    import("node:fs/promises"),
+    import("node:os"),
+    import("node:path"),
+    import("node:child_process")
+  ]);
+  const workdir = await mkdtemp(join(tmpdir(), "crafton-doc-"));
+  const inputPath = join(workdir, "source.doc");
+  const outputPath = join(workdir, "source.docx");
+  const executable = process.env.LIBREOFFICE_BIN || "soffice";
+  try {
+    await writeFile(inputPath, buffer);
+    await new Promise((resolve, reject) => {
+      execFile(
+        executable,
+        [
+          "--headless",
+          "--nologo",
+          "--nodefault",
+          "--nolockcheck",
+          "--nofirststartwizard",
+          `-env:UserInstallation=file:///${workdir.replaceAll("\\", "/")}/profile`,
+          "--convert-to",
+          "docx",
+          "--outdir",
+          workdir,
+          inputPath
+        ],
+        { timeout: Number(process.env.INTAKE_OFFICE_CONVERSION_TIMEOUT_MS || 90000) },
+        (error) => (error ? reject(error) : resolve())
+      );
+    });
+    return await extractDocxText(await readFile(outputPath));
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
 }
 
 function normalizeSpreadsheetCell(value) {

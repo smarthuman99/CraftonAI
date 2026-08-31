@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import sharp from "sharp";
+
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { parseIntakeBrief } from "./lib/intakeProcessor.mjs";
 import { prepareInitialClientCompletion } from "./lib/intakeClientCompletion.mjs";
@@ -19,6 +22,7 @@ const batchSize = Number(process.env.INTAKE_WORKER_BATCH_SIZE || 1);
 const maxAttempts = Number(process.env.INTAKE_WORKER_MAX_ATTEMPTS || 3);
 const maxReadableFileChars = Number(process.env.INTAKE_WORKER_MAX_FILE_TEXT_CHARS || 60000);
 const maxVisionFileBytes = Number(process.env.INTAKE_VISION_MAX_FILE_BYTES || 12 * 1024 * 1024);
+const maxGeminiPdfInlineBytes = Number(process.env.INTAKE_GEMINI_PDF_INLINE_MAX_BYTES || 48 * 1024 * 1024);
 const maxDocumentFileBytes = Number(process.env.INTAKE_DOCUMENT_MAX_FILE_BYTES || 250 * 1024 * 1024);
 const pdfBatchSize = Number(process.env.INTAKE_PDF_BATCH_PAGES || 4);
 const pdfBatchRetries = Number(process.env.INTAKE_PDF_BATCH_RETRIES || 2);
@@ -92,11 +96,20 @@ async function processJob(job) {
 
   let result;
   if (getIntakeSourceKind(file) === "pdf") {
-    result = await parsePdfInBatches({ job, file, userId });
+    result = await parsePdfWithGeminiDocument({ job, file, userId });
   } else {
     const { sourceText, sourceMedia, extractedImages, mediaIssue } = await readUploadedSource(file);
     result = await parseIntakeBrief({ job, file, sourceText, sourceMedia, mediaIssue });
     result = await attachExtractedProductImages({ job, result, images: extractedImages, userId });
+    if (sourceMedia?.pages) {
+      result = await attachRenderedItemCrops({
+        job,
+        result,
+        userId,
+        getRenderedPage: async (pageNumber) =>
+          sourceMedia.pages.find((page) => Number(page.pageNumber) === Number(pageNumber)) || null
+      });
+    }
   }
   result = await bindResultToOwnerProfile(result, userId);
   const completedAt = new Date().toISOString();
@@ -151,6 +164,144 @@ async function processJob(job) {
     .eq("id", job.id);
 
   console.log(`Processed intake job ${job.id} -> project ${project.name}`);
+}
+
+async function parsePdfWithGeminiDocument({ job, file, userId }) {
+  const fileSize = Number(file?.file_size || 0);
+  if (fileSize > maxDocumentFileBytes) {
+    throw new Error(`PDF exceeds the configured ${Math.round(maxDocumentFileBytes / 1024 / 1024)}MB processing limit.`);
+  }
+  if (!file?.storage_bucket || !file?.storage_path) throw new Error("PDF storage location is missing.");
+
+  const { data, error } = await supabase.storage.from(file.storage_bucket).download(file.storage_path);
+  if (error) throw error;
+  const buffer = Buffer.from(await data.arrayBuffer());
+  const reader = await openPdfBatchReader({
+    buffer,
+    maxTextChars: maxReadableFileChars,
+    maxVisionBytes: maxVisionFileBytes,
+    visualFallbackRenderWidth: pdfVisualFallbackRenderWidth
+  });
+
+  try {
+    const pages = Array.from({ length: reader.totalPages }, (_, index) => index + 1);
+    const source = await reader.readPages(pages, { visualMode: "none", includeImages: false });
+    let sourceMedia = null;
+    let mediaIssue = "";
+
+    if (buffer.byteLength <= maxGeminiPdfInlineBytes) {
+      sourceMedia = {
+        sourceKind: "pdf_document",
+        mimeType: "application/pdf",
+        dataBase64: buffer.toString("base64"),
+        byteLength: buffer.byteLength,
+        pageNumbers: pages
+      };
+    } else {
+      sourceMedia = await reader.renderPages(pages, {
+        desiredWidth: pdfVisualFallbackRenderWidth,
+        maxBytes: maxVisionFileBytes,
+        sourceKind: "pdf_pages"
+      });
+      if (!sourceMedia) mediaIssue = "pdf_whole_document_exceeds_gemini_inline_limit";
+    }
+
+    let result = await parseIntakeBrief({
+      job: {
+        ...job,
+        brief_text: [
+          job.brief_text,
+          `Analyze this complete ${reader.totalPages}-page FF&E document as one package. Classify every page before extracting furniture.`
+        ]
+          .filter(Boolean)
+          .join("\n")
+      },
+      file,
+      sourceText: source.sourceText,
+      sourceMedia,
+      mediaIssue
+    });
+
+    const classifiedPages = new Set(
+      (result.document_analysis?.pages || []).map((page) => Number(page.source_page)).filter(Boolean)
+    );
+    const unclassifiedPages = pages.filter((page) => !classifiedPages.has(page));
+    if (unclassifiedPages.length || !result.items?.length) {
+      const reason = unclassifiedPages.length
+        ? `Gemini did not classify PDF page(s) ${unclassifiedPages.join(", ")}.`
+        : "Gemini produced no verified furniture lines.";
+      result = {
+        ...result,
+        questions: uniqueText([
+          ...(result.questions || []),
+          `Crafton must review the source document because ${reason}`
+        ]),
+        visual_analysis: result.visual_analysis
+          ? {
+              ...result.visual_analysis,
+              limitations: uniqueText([...(result.visual_analysis.limitations || []), reason])
+            }
+          : result.visual_analysis,
+        quality_gate: {
+          ...(result.quality_gate || {}),
+          status: "manual_review_required",
+          unclassified_pages: unclassifiedPages
+        }
+      };
+    }
+
+    result = await attachRenderedItemCrops({
+      job,
+      result,
+      userId,
+      getRenderedPage: async (pageNumber) => {
+        const rendered = await reader.renderPages([pageNumber], {
+          desiredWidth: pdfVisualFallbackRenderWidth,
+          maxBytes: maxVisionFileBytes,
+          sourceKind: "pdf_pages"
+        });
+        return rendered?.pages?.[0] || null;
+      }
+    });
+
+    const qualityPassed =
+      Boolean(sourceMedia) &&
+      !mediaIssue &&
+      Boolean(result.items?.length) &&
+      result.quality_gate?.status !== "manual_review_required";
+    return {
+      ...result,
+      processing: {
+        version: 3,
+        source_type: "pdf",
+        mode: "gemini_whole_document",
+        state: qualityPassed ? "completed" : "manual_review_required",
+        total_pages: reader.totalPages,
+        completed_pages: pages,
+        batch_count: 1,
+        item_count: result.items?.length || 0,
+        quality_gate_passed: qualityPassed,
+        completed_at: new Date().toISOString()
+      }
+    };
+  } finally {
+    await reader.destroy();
+  }
+}
+
+function uniqueText(values) {
+  return [
+    ...new Map(
+      (values || [])
+        .map((value) =>
+          String(value || "")
+            .replace(/\s+/g, " ")
+            .trim()
+        )
+        .filter(Boolean)
+        .map((value) => [value.toLowerCase(), value])
+    ).values()
+  ];
 }
 
 async function parsePdfInBatches({ job, file, userId }) {
@@ -463,7 +614,8 @@ async function readUploadedSource(file) {
       buffer,
       maxTextChars: maxReadableFileChars,
       maxVisionBytes: maxVisionFileBytes,
-      maxDocumentBytes: maxDocumentFileBytes
+      maxDocumentBytes: maxDocumentFileBytes,
+      includeOfficeVisual: Boolean(process.env.GEMINI_API_KEY)
     });
   } catch (err) {
     console.warn(`Could not read intake file ${file.id || file.storage_path}:`, err.message || err);
@@ -485,15 +637,24 @@ async function attachExtractedProductImages({ job, result, images = [], userId }
   let uploadedImageCount = 0;
 
   for (const [index, item] of result.items.entries()) {
+    if (item.image_storage_path) {
+      uploadedItems.push(item);
+      continue;
+    }
+    const imageRef = Math.max(0, Number(item.image_ref || 0));
+    if (!imageRef) {
+      uploadedItems.push(item);
+      continue;
+    }
     const sourcePage = Math.max(1, Number(item.source_page || index + 1));
-    const primaryImage = imagesByPage.get(sourcePage)?.[0] || images[index];
+    const primaryImage = imagesByPage.get(imageRef)?.[0];
     const relatedImages = primaryImage?.sourceRow
       ? images.filter(
           (image) =>
             image.sourceRow === primaryImage.sourceRow &&
             (!primaryImage.worksheet || image.worksheet === primaryImage.worksheet)
         )
-      : imagesByPage.get(sourcePage) || [primaryImage];
+      : imagesByPage.get(imageRef) || [primaryImage];
     const candidates = relatedImages.filter((image) => image?.data).slice(0, 4);
     if (!candidates.length) {
       uploadedItems.push(item);
@@ -503,7 +664,7 @@ async function attachExtractedProductImages({ job, result, images = [], userId }
     const savedReferences = [];
     for (const [imageIndex, image] of candidates.entries()) {
       const extension = imageFileExtension(image.mimeType);
-      const storagePath = `${userId || "unowned"}/derived/${job.id}/source-image-${String(sourcePage).padStart(4, "0")}-${String(imageIndex + 1).padStart(2, "0")}.${extension}`;
+      const storagePath = `${userId || "unowned"}/derived/${job.id}/source-image-${String(imageRef).padStart(4, "0")}-${String(imageIndex + 1).padStart(2, "0")}.${extension}`;
       const { error } = await supabase.storage.from("intake-files").upload(storagePath, image.data, {
         contentType: image.mimeType || "image/png",
         cacheControl: "3600",
@@ -551,6 +712,123 @@ async function attachExtractedProductImages({ job, result, images = [], userId }
       .filter(Boolean)
       .join("\n")
   };
+}
+
+async function attachRenderedItemCrops({ job, result, userId, getRenderedPage }) {
+  if (!Array.isArray(result.items) || !result.items.length || typeof getRenderedPage !== "function") return result;
+
+  const pageCache = new Map();
+  const cropOwners = new Map();
+  const items = [];
+  let savedCropCount = 0;
+
+  for (const item of result.items) {
+    if (item.image_storage_path || !item.photo_bbox || Number(item.photo_page || 0) <= 0) {
+      items.push(item);
+      continue;
+    }
+
+    const pageNumber = Number(item.photo_page);
+    if (!pageCache.has(pageNumber)) pageCache.set(pageNumber, await getRenderedPage(pageNumber));
+    const renderedPage = pageCache.get(pageNumber);
+    if (!renderedPage?.dataBase64) {
+      items.push(item);
+      continue;
+    }
+
+    try {
+      const pageBuffer = Buffer.from(renderedPage.dataBase64, "base64");
+      const metadata = await sharp(pageBuffer).metadata();
+      const crop = resolvePixelCrop(item.photo_bbox, metadata.width, metadata.height);
+      if (!crop) {
+        items.push(item);
+        continue;
+      }
+
+      const cropped = await sharp(pageBuffer).extract(crop).png({ compressionLevel: 9 }).toBuffer();
+      const hash = createHash("sha256").update(cropped).digest("hex");
+      const owner = cropOwners.get(hash);
+      const itemRef = String(item.item_ref || item.item_type_en || item.item_type_cn || "item");
+      if (owner && owner !== itemRef) {
+        items.push({
+          ...item,
+          image_mapping_status: "duplicate_crop_rejected"
+        });
+        continue;
+      }
+      cropOwners.set(hash, itemRef);
+
+      const safeItemRef =
+        itemRef
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 48) || "item";
+      const storagePath = `${userId || "unowned"}/derived/${job.id}/item-${safeItemRef}-page-${String(pageNumber).padStart(4, "0")}-${hash.slice(0, 10)}.png`;
+      const { error } = await supabase.storage.from("intake-files").upload(storagePath, cropped, {
+        contentType: "image/png",
+        cacheControl: "3600",
+        upsert: true
+      });
+      if (error) throw error;
+
+      savedCropCount += 1;
+      items.push({
+        ...item,
+        image_storage_bucket: "intake-files",
+        image_storage_path: storagePath,
+        image_mime_type: "image/png",
+        image_width: crop.width,
+        image_height: crop.height,
+        image_sha256: hash,
+        image_mapping_status: "gemini_bbox_verified",
+        image_storage_paths: [
+          {
+            storage_bucket: "intake-files",
+            storage_path: storagePath,
+            mime_type: "image/png",
+            width: crop.width,
+            height: crop.height,
+            sha256: hash
+          }
+        ]
+      });
+    } catch (error) {
+      console.warn(`Could not crop Gemini-mapped product photo for intake job ${job.id}:`, error.message || error);
+      items.push({ ...item, image_mapping_status: "crop_failed" });
+    }
+  }
+
+  return {
+    ...result,
+    items,
+    source_notes: [
+      result.source_notes,
+      `Saved ${savedCropCount} Gemini-mapped product photo crop(s); items without a verified unique crop remain image-free.`
+    ]
+      .filter(Boolean)
+      .join("\n")
+  };
+}
+
+function resolvePixelCrop(bbox, pageWidth, pageHeight) {
+  const width = Math.max(0, Number(pageWidth || 0));
+  const height = Math.max(0, Number(pageHeight || 0));
+  if (!width || !height) return null;
+  const xMin = Math.max(0, Math.min(1000, Number(bbox.x_min || 0)));
+  const yMin = Math.max(0, Math.min(1000, Number(bbox.y_min || 0)));
+  const xMax = Math.max(0, Math.min(1000, Number(bbox.x_max || 0)));
+  const yMax = Math.max(0, Math.min(1000, Number(bbox.y_max || 0)));
+  if (xMax <= xMin || yMax <= yMin) return null;
+
+  const left = Math.max(0, Math.floor((xMin / 1000) * width));
+  const top = Math.max(0, Math.floor((yMin / 1000) * height));
+  const right = Math.min(width, Math.ceil((xMax / 1000) * width));
+  const bottom = Math.min(height, Math.ceil((yMax / 1000) * height));
+  const cropWidth = right - left;
+  const cropHeight = bottom - top;
+  if (cropWidth < 48 || cropHeight < 48) return null;
+  return { left, top, width: cropWidth, height: cropHeight };
 }
 
 function imageFileExtension(mimeType) {

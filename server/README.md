@@ -46,7 +46,10 @@ GEMINI_API_KEY=
 GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 GEMINI_VISION_MODEL=gemini-3.6-flash
 GEMINI_API_REVISION=2026-05-20
+GEMINI_VISION_TIMEOUT_MS=180000
+GEMINI_INTAKE_MAX_OUTPUT_TOKENS=32768
 INTAKE_DOCUMENT_MAX_FILE_BYTES=262144000
+INTAKE_GEMINI_PDF_INLINE_MAX_BYTES=50331648
 INTAKE_PDF_BATCH_PAGES=4
 INTAKE_PDF_BATCH_RETRIES=2
 INTAKE_PDF_VISUAL_FALLBACK_MIN_TEXT_CHARS_PER_PAGE=80
@@ -54,11 +57,14 @@ INTAKE_PDF_VISUAL_FALLBACK_RENDER_WIDTH=1400
 INTAKE_WORKER_STALE_MINUTES=30
 LIBREOFFICE_BIN=soffice
 INTAKE_XLS_CONVERSION_TIMEOUT_MS=60000
+INTAKE_OFFICE_CONVERSION_TIMEOUT_MS=90000
 ```
 
 `DEEPSEEK_API_KEY` is optional. Without it, the worker uses deterministic text parsing so the pipeline can be tested end to end.
 
-`GEMINI_API_KEY` enables real image understanding and the low-text PDF fallback. When a PDF page contains fewer than `INTAKE_PDF_VISUAL_FALLBACK_MIN_TEXT_CHARS_PER_PAGE` machine-readable characters, Intake Worker renders that page at `INTAKE_PDF_VISUAL_FALLBACK_RENDER_WIDTH` pixels and sends it to Gemini with its source-page marker. Without a Gemini key—or when rendering/vision fails—the upload is preserved and the job is sent to `needs_review` with an explicit `manual_review_required` status instead of pretending that the document was parsed.
+`GEMINI_API_KEY` makes Gemini the primary FF&E document analyzer. PDFs within the inline safety limit are sent to Gemini as one complete PDF so the model can classify every page, reconcile furniture across schedules/specifications/layouts, and return evidence plus product-photo coordinates. Larger PDFs are rendered as one visual document when possible. XLS/XLSX and DOC/DOCX files retain their native extracted rows/text and are also converted through headless LibreOffice for Gemini visual review. DeepSeek and deterministic parsing remain failure fallbacks; visual failures are preserved as explicit `manual_review_required` exceptions instead of being presented as customer questions.
+
+Gemini document output is quality-gated: cover/index/floorplan/layout/drawing pages cannot create formal furniture lines, every accepted line must cite an orderable source page and evidence text, and a product photo is saved only when Gemini supplies a unique page bounding box. Items without a verified crop remain image-free rather than inheriting another item's image.
 
 The default 12 MiB image limit leaves room for base64 expansion and prompts under Gemini's 20 MB inline-request limit. Larger source images should be resized before upload or moved to a future Files API flow.
 

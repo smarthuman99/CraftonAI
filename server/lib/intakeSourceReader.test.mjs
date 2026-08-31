@@ -17,6 +17,7 @@ test("detects the supported FF&E source formats", () => {
   assert.equal(getIntakeSourceKind({ original_name: "schedule.xlsx" }), "spreadsheet");
   assert.equal(getIntakeSourceKind({ original_name: "brief.pdf" }), "pdf");
   assert.equal(getIntakeSourceKind({ original_name: "spec.docx" }), "docx");
+  assert.equal(getIntakeSourceKind({ original_name: "legacy-spec.doc" }), "legacy_doc");
   assert.equal(getIntakeSourceKind({ original_name: "reference.webp" }), "image");
   assert.equal(getIntakeSourceKind({ original_name: "legacy.xls" }), "legacy_spreadsheet");
 });
@@ -44,8 +45,14 @@ test("extracts embedded XLSX product images and preserves their anchor rows", as
 
   assert.equal(result.mediaIssue, "");
   assert.equal(result.extractedImages.length, 2);
-  assert.deepEqual(result.extractedImages.map((image) => image.page), [1, 2]);
-  assert.deepEqual(result.extractedImages.map((image) => image.sourceRow), [3, 4]);
+  assert.deepEqual(
+    result.extractedImages.map((image) => image.page),
+    [1, 2]
+  );
+  assert.deepEqual(
+    result.extractedImages.map((image) => image.sourceRow),
+    [3, 4]
+  );
   assert.ok(result.extractedImages.every((image) => image.mimeType === "image/png" && image.data.length > 1000));
   assert.match(result.sourceText, /ROW 3: Lobby Sofa \| 10 \| W 2000 x D 900 x H 780 mm \| Blue wool/);
   assert.match(result.sourceText, /EMBEDDED IMAGE 1: sheet=Furniture Schedule \| anchor row=3/);
@@ -109,8 +116,5 @@ test("selects PDF pages with too little machine-readable text for visual fallbac
   ]);
 
   assert.equal(countPdfReadableCharacters("SOURCE PAGE 1"), 0);
-  assert.deepEqual(
-    selectPdfVisualFallbackPages({ pages: [1, 2, 3], textByPage, minTextCharsPerPage: 35 }),
-    [1]
-  );
+  assert.deepEqual(selectPdfVisualFallbackPages({ pages: [1, 2, 3], textByPage, minTextCharsPerPage: 35 }), [1]);
 });

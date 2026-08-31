@@ -231,6 +231,24 @@ jobs:
               exit 1
             fi
 
+            upsert_env() {
+              key="$1"
+              value="$2"
+              if grep -q "^${key}=" server/.env; then
+                sed -i "s|^${key}=.*|${key}=${value}|" server/.env
+              else
+                printf '\n%s=%s\n' "$key" "$value" >> server/.env
+              fi
+            }
+
+            # Whole-document Gemini intake needs a longer request window and
+            # enough structured-output capacity. Keep these deployment-owned
+            # runtime limits aligned with server/.env.example.
+            upsert_env GEMINI_VISION_TIMEOUT_MS 180000
+            upsert_env GEMINI_INTAKE_MAX_OUTPUT_TOKENS 32768
+            upsert_env INTAKE_GEMINI_PDF_INLINE_MAX_BYTES 50331648
+            upsert_env INTAKE_OFFICE_CONVERSION_TIMEOUT_MS 90000
+
             if [ -n "$port_pid" ]; then
               kill "$port_pid" 2>/dev/null || true
               sleep 4
