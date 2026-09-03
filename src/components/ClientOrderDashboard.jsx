@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { deriveProjectLifecycle } from "../projectLifecycle.js";
@@ -354,6 +354,142 @@ function ProductImage({ src, alt, className = "" }) {
   if (src) return <img className={className} src={src} alt={alt} loading="lazy" />;
   return (
     <span className={`cho-client-image-placeholder ${className}`}>{copy("En", "图片待上传", "Reference pending")}</span>
+  );
+}
+
+function ItemReferenceImageControl({ lang, src, alt, state = {}, disabled = false, onChoose, onCandidate }) {
+  const statusLabel =
+    state.status === "uploading"
+      ? copy(lang, "上传中", "Uploading")
+      : state.status === "queued"
+        ? copy(lang, "已排队", "Queued")
+        : state.status === "error"
+          ? copy(lang, "重试", "Retry")
+          : src
+            ? copy(lang, "更换", "Replace")
+            : copy(lang, "补录照片", "Add photo");
+  const actionLabel = src
+    ? copy(lang, `更换 ${alt} 的参考照片`, `Replace the reference photo for ${alt}`)
+    : copy(lang, `为 ${alt} 补录参考照片`, `Add a reference photo for ${alt}`);
+
+  const acceptCandidate = (file) => {
+    if (!disabled && file) onCandidate(file);
+  };
+
+  return (
+    <button
+      type="button"
+      className={`cho-item-reference-control${src ? " has-image" : " is-empty"} status-${state.status || "idle"}`}
+      onClick={onChoose}
+      onDragOver={(event) => {
+        if (disabled) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        acceptCandidate(event.dataTransfer.files?.[0]);
+      }}
+      onPaste={(event) => acceptCandidate(event.clipboardData.files?.[0])}
+      disabled={disabled || state.status === "uploading"}
+      aria-label={actionLabel}
+      title={state.message || actionLabel}
+    >
+      {src ? <img src={src} alt={alt} loading="lazy" /> : <i className="fa-regular fa-image" aria-hidden="true"></i>}
+      <span>{statusLabel}</span>
+    </button>
+  );
+}
+
+function ReferenceImageUploadSheet({ lang, candidate, state, onChooseAnother, onConfirm, onClose }) {
+  const itemName = lang === "Cn" ? candidate.item.typeCn : candidate.item.typeEn;
+  const uploading = state.status === "uploading";
+
+  return (
+    <div
+      className="cho-project-action-sheet-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !uploading) onClose();
+      }}
+    >
+      <section
+        className="cho-project-action-sheet cho-reference-upload-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cho-reference-upload-title"
+      >
+        <header className="cho-project-action-sheet-header">
+          <span className="cho-client-kicker">{copy(lang, "补录产品照片", "ITEM REFERENCE")}</span>
+          <button
+            type="button"
+            className="cho-project-action-sheet-close"
+            onClick={onClose}
+            disabled={uploading}
+            aria-label={copy(lang, "关闭照片补录", "Close reference image upload")}
+          >
+            <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </header>
+
+        <div className="cho-reference-upload-heading">
+          <span>{candidate.item.itemRef || candidate.sku}</span>
+          <h2 id="cho-reference-upload-title">{itemName}</h2>
+          <p>
+            {copy(
+              lang,
+              "这张照片只会补充当前家具项目，并为它单独生成 AI 概念三视图。",
+              "This photo updates only this furniture line and queues its AI concept drawing."
+            )}
+          </p>
+        </div>
+
+        <div className="cho-reference-upload-preview">
+          <img src={candidate.previewUrl} alt={copy(lang, `${itemName} 待上传预览`, `${itemName} upload preview`)} />
+          <span>{copy(lang, "待确认", "READY TO ADD")}</span>
+        </div>
+
+        <dl className="cho-reference-upload-facts">
+          <div>
+            <dt>{copy(lang, "文件", "FILE")}</dt>
+            <dd>{candidate.file.name}</dd>
+          </div>
+          <div>
+            <dt>{copy(lang, "影响范围", "SCOPE")}</dt>
+            <dd>{copy(lang, "仅此 item", "This item only")}</dd>
+          </div>
+        </dl>
+
+        <div className="cho-reference-upload-note">
+          <i className="fa-solid fa-shield-halved" aria-hidden="true"></i>
+          <span>
+            {copy(
+              lang,
+              "不会重新分析 FF&E，也不会更改数量、规格、项目阶段、SKU 或二维码。",
+              "The FF&E file, quantity, specification, project stage, SKU and QR tracking remain unchanged."
+            )}
+          </span>
+        </div>
+
+        <footer className="cho-project-action-sheet-footer">
+          {state.message && (
+            <div className={`cho-client-answer-status status-${state.status}`} role="status" aria-live="polite">
+              {state.message}
+            </div>
+          )}
+          <button type="button" className="cho-client-button primary" onClick={onConfirm} disabled={uploading}>
+            <i
+              className={`fa-solid ${uploading ? "fa-spinner fa-spin" : "fa-arrow-up-from-bracket"}`}
+              aria-hidden="true"
+            ></i>
+            {uploading ? copy(lang, "正在保存…", "Saving…") : copy(lang, "使用此照片", "Use this photo")}
+          </button>
+          <button type="button" className="cho-client-button secondary" onClick={onChooseAnother} disabled={uploading}>
+            {copy(lang, "选择另一张", "Choose another")}
+          </button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -789,7 +925,8 @@ function ClientProjectDetail({
   onBrowseFurniture,
   onMessageProject,
   initialTrackingId,
-  onTrackingDeepLinkHandled
+  onTrackingDeepLinkHandled,
+  onReferenceImageUpload
 }) {
   const [drawingPreview, setDrawingPreview] = useState(null);
   const [drawingDownloadState, setDrawingDownloadState] = useState({ status: "", message: "" });
@@ -797,6 +934,10 @@ function ClientProjectDetail({
   const [trackingSheet, setTrackingSheet] = useState(null);
   const [actionQuestionCursor, setActionQuestionCursor] = useState(0);
   const [secondaryPanel, setSecondaryPanel] = useState("");
+  const [referenceCandidate, setReferenceCandidate] = useState(null);
+  const [referenceUploadStates, setReferenceUploadStates] = useState({});
+  const referenceFileInputRef = useRef(null);
+  const referenceTargetRef = useRef(null);
   const projectItems = useMemo(() => getProjectItems(project), [project]);
   const projectStage = getProjectStage(project);
   const status = getProjectStatus(project, lang);
@@ -925,6 +1066,88 @@ function ClientProjectDetail({
     setActionQuestionCursor(0);
     setActionSheet(nextSheet);
   };
+
+  const referenceState = (itemKey) => referenceUploadStates[itemKey] || { status: "", message: "" };
+
+  const setReferenceState = (itemKey, nextState) => {
+    setReferenceUploadStates((current) => ({ ...current, [itemKey]: nextState }));
+  };
+
+  const prepareReferenceCandidate = (target, file) => {
+    if (!target || !file) return;
+    const extension = String(file.name || "")
+      .split(".")
+      .pop()
+      .toLowerCase();
+    const validType =
+      ["image/jpeg", "image/png", "image/webp"].includes(String(file.type || "").toLowerCase()) ||
+      ["jpg", "jpeg", "png", "webp"].includes(extension);
+    if (!validType || Number(file.size || 0) > 12 * 1024 * 1024) {
+      setReferenceState(target.itemKey, {
+        status: "error",
+        message: copy(
+          lang,
+          "请选择不超过 12MB 的 JPG、PNG 或 WebP 图片。",
+          "Choose a JPG, PNG or WebP image under 12MB."
+        )
+      });
+      return;
+    }
+    setReferenceCandidate({
+      ...target,
+      file,
+      previewUrl: URL.createObjectURL(file)
+    });
+    setReferenceState(target.itemKey, { status: "ready", message: "" });
+  };
+
+  const chooseReferenceImage = (target) => {
+    referenceTargetRef.current = target;
+    if (referenceFileInputRef.current) {
+      referenceFileInputRef.current.value = "";
+      referenceFileInputRef.current.click();
+    }
+  };
+
+  const closeReferenceUpload = () => {
+    if (referenceCandidate && referenceState(referenceCandidate.itemKey).status === "uploading") return;
+    setReferenceCandidate(null);
+  };
+
+  const confirmReferenceImage = async () => {
+    if (!referenceCandidate || !onReferenceImageUpload) return;
+    const { itemKey, job, item, itemIndex, sku, file } = referenceCandidate;
+    setReferenceState(itemKey, {
+      status: "uploading",
+      message: copy(lang, "正在保存照片并加入 drawing 队列…", "Saving the photo and queueing its drawing…")
+    });
+    try {
+      await onReferenceImageUpload({
+        jobId: job.id,
+        itemIndex,
+        itemRef: item.itemRef,
+        sku,
+        file
+      });
+      setReferenceCandidate(null);
+      setReferenceState(itemKey, {
+        status: "queued",
+        message: copy(lang, "参考照片已添加，drawing 已排队。", "Reference added. Drawing queued.")
+      });
+    } catch (error) {
+      setReferenceState(itemKey, {
+        status: "error",
+        message: error.message || copy(lang, "照片补录失败，请重试。", "The reference image could not be added.")
+      });
+    }
+  };
+
+  useEffect(
+    () => () => {
+      if (referenceCandidate?.previewUrl) URL.revokeObjectURL(referenceCandidate.previewUrl);
+    },
+    [referenceCandidate?.previewUrl]
+  );
 
   const handleDownloadDrawing = async () => {
     if (!drawingPreview || drawingDownloadState.status === "downloading") return;
@@ -1172,6 +1395,7 @@ function ClientProjectDetail({
             </div>
             {projectItems.map(({ job, item }) => {
               const itemKey = `${job.id}-${item.id}`;
+              const itemIndex = job.items.indexOf(item);
               const itemActions = actionMap.itemEntries.get(itemKey) || [];
               const itemName = lang === "Cn" ? item.typeCn : item.typeEn;
               const itemSku = getItemSku(project, job, item);
@@ -1191,7 +1415,17 @@ function ClientProjectDetail({
                   key={itemKey}
                 >
                   <div className="cho-project-item" role="cell" data-label={copy(lang, "产品", "Item")}>
-                    <ProductImage src={item.imageUrl || job.previewUrl} alt={itemName} />
+                    <ItemReferenceImageControl
+                      lang={lang}
+                      src={item.imageUrl || job.previewUrl}
+                      alt={itemName}
+                      state={referenceState(itemKey)}
+                      disabled={drawingIsFormal}
+                      onChoose={() => chooseReferenceImage({ itemKey, job, item, itemIndex, sku: itemSku })}
+                      onCandidate={(file) =>
+                        prepareReferenceCandidate({ itemKey, job, item, itemIndex, sku: itemSku }, file)
+                      }
+                    />
                     <span className="cho-project-item-copy">
                       <strong>{itemName}</strong>
                       <small>
@@ -1537,6 +1771,27 @@ function ClientProjectDetail({
           />,
           document.body
         )}
+      <input
+        ref={referenceFileInputRef}
+        className="cho-reference-file-input"
+        type="file"
+        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+        onChange={(event) => prepareReferenceCandidate(referenceTargetRef.current, event.target.files?.[0])}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      {referenceCandidate &&
+        createPortal(
+          <ReferenceImageUploadSheet
+            lang={lang}
+            candidate={referenceCandidate}
+            state={referenceState(referenceCandidate.itemKey)}
+            onChooseAnother={() => chooseReferenceImage(referenceCandidate)}
+            onConfirm={confirmReferenceImage}
+            onClose={closeReferenceUpload}
+          />,
+          document.body
+        )}
     </main>
   );
 }
@@ -1553,7 +1808,8 @@ function ClientOrderDashboard({
   onSubmitAnswers,
   onNewOrder,
   onBrowseFurniture,
-  onMessageProject
+  onMessageProject,
+  onReferenceImageUpload
 }) {
   const [projectPageKey, setProjectPageKey] = useState("");
   const [deepLinkTrackingId, setDeepLinkTrackingId] = useState("");
@@ -1663,6 +1919,7 @@ function ClientOrderDashboard({
           url.searchParams.delete("tracking");
           window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
         }}
+        onReferenceImageUpload={onReferenceImageUpload}
       />
     );
   }

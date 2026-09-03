@@ -10,6 +10,7 @@ import { buildEmailAttachmentsFromSupabase, enrichRfqContextFromSupabase } from 
 import { createQuoteAnalysis } from "./lib/quoteAnalyzer.mjs";
 import { createOperationsPlan } from "./lib/operationsAutomation.mjs";
 import { reanalyzeIntakeClarifications } from "./lib/intakeClarificationReanalysis.mjs";
+import { attachIntakeItemReference } from "./lib/intakeItemReference.mjs";
 import { changeProjectLifecycle } from "./lib/projectLifecycle.mjs";
 import {
   analyzeProductionProject,
@@ -130,6 +131,9 @@ const server = http.createServer(async (req, res) => {
           jobId: body.jobId,
           answers: body.answers
         });
+      } else if (body.action === "attach_intake_item_reference") {
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        result = await attachIntakeItemReference({ supabase, user, body });
       } else if (body.action === "review_production_evidence") {
         const { supabase, user } = await requireCraftonStaff(req);
         result = await reviewSupplierProductionEvidence({ supabase, user, body });

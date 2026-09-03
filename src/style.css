@@ -18560,6 +18560,115 @@ select:focus,
   height: 60px;
 }
 
+.cho-reference-file-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control {
+  position: relative;
+  display: grid;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
+  place-items: center;
+  padding: 0;
+  overflow: hidden;
+  color: var(--cho-stone);
+  cursor: pointer;
+  background: var(--cho-placeholder);
+  border: 1px solid var(--cho-line);
+  border-radius: 8px;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    background-color 180ms ease;
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control.is-empty {
+  align-content: center;
+  gap: 5px;
+  background: rgba(239, 231, 214, 0.58);
+  border-style: dashed;
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control > i {
+  font-size: 15px;
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control > span {
+  z-index: 1;
+  color: inherit;
+  font:
+    600 7px/1.05 "JetBrains Mono",
+    monospace;
+  letter-spacing: 0.35px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control.has-image > span {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  left: 3px;
+  display: grid;
+  min-height: 18px;
+  place-items: center;
+  color: var(--cho-paper);
+  background: rgba(74, 53, 37, 0.9);
+  border-radius: 5px;
+  opacity: 0;
+  transform: translateY(3px);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  object-fit: cover;
+  background: var(--cho-placeholder);
+  border-radius: 0;
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control:hover,
+.cho-project-line-items .cho-project-item .cho-item-reference-control:focus-visible {
+  color: var(--cho-walnut);
+  background: var(--cho-paper);
+  border-color: var(--cho-walnut);
+  outline: 3px solid rgba(74, 53, 37, 0.1);
+  outline-offset: 2px;
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control.has-image:hover > span,
+.cho-project-line-items .cho-project-item .cho-item-reference-control.has-image:focus-visible > span,
+.cho-project-line-items .cho-project-item .cho-item-reference-control.status-uploading > span,
+.cho-project-line-items .cho-project-item .cho-item-reference-control.status-queued > span,
+.cho-project-line-items .cho-project-item .cho-item-reference-control.status-error > span {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control.status-error {
+  color: #8b4935;
+  background: #f5e9df;
+  border-color: rgba(139, 73, 53, 0.42);
+}
+
+.cho-project-line-items .cho-project-item .cho-item-reference-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
 .cho-project-line-items .cho-project-table-row strong {
   font-size: 13px;
 }
@@ -18859,6 +18968,119 @@ select:focus,
 
 .cho-project-action-sheet-footer .cho-client-button {
   width: 100%;
+}
+
+.cho-reference-upload-sheet {
+  width: min(500px, 100%);
+}
+
+.cho-reference-upload-heading {
+  padding: 26px 0 22px;
+  border-bottom: 1px solid var(--cho-line);
+}
+
+.cho-reference-upload-heading > span,
+.cho-reference-upload-facts dt {
+  display: block;
+  color: var(--cho-stone);
+  font:
+    500 8.5px/1.3 "JetBrains Mono",
+    monospace;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.cho-reference-upload-heading h2 {
+  margin: 8px 0 0;
+  font-family: "Fraunces", "Noto Serif SC", "Songti SC", serif;
+  font-size: clamp(28px, 4vw, 38px);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.08;
+}
+
+.cho-reference-upload-heading p {
+  margin: 10px 0 0;
+  color: var(--cho-body);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cho-reference-upload-preview {
+  position: relative;
+  display: grid;
+  min-height: 260px;
+  margin-top: 22px;
+  overflow: hidden;
+  place-items: center;
+  background: var(--cho-cream);
+  border: 1px solid var(--cho-line);
+  border-radius: 12px;
+}
+
+.cho-reference-upload-preview img {
+  display: block;
+  width: 100%;
+  max-height: 390px;
+  object-fit: contain;
+}
+
+.cho-reference-upload-preview > span {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 7px 10px;
+  color: var(--cho-paper);
+  background: rgba(74, 53, 37, 0.92);
+  border-radius: 999px;
+  font:
+    600 8px/1 "JetBrains Mono",
+    monospace;
+  letter-spacing: 0.65px;
+}
+
+.cho-reference-upload-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(120px, 0.6fr);
+  margin: 16px 0 0;
+  border: 1px solid var(--cho-line);
+  border-radius: 10px;
+}
+
+.cho-reference-upload-facts > div {
+  min-width: 0;
+  padding: 13px 14px;
+}
+
+.cho-reference-upload-facts > div + div {
+  border-left: 1px solid var(--cho-line);
+}
+
+.cho-reference-upload-facts dd {
+  margin: 7px 0 0;
+  color: var(--cho-ink);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.cho-reference-upload-note {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+  padding: 13px 14px;
+  color: var(--cho-body);
+  background: rgba(239, 231, 214, 0.58);
+  border-radius: 9px;
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.cho-reference-upload-note i {
+  margin-top: 2px;
+  color: var(--cho-walnut);
 }
 
 .cho-project-item-copy {
@@ -19271,6 +19493,12 @@ select:focus,
     grid-template-columns: 104px minmax(0, 1fr);
   }
 
+  .cho-project-line-items .cho-project-item .cho-item-reference-control {
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
+  }
+
   .cho-project-row-action > button {
     width: fit-content;
     min-height: 44px;
@@ -19318,6 +19546,19 @@ select:focus,
   }
 
   .cho-item-tracking-facts > div + div {
+    border-top: 1px solid var(--cho-line);
+    border-left: 0;
+  }
+
+  .cho-reference-upload-preview {
+    min-height: 210px;
+  }
+
+  .cho-reference-upload-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .cho-reference-upload-facts > div + div {
     border-top: 1px solid var(--cho-line);
     border-left: 0;
   }

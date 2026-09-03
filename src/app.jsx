@@ -96,6 +96,8 @@ const INTAKE_UPLOAD_TIMEOUT_MS = 45000;
 const INTAKE_DB_TIMEOUT_MS = 30000;
 const INTAKE_TUS_THRESHOLD_BYTES = 6 * 1024 * 1024;
 const INTAKE_MAX_FILE_BYTES = 250 * 1024 * 1024;
+const ITEM_REFERENCE_MAX_FILE_BYTES = 12 * 1024 * 1024;
+const ITEM_REFERENCE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const ENV_SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || "").trim();
 const ENV_SUPABASE_ANON_KEY = (
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
@@ -657,6 +659,7 @@ const normalizeReviewJob = (job = {}) => {
       currency: item.currency || result.currency || project.currency || "USD",
       notesCn: item.notes_cn || item.notesCn || "",
       notesEn: item.notes_en || item.notesEn || item.note || "",
+      itemRef: item.item_ref || item.itemRef || "",
       imageUrl: item.image_url || item.imageUrl || item.preview_url || "",
       technicalDrawing: normalizeTechnicalDrawing(item)
     })),
@@ -1805,6 +1808,92 @@ function App() {
 
     if (fileError) throw fileError;
     return fileRow;
+  };
+
+  const uploadItemReferenceImage = async ({ jobId, itemIndex, itemRef, sku, file }) => {
+    const context = await getPortalSupabaseContext();
+    if (!context) throw new Error("A signed-in account is required to add an item reference image.");
+    if (!file || !Number.isInteger(Number(itemIndex)) || Number(itemIndex) < 0) {
+      throw new Error("Choose a furniture item and product image first.");
+    }
+    if (Number(file.size || 0) > ITEM_REFERENCE_MAX_FILE_BYTES) {
+      throw new Error("Use a JPG, PNG or WebP image no larger than 12MB.");
+    }
+
+    const extension = String(file.name || "")
+      .split(".")
+      .pop()
+      .toLowerCase();
+    const inferredMimeType =
+      file.type || ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" }[extension] ?? "");
+    if (!ITEM_REFERENCE_MIME_TYPES.has(inferredMimeType)) {
+      throw new Error("Use a JPG, PNG or WebP product image.");
+    }
+
+    const { client, supabaseUser } = context;
+    const safeName = String(file.name || `reference.${extension || "jpg"}`)
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .slice(-100);
+    const storagePath = `${supabaseUser.id}/item-references/${jobId}/${Number(itemIndex) + 1}-${Date.now()}-${safeName}`;
+    let uploaded = false;
+    let linked = false;
+
+    try {
+      const uploadResult = await withTimeout(
+        client.storage.from("intake-files").upload(storagePath, file, {
+          contentType: inferredMimeType,
+          cacheControl: "3600",
+          upsert: false
+        }),
+        INTAKE_UPLOAD_TIMEOUT_MS,
+        "The reference image upload timed out. Please try again."
+      );
+      if (uploadResult.error) throw uploadResult.error;
+      uploaded = true;
+
+      const { data: sessionData, error: sessionError } = await client.auth.getSession();
+      if (sessionError) throw sessionError;
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) throw new Error("Your sign-in session expired. Please sign in again.");
+
+      const response = await withTimeout(
+        fetch(AI_SUPPORT_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            action: "attach_intake_item_reference",
+            jobId,
+            itemIndex: Number(itemIndex),
+            itemRef: itemRef || "",
+            sku: sku || "",
+            storageBucket: "intake-files",
+            storagePath
+          })
+        }),
+        INTAKE_DB_TIMEOUT_MS,
+        "The item reference could not be linked in time. Please try again."
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "The item reference could not be saved.");
+      linked = true;
+
+      await loadPrequoteWorkspace({ background: true }).catch((reloadError) => {
+        console.warn("The item reference was saved, but the project view could not be refreshed:", reloadError);
+      });
+      return payload;
+    } catch (error) {
+      if (uploaded && !linked) {
+        client.storage
+          .from("intake-files")
+          .remove([storagePath])
+          .catch(() => {});
+      }
+      throw error;
+    }
   };
 
   const ensurePortalIntakeProject = async ({ client, supabaseUser, projectName, destination, structuredBrief }) => {
@@ -7676,6 +7765,7 @@ function App() {
           const sourceJob = jobs.find((job) => String(job.id) === String(jobId));
           return sourceJob ? handleSubmitClientAnswers(sourceJob) : Promise.resolve();
         }}
+        onReferenceImageUpload={uploadItemReferenceImage}
       />
     );
   };
