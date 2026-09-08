@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
-import sharp from "sharp";
+import { attachRenderedItemCrops } from "./lib/intakeProductImages.mjs";
+import { runRiskBasedReview } from "./lib/intakeRiskReview.mjs";
+import { createReviewSource } from "./lib/intakeReviewSource.mjs";
 
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { parseIntakeBrief } from "./lib/intakeProcessor.mjs";
@@ -82,6 +83,14 @@ async function claimQueuedJobs() {
   return claimed;
 }
 
+async function updateReviewProgress(jobId) {
+  const { error } = await supabase
+    .from("intake_jobs")
+    .update({ locked_at: new Date().toISOString(), step: "risk_evidence_review" })
+    .eq("id", jobId);
+  if (error) throw error;
+}
+
 async function processJob(job) {
   const file = Array.isArray(job.intake_files) ? job.intake_files[0] : job.intake_files;
   const userId = getJobUserId(job);
@@ -98,17 +107,36 @@ async function processJob(job) {
   if (getIntakeSourceKind(file) === "pdf") {
     result = await parsePdfWithGeminiDocument({ job, file, userId });
   } else {
-    const { sourceText, sourceMedia, extractedImages, mediaIssue } = await readUploadedSource(file);
-    result = await parseIntakeBrief({ job, file, sourceText, sourceMedia, mediaIssue });
-    result = await attachExtractedProductImages({ job, result, images: extractedImages, userId });
-    if (sourceMedia?.pages) {
-      result = await attachRenderedItemCrops({
-        job,
+    const source = await readUploadedSource(file);
+    result = await parseIntakeBrief({ job, file, ...source });
+    result = await attachExtractedProductImages({ job, result, images: source.extractedImages, userId });
+    if (source.sourceKind === "image" && source.sourceMedia?.dataBase64 && result.items?.length === 1) {
+      result.items[0] = {
+        ...result.items[0],
+        image_storage_bucket: file.storage_bucket,
+        image_storage_path: file.storage_path,
+        image_mapping_status: "uploaded_original"
+      };
+    }
+    const reviewSource = await createReviewSource({ source, file, job });
+    try {
+      result = await runRiskBasedReview({
         result,
-        userId,
-        getRenderedPage: async (pageNumber) =>
-          sourceMedia.pages.find((page) => Number(page.pageNumber) === Number(pageNumber)) || null
+        context: reviewSource.context,
+        readReviewUnits: reviewSource.readReviewUnits,
+        onProgress: () => updateReviewProgress(job.id),
+        attachImages: (parsed) =>
+          attachRenderedItemCrops({
+            storage: supabase.storage,
+            job,
+            result: parsed,
+            userId,
+            getRenderedPage: reviewSource.getRenderedPage,
+            onProgress: () => updateReviewProgress(job.id)
+          })
       });
+    } finally {
+      await reviewSource.destroy();
     }
   }
   result = await bindResultToOwnerProfile(result, userId);
@@ -250,18 +278,32 @@ async function parsePdfWithGeminiDocument({ job, file, userId }) {
       };
     }
 
-    result = await attachRenderedItemCrops({
-      job,
+    const reviewSource = await createReviewSource({
+      reader,
+      source: {
+        sourceKind: "pdf",
+        sourceText: source.sourceText,
+        sourceMedia,
+        sourceBuffer: buffer,
+        mediaIssue
+      },
+      file,
+      job
+    });
+    result = await runRiskBasedReview({
       result,
-      userId,
-      getRenderedPage: async (pageNumber) => {
-        const rendered = await reader.renderPages([pageNumber], {
-          desiredWidth: pdfVisualFallbackRenderWidth,
-          maxBytes: maxVisionFileBytes,
-          sourceKind: "pdf_pages"
-        });
-        return rendered?.pages?.[0] || null;
-      }
+      context: reviewSource.context,
+      readReviewUnits: reviewSource.readReviewUnits,
+      onProgress: () => updateReviewProgress(job.id),
+      attachImages: (parsed) =>
+        attachRenderedItemCrops({
+          storage: supabase.storage,
+          job,
+          result: parsed,
+          userId,
+          getRenderedPage: reviewSource.getRenderedPage,
+          onProgress: () => updateReviewProgress(job.id)
+        })
     });
 
     const qualityPassed =
@@ -274,7 +316,7 @@ async function parsePdfWithGeminiDocument({ job, file, userId }) {
       processing: {
         version: 3,
         source_type: "pdf",
-        mode: "gemini_whole_document",
+        mode: "risk_based_evidence_review",
         state: qualityPassed ? "completed" : "manual_review_required",
         total_pages: reader.totalPages,
         completed_pages: pages,
@@ -609,7 +651,7 @@ async function readUploadedSource(file) {
 
   try {
     const buffer = Buffer.from(await data.arrayBuffer());
-    return await extractIntakeSource({
+    const extracted = await extractIntakeSource({
       file,
       buffer,
       maxTextChars: maxReadableFileChars,
@@ -617,6 +659,7 @@ async function readUploadedSource(file) {
       maxDocumentBytes: maxDocumentFileBytes,
       includeOfficeVisual: Boolean(process.env.GEMINI_API_KEY)
     });
+    return { ...extracted, sourceBuffer: buffer };
   } catch (err) {
     console.warn(`Could not read intake file ${file.id || file.storage_path}:`, err.message || err);
     return { ...empty, mediaIssue: sourceKind === "image" ? "image_read_failed" : "document_parse_failed" };
@@ -712,123 +755,6 @@ async function attachExtractedProductImages({ job, result, images = [], userId }
       .filter(Boolean)
       .join("\n")
   };
-}
-
-async function attachRenderedItemCrops({ job, result, userId, getRenderedPage }) {
-  if (!Array.isArray(result.items) || !result.items.length || typeof getRenderedPage !== "function") return result;
-
-  const pageCache = new Map();
-  const cropOwners = new Map();
-  const items = [];
-  let savedCropCount = 0;
-
-  for (const item of result.items) {
-    if (item.image_storage_path || !item.photo_bbox || Number(item.photo_page || 0) <= 0) {
-      items.push(item);
-      continue;
-    }
-
-    const pageNumber = Number(item.photo_page);
-    if (!pageCache.has(pageNumber)) pageCache.set(pageNumber, await getRenderedPage(pageNumber));
-    const renderedPage = pageCache.get(pageNumber);
-    if (!renderedPage?.dataBase64) {
-      items.push(item);
-      continue;
-    }
-
-    try {
-      const pageBuffer = Buffer.from(renderedPage.dataBase64, "base64");
-      const metadata = await sharp(pageBuffer).metadata();
-      const crop = resolvePixelCrop(item.photo_bbox, metadata.width, metadata.height);
-      if (!crop) {
-        items.push(item);
-        continue;
-      }
-
-      const cropped = await sharp(pageBuffer).extract(crop).png({ compressionLevel: 9 }).toBuffer();
-      const hash = createHash("sha256").update(cropped).digest("hex");
-      const owner = cropOwners.get(hash);
-      const itemRef = String(item.item_ref || item.item_type_en || item.item_type_cn || "item");
-      if (owner && owner !== itemRef) {
-        items.push({
-          ...item,
-          image_mapping_status: "duplicate_crop_rejected"
-        });
-        continue;
-      }
-      cropOwners.set(hash, itemRef);
-
-      const safeItemRef =
-        itemRef
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .slice(0, 48) || "item";
-      const storagePath = `${userId || "unowned"}/derived/${job.id}/item-${safeItemRef}-page-${String(pageNumber).padStart(4, "0")}-${hash.slice(0, 10)}.png`;
-      const { error } = await supabase.storage.from("intake-files").upload(storagePath, cropped, {
-        contentType: "image/png",
-        cacheControl: "3600",
-        upsert: true
-      });
-      if (error) throw error;
-
-      savedCropCount += 1;
-      items.push({
-        ...item,
-        image_storage_bucket: "intake-files",
-        image_storage_path: storagePath,
-        image_mime_type: "image/png",
-        image_width: crop.width,
-        image_height: crop.height,
-        image_sha256: hash,
-        image_mapping_status: "gemini_bbox_verified",
-        image_storage_paths: [
-          {
-            storage_bucket: "intake-files",
-            storage_path: storagePath,
-            mime_type: "image/png",
-            width: crop.width,
-            height: crop.height,
-            sha256: hash
-          }
-        ]
-      });
-    } catch (error) {
-      console.warn(`Could not crop Gemini-mapped product photo for intake job ${job.id}:`, error.message || error);
-      items.push({ ...item, image_mapping_status: "crop_failed" });
-    }
-  }
-
-  return {
-    ...result,
-    items,
-    source_notes: [
-      result.source_notes,
-      `Saved ${savedCropCount} Gemini-mapped product photo crop(s); items without a verified unique crop remain image-free.`
-    ]
-      .filter(Boolean)
-      .join("\n")
-  };
-}
-
-function resolvePixelCrop(bbox, pageWidth, pageHeight) {
-  const width = Math.max(0, Number(pageWidth || 0));
-  const height = Math.max(0, Number(pageHeight || 0));
-  if (!width || !height) return null;
-  const xMin = Math.max(0, Math.min(1000, Number(bbox.x_min || 0)));
-  const yMin = Math.max(0, Math.min(1000, Number(bbox.y_min || 0)));
-  const xMax = Math.max(0, Math.min(1000, Number(bbox.x_max || 0)));
-  const yMax = Math.max(0, Math.min(1000, Number(bbox.y_max || 0)));
-  if (xMax <= xMin || yMax <= yMin) return null;
-
-  const left = Math.max(0, Math.floor((xMin / 1000) * width));
-  const top = Math.max(0, Math.floor((yMin / 1000) * height));
-  const right = Math.min(width, Math.ceil((xMax / 1000) * width));
-  const bottom = Math.min(height, Math.ceil((yMax / 1000) * height));
-  const cropWidth = right - left;
-  const cropHeight = bottom - top;
-  if (cropWidth < 48 || cropHeight < 48) return null;
-  return { left, top, width: cropWidth, height: cropHeight };
 }
 
 function imageFileExtension(mimeType) {

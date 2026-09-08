@@ -1,4 +1,17 @@
 import test from "node:test";
+
+test("internal evidence routing suppresses proposed customer questions even without quality status", () => {
+  const completion = prepareInitialClientCompletion({
+    result: {
+      items: [{ item_ref: "CH01" }],
+      questions: ["Please provide a product image."],
+      review_routing: { route: "internal_review" }
+    }
+  });
+  assert.equal(completion.clientItems.length, 0);
+  assert.equal(completion.readyForApproval, false);
+  assert.equal(completion.jobState.step, "ai_intake_exception_review");
+});
 import assert from "node:assert/strict";
 import { prepareInitialClientCompletion } from "./intakeClientCompletion.mjs";
 
@@ -53,4 +66,27 @@ test("keeps unreadable-file failures as admin exceptions", () => {
   assert.equal(prepared.adminExceptions.length, 1);
   assert.equal(prepared.jobState.step, "ai_intake_exception_review");
   assert.equal(prepared.readyForApproval, false);
+});
+
+test("a failed quality gate cannot become ready for approval when the model supplied no questions", () => {
+  const result = prepareInitialClientCompletion({
+    result: { items: [{ item_type_en: "Sofa" }], questions: [], quality_gate: { status: "manual_review_required" } }
+  });
+  assert.equal(result.readyForApproval, false);
+  assert.equal(result.adminExceptions.length, 1);
+  assert.equal(result.clientItems.length, 0);
+});
+
+test("a question listing several product codes is not incorrectly attached only to the lamp", () => {
+  const result = prepareInitialClientCompletion({
+    result: {
+      items: [
+        { item_ref: "PT03", item_type_en: "Armchair" },
+        { item_ref: "PT12", item_type_en: "Ceiling lamp shade" }
+      ],
+      questions: ["Please confirm dimensions for PT03 (Armchair) and PT12 (Ceiling lamp shade)."]
+    }
+  });
+  assert.equal(result.clientItems[0].scope, "project");
+  assert.equal(result.clientItems[0].item_index, null);
 });

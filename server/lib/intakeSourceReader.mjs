@@ -60,16 +60,19 @@ export async function extractIntakeSource({
     let sourceText = "";
     let sourceMedia = null;
     let extractedImages = [];
+    let sourceMetadata = {};
     if (kind === "text") sourceText = bytes.toString("utf8").replace(/\0/g, "");
     if (kind === "spreadsheet") {
       const spreadsheetSource = await extractSpreadsheetSource(bytes);
       sourceText = spreadsheetSource.text;
       extractedImages = spreadsheetSource.images;
+      sourceMetadata = spreadsheetSource.metadata || {};
     }
     if (kind === "legacy_spreadsheet") {
       const spreadsheetSource = await extractLegacySpreadsheetSource(bytes);
       sourceText = spreadsheetSource.text;
       extractedImages = spreadsheetSource.images;
+      sourceMetadata = spreadsheetSource.metadata || {};
     }
     if (kind === "pdf") {
       const pdfSource = await extractPdfSource(bytes);
@@ -91,13 +94,16 @@ export async function extractIntakeSource({
       }
     }
 
-    const normalized = normalizeExtractedText(sourceText).slice(0, maxTextChars);
+    const fullText = normalizeExtractedText(sourceText);
+    const normalized = fullText.slice(0, maxTextChars);
+    sourceMetadata.textTruncated = fullText.length > maxTextChars;
     return normalized || extractedImages.length || sourceMedia
       ? {
           ...empty,
           sourceText: normalized,
           sourceMedia,
           extractedImages,
+          sourceMetadata,
           mediaIssue: normalized ? "" : `${kind}_contained_no_readable_text`
         }
       : { ...empty, mediaIssue: `${kind}_contained_no_readable_text` };
@@ -114,7 +120,10 @@ async function extractSpreadsheetSource(buffer) {
 
   const output = [];
   const extractedImages = [];
+  let mergedCellCount = 0,
+    formulaCount = 0;
   for (const worksheet of workbook.worksheets) {
+    mergedCellCount += worksheet.model.merges?.length || 0;
     output.push(`WORKSHEET: ${worksheet.name}`);
     const worksheetImages = collectWorksheetImages({ workbook, worksheet, startIndex: extractedImages.length });
     extractedImages.push(...worksheetImages);
@@ -126,6 +135,10 @@ async function extractSpreadsheetSource(buffer) {
     }
 
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      row.eachCell((cell) => {
+        if (cell.value && typeof cell.value === "object" && (cell.value.formula || cell.value.sharedFormula))
+          formulaCount++;
+      });
       const values = row.values
         .slice(1)
         .map(normalizeSpreadsheetCell)
@@ -139,7 +152,11 @@ async function extractSpreadsheetSource(buffer) {
       output.push(formatSpreadsheetImageMarker(image));
     }
   }
-  return { text: output.join("\n"), images: extractedImages };
+  return {
+    text: output.join("\n"),
+    images: extractedImages,
+    metadata: { worksheetCount: workbook.worksheets.length, mergedCellCount, formulaCount }
+  };
 }
 
 async function extractLegacySpreadsheetSource(buffer) {
@@ -378,9 +395,10 @@ export async function openPdfBatchReader({
           String(page.text || "")
         ])
       );
-      const sourceText = normalizeExtractedText(
+      const fullSourceText = normalizeExtractedText(
         selectedPages.map((page) => `SOURCE PAGE ${page}\n${textPages.get(page) || ""}`).join("\n\n")
-      ).slice(0, maxTextChars);
+      );
+      const sourceText = fullSourceText.slice(0, maxTextChars);
       const images = (imageResult.pages || []).flatMap((page, index) =>
         selectPdfProductImages(page.images || []).map((image, imageIndex) => ({
           page: Number(page.pageNumber || selectedPages[index] || index + 1),
@@ -418,7 +436,14 @@ export async function openPdfBatchReader({
         }
       }
 
-      return { sourceText, sourceMedia, images, mediaIssue, visualFallbackPages };
+      return {
+        sourceText,
+        sourceMedia,
+        images,
+        mediaIssue,
+        visualFallbackPages,
+        sourceMetadata: { textTruncated: fullSourceText.length > maxTextChars }
+      };
     },
     renderPages,
     async destroy() {
@@ -438,7 +463,7 @@ async function renderOfficeDocumentForVision({ buffer, kind, maxVisionBytes }) {
   }
 }
 
-async function convertOfficeDocumentToPdf(buffer, kind) {
+export async function convertOfficeDocumentToPdf(buffer, kind) {
   const [{ mkdtemp, readFile, rm, writeFile }, { tmpdir }, { join }, { execFile }] = await Promise.all([
     import("node:fs/promises"),
     import("node:os"),

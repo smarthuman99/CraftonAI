@@ -9,8 +9,8 @@ The intake worker processes rows from `intake_jobs`:
 1. Customer uploads a source file to Supabase Storage bucket `intake-files`.
 2. Frontend inserts an `intake_files` row and an `intake_jobs` row.
 3. `server/intake-worker.mjs` claims queued jobs.
-4. PDF uploads are opened through a signed Storage URL and parsed in configurable four-page batches. Text and one primary product image per page are extracted, and each successful batch is checkpointed in `intake_jobs.result_json.processing`.
-5. If the worker restarts or a model call fails, the next attempt resumes from the last completed PDF batch. Jobs left in `processing` are reclaimed after the configured stale timeout.
+4. Every supported upload (PDF, Excel, Word, images and text) passes the program evidence gate after the initial extraction. Product, quantity, dimensions, material, image and option status are checked for traceable source evidence. Low-risk complete records skip the second AI call. Multiple products/options, complex tables, missing evidence, quantity rollups and ambiguous sources automatically trigger targeted Gemini review of existing items. Reviews select relevant pages when possible; missing information or cross-page reconciliation requires a complete source search.
+5. After targeted review and product image storage, the evidence gate runs again. Unresolved evidence, source conflicts, crop failures or unavailable review services route to internal review. First-pass client questions are retained as internal proposals; only gaps checked across the complete source can become client questions, and only after other risks are resolved. Evidence coverage measures traceability, not accuracy. Results are retained in `result_json.evidence_gate`, `risk_review`, `review_routing` and item evidence/observations. The admin intake workspace displays coverage and review findings.
 6. XLSX/XLSM files retain worksheet rows and supported embedded PNG/JPEG/WebP product images. Image anchors are written beside their worksheet row so the structured item can link back to the correct image.
 7. Legacy XLS files are converted to XLSX with headless LibreOffice when available, preserving both cells and images. Calamine provides a cell-only XLS fallback when conversion is unavailable.
 8. For JPG/PNG/WebP uploads, the worker downloads the private Storage object and sends the image bytes plus the customer brief to Gemini for structured visual understanding. Text, CSV, XLSX, and DOCX files continue through their structured readers.
@@ -18,6 +18,10 @@ The intake worker processes rows from `intake_jobs`:
 10. Visual fields (style, color, finish, visible construction features, confidence, OCR text, and limitations) are kept in `intake_jobs.result_json`; a concise evidence summary is also written to specification notes for Cho.
 11. Quantity, dimensions, prices, dates, materials, and fire compliance are never treated as proven by appearance alone. Missing production-critical details remain clarification questions.
 12. The job moves to `needs_review`, so Cho can approve the generated draft before RFQ.
+
+Product images prefer labelled isolated photos over thumbnails and exclude placeholders/room scenes. Scheme alternatives retain separate references. Small crops retry at higher source resolution (up to 8000px). Office visual review requires headless LibreOffice; when visual evidence cannot be verified, the result remains internal rather than silently passing. Review calls use at most three source units per batch. Worker progress refreshes the job timestamp; a reclaimed/restarted job repeats review rather than resuming checkpoints. The legacy full-PDF review and checkpoint helpers are no longer the active worker path.
+
+The risk flow is automatic for new processing jobs. Previously processed jobs are not silently reprocessed. Internal review does not mean automatic approval, and customer replies cannot clear an unresolved internal evidence gate.
 
 ## Setup
 

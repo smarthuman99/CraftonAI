@@ -1,6 +1,9 @@
 const CLIENT_COMPLETION_VERSION = 1;
 
-const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+const clean = (value) =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const uniqueQuestions = (values = []) => {
   const seen = new Set();
@@ -28,6 +31,16 @@ const normalizeIdentity = (value) =>
 
 const resolveQuestionScope = (question, items = []) => {
   const normalizedQuestion = normalizeIdentity(question);
+  const references = items
+    .map((item, index) => ({ item, index, ref: normalizeIdentity(item.item_ref) }))
+    .filter(({ ref }) => ref && ` ${normalizedQuestion} `.includes(` ${ref} `));
+  if (references.length > 1) return { scope: "project", itemId: "", itemIndex: null };
+  if (references.length === 1)
+    return {
+      scope: "item",
+      itemId: clean(references[0].item.id || references[0].item.sku || references[0].item.item_ref),
+      itemIndex: references[0].index
+    };
   let bestMatch = null;
 
   items.forEach((item, index) => {
@@ -60,9 +73,18 @@ const classifyQuestionOwner = (question) => {
 export function prepareInitialClientCompletion({ result = {}, jobId = "job", createdAt = new Date().toISOString() }) {
   const normalizedResult = result && typeof result === "object" ? result : {};
   const items = Array.isArray(normalizedResult.items) ? normalizedResult.items : [];
+  const evidenceBlocked =
+    normalizedResult.review_routing?.route === "internal_review" ||
+    normalizedResult.evidence_gate?.final?.status === "internal_review_required";
   const questions = uniqueQuestions([
     ...(Array.isArray(normalizedResult.open_questions) ? normalizedResult.open_questions : []),
-    ...(Array.isArray(normalizedResult.questions) ? normalizedResult.questions : [])
+    ...(Array.isArray(normalizedResult.questions) ? normalizedResult.questions : []),
+    ...((evidenceBlocked || normalizedResult.quality_gate?.status === "manual_review_required") &&
+    ![...(normalizedResult.open_questions || []), ...(normalizedResult.questions || [])].some((q) =>
+      INTERNAL_EXCEPTION_PATTERN.test(q)
+    )
+      ? ["Crafton must review the failed document quality checks before approval."]
+      : [])
   ]);
   const requestId = `CC-${clean(jobId) || "job"}`;
   const issueRegistry = questions.map((question, index) => {
@@ -70,7 +92,7 @@ export function prepareInitialClientCompletion({ result = {}, jobId = "job", cre
     return {
       id: `${requestId}-Q${String(index + 1).padStart(2, "0")}`,
       question,
-      owner: classifyQuestionOwner(question),
+      owner: evidenceBlocked ? "admin_exception" : classifyQuestionOwner(question),
       scope: scope.scope,
       item_id: scope.itemId,
       item_index: scope.itemIndex,

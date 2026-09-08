@@ -59,6 +59,27 @@ const baseResult = () => ({
   }
 });
 
+test("customer replies cannot clear an unresolved source evidence gate", () => {
+  const result = baseResult();
+  result.review_routing = { route: "internal_review" };
+  const request = normalizeClarificationRequest(result, { id: "JOB-1" });
+  const applied = applyClarificationAnalysis({
+    result,
+    request,
+    answeredQuestions: request.items.map((item) => ({ ...item, answer: "Confirmed" })),
+    modelResult: {
+      resolved_question_ids: request.items.map((i) => i.id),
+      remaining_questions: [],
+      new_questions: [],
+      summary_en: "All ready"
+    }
+  });
+  assert.equal(applied.workflow.bom_draft_ready, false);
+  assert.equal(applied.workflow.status, "manual_review_required");
+  assert.equal(applied.workflow.continue_client_clarification, false);
+  assert.match(applied.workflow.summary_en, /internal review/);
+});
+
 test("applies client-supported patches, replaces resolved questions and preserves drawing metadata", () => {
   const result = baseResult();
   const request = normalizeClarificationRequest(result, { id: "JOB-1" });

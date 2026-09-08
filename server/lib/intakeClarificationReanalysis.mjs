@@ -227,14 +227,21 @@ export function applyClarificationAnalysis({
   const remainingQuestions = uniqueStrings([...remainingOriginal, ...modelRemaining, ...deterministicQuestions]);
   const remainingQuestionKeys = new Set(remainingQuestions.map(normalizeText));
   const remainingRequestItems = request.items.filter((item) => remainingQuestionKeys.has(normalizeText(item.question)));
-  const readyForApproval = remainingQuestions.length === 0 && nextItems.length > 0;
+  const evidenceBlocked =
+    original.review_routing?.route === "internal_review" ||
+    original.evidence_gate?.final?.status === "internal_review_required";
+  const readyForApproval = remainingQuestions.length === 0 && nextItems.length > 0 && !evidenceBlocked;
   const changeSummary = uniqueStrings([
     ...(Array.isArray(analysis.change_summary) ? analysis.change_summary : []),
     ...appliedChanges
   ]).slice(0, 30);
   const workflow = {
     version: 2,
-    status: readyForApproval ? "ready_for_approval" : "clarification_required",
+    status: evidenceBlocked
+      ? "manual_review_required"
+      : readyForApproval
+        ? "ready_for_approval"
+        : "clarification_required",
     request_id: request.id,
     analyzed_at: analyzedAt,
     provider: "deepseek",
@@ -245,20 +252,22 @@ export function applyClarificationAnalysis({
     answered_question_count: answeredQuestions.filter((item) => item.answer).length,
     resolved_question_count: resolvedIds.size,
     remaining_question_count: remainingQuestions.length,
-    continue_client_clarification: remainingRequestItems.length > 0,
+    continue_client_clarification: !evidenceBlocked && remainingRequestItems.length > 0,
     confidence: boundedNumber(analysis.confidence, 0, 1),
     bom_draft_ready: readyForApproval,
     change_summary: changeSummary,
-    summary_en:
-      clean(analysis.summary_en) ||
-      (readyForApproval
-        ? "Client answers were incorporated and the updated intake draft is ready for Cho approval."
-        : `${remainingQuestions.length} clarification item(s) remain after AI re-analysis.`),
-    summary_cn:
-      clean(analysis.summary_cn) ||
-      (readyForApproval
-        ? "客户答案已更新到项目草稿，现可交由 Cho 审批。"
-        : `AI 重新分析后仍有 ${remainingQuestions.length} 项资料需要澄清。`)
+    summary_en: evidenceBlocked
+      ? "Client answers were saved. Unresolved source evidence still requires internal review."
+      : clean(analysis.summary_en) ||
+        (readyForApproval
+          ? "Client answers were incorporated and the updated intake draft is ready for Cho approval."
+          : `${remainingQuestions.length} clarification item(s) remain after AI re-analysis.`),
+    summary_cn: evidenceBlocked
+      ? "客户答案已保存，尚未解决的来源证据仍需内部审核。"
+      : clean(analysis.summary_cn) ||
+        (readyForApproval
+          ? "客户答案已更新到项目草稿，现可交由 Cho 审批。"
+          : `AI 重新分析后仍有 ${remainingQuestions.length} 项资料需要澄清。`)
   };
   const history = appendHistory(original.clarification_history, {
     request_id: request.id,
@@ -290,9 +299,9 @@ export function applyClarificationAnalysis({
     clarification_request: {
       ...request.raw,
       id: request.id,
-      status: remainingRequestItems.length ? "sent" : "analyzed",
-      questions: remainingRequestItems.map((item) => item.question),
-      items: remainingRequestItems,
+      status: evidenceBlocked ? "internal_review" : remainingRequestItems.length ? "sent" : "analyzed",
+      questions: evidenceBlocked ? [] : remainingRequestItems.map((item) => item.question),
+      items: evidenceBlocked ? [] : remainingRequestItems,
       answered_at: request.raw.answered_at || analyzedAt,
       analyzed_at: analyzedAt
     },

@@ -103,10 +103,16 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
       ? "Merge the same furniture item across schedule, specification, product-board, and floorplan pages using an explicit item code first, then name and location. Keep distinct scheduled rows distinct."
       : "",
     structuredDocument
+      ? "A mixed page can contain both floorplans and a furniture schedule: classify it as furniture_schedule and read its table. Cross-check summary quantities against per-room quantities multiplied by apartment counts; preserve optional/excluded items and report contradictions instead of silently choosing a total. Never invent a size variant merely because two rows have the same name."
+      : "",
+    structuredDocument
       ? "For each formal item return item_ref, all source_pages, one primary source_page, page_type, evidence_text copied from the customer document, and confidence."
       : "",
     structuredDocument
       ? "If a unique product photograph is visibly associated with the item, return photo_bbox as normalized 0-1000 coordinates {x_min,y_min,x_max,y_max} on photo_page. Use four zeros and photo_page=0 when no unique photo can be verified. Never reuse a generic page image as every item's product photo."
+      : "",
+    structuredDocument
+      ? "Search all showcase/specification/option pages for the largest clearly labelled isolated product image, rather than defaulting to a summary-table thumbnail. IMG TBC, IMAGE TBC, NO IMAGE, NO ARMCHAIR and other placeholder/omission boxes are not product photos. Keep Collection/scheme alternatives separate; do not mix their materials or shapes. A printed Crib 5 requirement is not evidence that a product is certified. Preserve partial printed dimensions without guessing missing height, depth or mattress thickness."
       : "",
     officeDocument
       ? "The readable source text preserves worksheet rows and EMBEDDED IMAGE N markers. Put that N in image_ref only when the marker belongs to the same furniture row; otherwise use image_ref=0."
@@ -128,6 +134,7 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
       ? "Do not ask the client to repair an AI extraction failure. Record unreadable or ambiguous source problems in visual_analysis.limitations for Crafton review."
       : "",
     "Return JSON matching the provided schema.",
+    "For every item include field_evidence for product, quantity, dimensions, material and optional status. Each record must contain the actual extracted value, exact source quote, source_page (SOURCE PAGE for PDF, worksheet index for spreadsheets, 1 for a single image/text), locator (worksheet/row/cell or paragraph), source_kind=text or visual, and bbox (0-1000 coordinates for visual evidence; zeros for text). Use an empty array for unsupported fields; never invent a quote or claim that a visual material estimate is printed evidence. Source quotes for numbers must include their label/context, not only the number.",
     `Exact JSON field contract (also follow this when native schema enforcement is unavailable): ${JSON.stringify(schema)}`,
     "",
     `Project name: ${job.project_name || ""}`,
@@ -262,6 +269,47 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
     enabled: structuredDocument
   });
   return addVisionSafetyQuestions(result, { job, file, sourceText, sourceMedia });
+}
+
+export async function requestGeminiDocumentReview({ prompt, sourceMedia, schema }) {
+  if (!process.env.GEMINI_API_KEY) throw new Error("Gemini document review is not configured.");
+  const model = process.env.GEMINI_VISION_MODEL || DEFAULT_GEMINI_VISION_MODEL;
+  const baseUrl = (process.env.GEMINI_BASE_URL || DEFAULT_GEMINI_BASE_URL).replace(/\/+$/, "");
+  const parts = buildGeminiGenerateContentParts(getSourceMediaParts(sourceMedia), { renderedPdf: true });
+  const contents = [
+    { role: "user", parts: [{ text: `${prompt}\nJSON contract: ${JSON.stringify(schema)}` }, ...parts] }
+  ];
+  let lastError;
+  for (const structured of [true, false]) {
+    try {
+      const data = await requestGeminiJson({
+        url: `${baseUrl}/models/${encodeURIComponent(model)}:generateContent`,
+        headers: { "x-goog-api-key": process.env.GEMINI_API_KEY, "Content-Type": "application/json" },
+        timeoutMs: positiveNumber(process.env.GEMINI_VISION_TIMEOUT_MS, DEFAULT_VISION_TIMEOUT_MS),
+        body: JSON.stringify({
+          contents,
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: positiveNumber(process.env.GEMINI_INTAKE_MAX_OUTPUT_TOKENS, 32768),
+            responseMimeType: "application/json",
+            ...(structured ? { responseJsonSchema: schema } : {})
+          }
+        })
+      });
+      const candidate = data.candidates?.[0];
+      if (candidate?.finishReason && candidate.finishReason !== "STOP") {
+        throw new Error(`Document review ended with ${candidate.finishReason}.`);
+      }
+      const result = JSON.parse(stripJsonFence(extractGeminiGenerateContentText(data)));
+      if (!result || !Array.isArray(result.items) || !Array.isArray(result.reviewed_pages)) {
+        throw new Error("Document review returned an incomplete contract.");
+      }
+      return result;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 async function requestGeminiJson({ url, headers, body, timeoutMs }) {
@@ -563,6 +611,17 @@ function normalizeItem(item, idx) {
     page_type: normalizePageType(item.page_type || item.pageType),
     evidence_text: cleanField(item.evidence_text) || cleanField(item.evidenceText),
     image_ref: Math.max(0, Math.trunc(Number(item.image_ref || item.imageRef || 0))),
+    field_evidence: (Array.isArray(item.field_evidence) ? item.field_evidence : [])
+      .filter((e) => e && typeof e === "object")
+      .map((e) => ({
+        field: cleanField(e.field),
+        value: cleanField(e.value),
+        quote: cleanField(e.quote),
+        source_page: Math.max(0, Math.trunc(Number(e.source_page || 0))),
+        locator: cleanField(e.locator),
+        source_kind: e.source_kind === "visual" ? "visual" : "text",
+        bbox: normalizePhotoBoundingBox(e.bbox)
+      })),
     photo_page: Math.max(0, Math.trunc(Number(item.photo_page || item.photoPage || 0))),
     photo_bbox: normalizePhotoBoundingBox(item.photo_bbox || item.photoBbox),
     style_cn: cleanField(item.style_cn) || cleanField(item.styleCn),
@@ -1156,7 +1215,8 @@ function intakeResultSchema({ includeVision = false } = {}) {
     "usage_location",
     "source_page",
     "notes_cn",
-    "notes_en"
+    "notes_en",
+    "field_evidence"
   ];
   const itemProperties = {
     item_type_cn: { type: "string" },
@@ -1171,6 +1231,30 @@ function intakeResultSchema({ includeVision = false } = {}) {
     source_page: { type: "integer", minimum: 0 },
     notes_cn: { type: "string" },
     notes_en: { type: "string" }
+  };
+  itemProperties.field_evidence = {
+    type: "array",
+    items: {
+      type: "object",
+      additionalProperties: false,
+      required: ["field", "value", "quote", "source_page", "locator", "source_kind", "bbox"],
+      properties: {
+        field: { type: "string", enum: ["product", "quantity", "dimensions", "material", "optional"] },
+        value: { type: "string" },
+        quote: { type: "string" },
+        source_page: { type: "integer", minimum: 0 },
+        locator: { type: "string" },
+        source_kind: { type: "string", enum: ["text", "visual"] },
+        bbox: {
+          type: "object",
+          additionalProperties: false,
+          required: ["x_min", "y_min", "x_max", "y_max"],
+          properties: Object.fromEntries(
+            ["x_min", "y_min", "x_max", "y_max"].map((key) => [key, { type: "integer", minimum: 0, maximum: 1000 }])
+          )
+        }
+      }
+    }
   };
 
   if (includeVision) {

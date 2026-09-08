@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { parseIntakeBrief } from "./intakeProcessor.mjs";
+import { parseIntakeBrief, requestGeminiDocumentReview } from "./intakeProcessor.mjs";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -17,6 +17,51 @@ afterEach(() => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+});
+
+test("detail review retries unsupported schema transport while preserving page images and exact contract", async () => {
+  process.env.GEMINI_API_KEY = "test-key";
+  process.env.GEMINI_BASE_URL = "https://gemini.test/v1beta";
+  const bodies = [];
+  globalThis.fetch = async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    if (bodies.length === 1) return new Response("Unsupported schema", { status: 400 });
+    return new Response(
+      JSON.stringify({
+        candidates: [
+          {
+            finishReason: "STOP",
+            content: { parts: [{ text: JSON.stringify({ reviewed_pages: [5], items: [], issues: [] }) }] }
+          }
+        ]
+      })
+    );
+  };
+  const review = await requestGeminiDocumentReview({
+    prompt: "Review source data",
+    schema: { type: "object" },
+    sourceMedia: {
+      pages: [{ pageNumber: 5, mimeType: "image/png", dataBase64: "aW1hZ2U=" }]
+    }
+  });
+  assert.deepEqual(review.reviewed_pages, [5]);
+  assert.equal(bodies.length, 2);
+  assert.ok(bodies[0].generationConfig.responseJsonSchema);
+  assert.equal(bodies[1].generationConfig.responseJsonSchema, undefined);
+  assert.match(bodies[1].contents[0].parts[0].text, /JSON contract/);
+  assert.equal(bodies[1].contents[0].parts[1].text, "PDF SOURCE PAGE 5");
+  assert.equal(bodies[1].contents[0].parts[2].inlineData.data, "aW1hZ2U=");
+});
+
+test("detail review never treats a truncated response as completed", async () => {
+  process.env.GEMINI_API_KEY = "test-key";
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: '{"reviewed_pages":[],"items":[]}' }] } }]
+      })
+    );
+  await assert.rejects(requestGeminiDocumentReview({ prompt: "Review", sourceMedia: null, schema: {} }), /MAX_TOKENS/);
 });
 
 test("deterministic parser turns quantity text into itemized requirements", async () => {

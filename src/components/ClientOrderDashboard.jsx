@@ -22,6 +22,7 @@ const parseQuantity = (value) => {
 };
 
 const getItemQuantity = (item) => Number(item?.qty || 0) || parseQuantity(item?.qtyDisplay);
+const hasOptionalQuantity = (item) => ["optional", "mixed_required_optional"].includes(item?.requirementStatus);
 
 const getJobQuantity = (job) => {
   const itemTotal = (job.items || []).reduce((total, item) => total + getItemQuantity(item), 0);
@@ -1328,7 +1329,12 @@ function ClientProjectDetail({
             </div>
             <section className="cho-project-kpis" aria-label={copy(lang, "项目指标", "Project metrics")}>
               {[
-                [totalPieces, copy(lang, "家具件数", "Pieces")],
+                [
+                  totalPieces,
+                  projectItems.some(({ item }) => hasOptionalQuantity(item))
+                    ? copy(lang, "件数（含可选）", "Pieces incl. options")
+                    : copy(lang, "家具件数", "Pieces")
+                ],
                 [project.jobs.length, copy(lang, "订单", "Orders")],
                 [projectItems.length, copy(lang, "家具明细", "Furniture lines")],
                 [actionCount, copy(lang, "待您确认", "Action needed")]
@@ -1447,6 +1453,13 @@ function ClientProjectDetail({
                   </div>
                   <span className="cho-project-mono" role="cell" data-label={copy(lang, "数量", "Qty")}>
                     {item.qtyDisplay || item.qty || job.quantityText || "-"}
+                    {hasOptionalQuantity(item) && (
+                      <small>
+                        {item.requirementStatus === "optional"
+                          ? copy(lang, "可选 · 待确认是否采购", "Optional · inclusion pending")
+                          : copy(lang, "含可选数量 · 待确认", "Includes options · to confirm")}
+                      </small>
+                    )}
                   </span>
                   <span role="cell" data-label={copy(lang, "规格", "Specification")}>
                     <strong>{material || copy(lang, "待确认", "To confirm")}</strong>

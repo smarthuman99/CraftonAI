@@ -22,6 +22,23 @@ test("detects the supported FF&E source formats", () => {
   assert.equal(getIntakeSourceKind({ original_name: "legacy.xls" }), "legacy_spreadsheet");
 });
 
+test("Excel extraction exposes merged cells, formulas and sheets to the risk gate", async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Schedule");
+  sheet.addRow(["Qty", 20]);
+  sheet.mergeCells("A2:B2");
+  sheet.getCell("A2").value = "Furniture";
+  sheet.getCell("C1").value = { formula: "B1*2", result: 40 };
+  workbook.addWorksheet("Options").addRow(["Optional"]);
+  const result = await extractIntakeSource({
+    file: { original_name: "complex.xlsx" },
+    buffer: await workbook.xlsx.writeBuffer()
+  });
+  assert.equal(result.sourceMetadata.mergedCellCount, 1);
+  assert.equal(result.sourceMetadata.formulaCount, 1);
+  assert.equal(result.sourceMetadata.worksheetCount, 2);
+});
+
 test("extracts embedded XLSX product images and preserves their anchor rows", async () => {
   const productImage = await readFile(new URL("../../src/media/image1.png", import.meta.url));
   const workbook = new ExcelJS.Workbook();

@@ -22,6 +22,7 @@ import Footer from "./components/Footer";
 import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
 import AdminWorkflowWorkspace from "./components/AdminWorkflowWorkspace";
 import ClientOrderDashboard from "./components/ClientOrderDashboard";
+import IntakeEvidenceReview from "./components/IntakeEvidenceReview";
 import ClientFfeIntake from "./components/ClientFfeIntake";
 import CraftonHomepage from "./components/CraftonHomepage";
 import SupplierProductionPortal from "./components/SupplierProductionPortal";
@@ -660,6 +661,9 @@ const normalizeReviewJob = (job = {}) => {
       notesCn: item.notes_cn || item.notesCn || "",
       notesEn: item.notes_en || item.notesEn || item.note || "",
       itemRef: item.item_ref || item.itemRef || "",
+      requirementStatus: item.requirement_status || item.requirementStatus || "",
+      quantityReconciliation: item.quantity_reconciliation || item.quantityReconciliation || null,
+      variantOptions: item.variant_options || item.variantOptions || [],
       imageUrl: item.image_url || item.imageUrl || item.preview_url || "",
       technicalDrawing: normalizeTechnicalDrawing(item)
     })),
@@ -8680,6 +8684,8 @@ function App() {
               ))}
             </div>
           </section>
+
+          <IntakeEvidenceReview result={safeJsonObject(selectedJob?.result_json, {})} lang={lang} />
 
           {hasClarificationAnalysis && (
             <section
