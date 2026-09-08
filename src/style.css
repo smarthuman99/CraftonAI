@@ -10674,6 +10674,11 @@ select:focus,
   color: var(--ffe-ink);
 }
 
+.ffe-intake-steps li.is-error {
+  border-top-color: #a5583b;
+  color: #a5583b;
+}
+
 .ffe-intake-steps li > span {
   display: grid;
   width: 25px;
@@ -10939,6 +10944,20 @@ select:focus,
   margin-top: 3px;
   color: var(--ffe-stone);
   font-size: 11px;
+}
+
+.ffe-file-row.is-error {
+  border-color: rgba(165, 88, 59, 0.3);
+  color: #a5583b;
+}
+
+.ffe-file-row.is-error span {
+  color: #a5583b;
+  white-space: normal;
+}
+
+.ffe-retry-upload {
+  margin-top: 14px;
 }
 
 .ffe-optional-context {

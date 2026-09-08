@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   analyzeProductionTask,
   buildProjectProductionAnalysis,
+  loadSupplierProductionWorkspace,
   productionCompletionState,
   productionEvidenceApprovalGate,
   productionEvidenceReviewState,
@@ -11,6 +12,37 @@ import {
   supplierIdentity,
   validateSupplierProductionPlan
 } from "./supplierProductionPortal.mjs";
+
+test("opening a supplier workspace leaves shared FF&E storage configuration unchanged", async () => {
+  let bucketUpdates = 0;
+  const supabase = {
+    storage: {
+      updateBucket: async () => {
+        bucketUpdates += 1;
+        return { error: null };
+      }
+    },
+    from(table) {
+      const result = {
+        data: table === "suppliers" ? { id: "factory-1", name: "Factory", status: "active" } : [],
+        error: null
+      };
+      const query = {
+        select: () => query,
+        eq: () => query,
+        maybeSingle: async () => result,
+        then: (resolve, reject) => Promise.resolve(result).then(resolve, reject)
+      };
+      return query;
+    }
+  };
+  const workspace = await loadSupplierProductionWorkspace({
+    supabase,
+    user: { id: "user-1", app_metadata: { role: "supplier", supplier_id: "factory-1" } }
+  });
+  assert.deepEqual(workspace.projects, []);
+  assert.equal(bucketUpdates, 0);
+});
 
 test("requires the latest supplier shop-drawing revision for every RFQ item", () => {
   const specification = {

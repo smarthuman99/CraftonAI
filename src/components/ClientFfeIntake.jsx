@@ -372,6 +372,7 @@ function ClientFfeIntake({
   fileName,
   uploadStatus,
   uploadProgress,
+  uploaded = false,
   warning,
   uploading,
   analyzing,
@@ -384,6 +385,7 @@ function ClientFfeIntake({
   notes,
   fileInputRef,
   onFileSelect,
+  onRetryUpload,
   onProjectNameChange,
   onDestinationChange,
   onNotesChange,
@@ -402,9 +404,18 @@ function ClientFfeIntake({
   const isReadyForApproval =
     extractedJob?.clarificationWorkflow?.status === "ready_for_approval" ||
     (analysisReady && completionQuestions.length === 0 && (extractedJob?.items || []).length > 0);
-  const currentStep = isReadyForApproval ? 3 : analysisReady ? 2 : rawJob || fileName ? 1 : 0;
+  const fileUploaded = Boolean(uploaded || rawJob);
+  const uploadFailed = Boolean(fileName && warning && !fileUploaded && !uploading);
+  const currentStep = isReadyForApproval ? 3 : analysisReady ? 2 : fileUploaded ? 1 : 0;
+  const fileStatusLabel = uploadFailed
+    ? t(lang, "上传失败，AI 尚未开始", "Upload failed — AI has not started")
+    : uploading
+      ? t(lang, "正在上传", "Uploading")
+      : fileUploaded
+        ? t(lang, "文件已成功上传", "File uploaded successfully")
+        : t(lang, "已选择，尚未上传", "Selected, not yet uploaded");
   const steps = [
-    t(lang, "上传文件", "Upload"),
+    uploadFailed ? t(lang, "上传失败", "Upload failed") : t(lang, "上传文件", "Upload"),
     t(lang, "AI 检查", "AI check"),
     t(lang, "客户补全", "Complete"),
     t(lang, "等待批准", "Approval")
@@ -439,9 +450,19 @@ function ClientFfeIntake({
 
         <ol className="ffe-intake-steps" aria-label={t(lang, "项目录入步骤", "Project intake steps")}>
           {steps.map((step, index) => (
-            <li key={step} className={index < currentStep ? "is-done" : index === currentStep ? "is-current" : ""}>
+            <li
+              key={step}
+              className={`${index < currentStep ? "is-done" : index === currentStep ? "is-current" : ""}${index === 0 && uploadFailed ? " is-error" : ""}`}
+              aria-current={index === currentStep ? "step" : undefined}
+            >
               <span>
-                {index < currentStep ? <Check size={14} aria-hidden="true" /> : String(index + 1).padStart(2, "0")}
+                {index === 0 && uploadFailed ? (
+                  <AlertCircle size={16} aria-hidden="true" />
+                ) : index < currentStep ? (
+                  <Check size={14} aria-hidden="true" />
+                ) : (
+                  String(index + 1).padStart(2, "0")
+                )}
               </span>
               <strong>{step}</strong>
             </li>
@@ -532,13 +553,23 @@ function ClientFfeIntake({
                 )}
 
                 {fileName && (
-                  <div className="ffe-file-row">
+                  <div className={`ffe-file-row${uploadFailed ? " is-error" : ""}`} role="status" aria-live="polite">
                     <FileSpreadsheet size={22} aria-hidden="true" />
                     <div>
                       <strong>{fileName}</strong>
-                      <span>{[formatFileSize(file?.size), uploadStatus].filter(Boolean).join(" · ")}</span>
+                      <span>
+                        {[formatFileSize(file?.size), fileStatusLabel, !uploadFailed && uploadStatus]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
                     </div>
-                    <CheckCircle2 size={19} aria-label={t(lang, "文件已选择", "File selected")} />
+                    {uploadFailed ? (
+                      <AlertCircle size={19} aria-label={t(lang, "上传失败", "Upload failed")} />
+                    ) : uploading ? (
+                      <LoaderCircle className="ffe-spin" size={19} aria-label={t(lang, "正在上传", "Uploading")} />
+                    ) : fileUploaded ? (
+                      <CheckCircle2 size={19} aria-label={t(lang, "上传成功", "Upload complete")} />
+                    ) : null}
                   </div>
                 )}
 
@@ -588,6 +619,13 @@ function ClientFfeIntake({
                     <AlertCircle size={17} aria-hidden="true" />
                     <span>{warning}</span>
                   </div>
+                )}
+
+                {uploadFailed && file && onRetryUpload && (
+                  <button type="button" className="ffe-primary-button ffe-retry-upload" onClick={onRetryUpload}>
+                    <UploadCloud size={18} aria-hidden="true" />
+                    {t(lang, "重新上传此文件", "Retry this upload")}
+                  </button>
                 )}
 
                 {isProcessing && (

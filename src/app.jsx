@@ -2622,7 +2622,16 @@ function App() {
       setIntakeUploadedFileId(null);
       setIntakeUploadProgress(0);
       setIntakeUploadStatus("");
-      setLiveIntakeWarning(err.message || "File upload failed. Please check Supabase Storage and table permissions.");
+      const sizeRejected = /\b413\b|maximum size exceeded|exceeds.*size.*limit/i.test(err.message || "");
+      setLiveIntakeWarning(
+        sizeRejected
+          ? lang === "Cn"
+            ? "上传失败：储存服务拒绝了此文件的大小，AI 尚未开始分析。请重试；若仍出现此提示，请联系 Crafton 检查上传上限。"
+            : "Upload failed: storage rejected this file's size. AI has not started. Please retry; if this continues, contact Crafton to check the upload limit."
+          : lang === "Cn"
+            ? "文件未能成功上传，AI 尚未开始分析。请检查网络及登录状态，然后重新上传此文件。"
+            : "The file could not be uploaded. AI has not started. Check your connection and sign-in, then retry this upload."
+      );
     } finally {
       setIntakeFileUploading(false);
     }
@@ -7885,6 +7894,7 @@ function App() {
         fileName={intakeSelectedFileName}
         uploadStatus={intakeUploadStatus}
         uploadProgress={intakeUploadProgress}
+        uploaded={Boolean(intakeUploadedFileId)}
         warning={liveIntakeWarning}
         uploading={intakeFileUploading}
         analyzing={isIntakeUploading}
@@ -7898,6 +7908,7 @@ function App() {
         notes={intakeAdditionalNotes}
         fileInputRef={intakeFileInputRef}
         onFileSelect={handleIntakeFileSelect}
+        onRetryUpload={() => handleIntakeFileSelect({ target: { files: [intakeSelectedFile] } })}
         onProjectNameChange={setIntakeProjectName}
         onDestinationChange={setIntakeDestination}
         onNotesChange={setIntakeAdditionalNotes}

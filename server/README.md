@@ -27,6 +27,7 @@ Run these migrations in Supabase SQL Editor after the existing `schema.sql`:
 2. `supabase/migrations/20260627_ai_support_conversations.sql`
 3. `supabase/migrations/20260627_user_identity_and_ownership.sql`
 4. `supabase/migrations/20260812_large_ffe_resumable_intake.sql`
+5. `supabase/migrations/20260908_restore_ffe_storage_limit.sql` (restores the shared 250 MiB limit after the supplier-workspace configuration regression)
 
 The third migration makes `auth.users.id` the single internal user identifier for
 Crafton business data. Projects, intake jobs, uploaded files, AI support
@@ -69,6 +70,8 @@ Gemini document output is quality-gated: cover/index/floorplan/layout/drawing pa
 The default 12 MiB image limit leaves room for base64 expansion and prompts under Gemini's 20 MB inline-request limit. Larger source images should be resized before upload or moved to a future Files API flow.
 
 PDFs up to 250 MiB use Supabase TUS resumable upload with 6 MiB chunks. The Supabase project's global Storage file-size limit must also be at least 250 MiB; the bucket limit cannot exceed the project-level setting.
+
+`intake-files` is shared with supplier shop drawings. Configure its size and MIME types through migrations, never during a workspace read. Supplier-specific file limits belong in the supplier upload validation and must not lower the shared bucket limit. The client intake page only marks Upload complete after the file metadata is saved; a selected file or failed upload stays at the Upload step.
 
 ## Local Run
 

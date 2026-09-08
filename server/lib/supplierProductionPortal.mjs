@@ -17,15 +17,6 @@ const SHOP_DRAWING_MIME_TYPES = new Set([
   "application/dxf",
   "application/x-dxf"
 ]);
-const SHOP_DRAWING_BUCKET_MIME_TYPES = [
-  ...SHOP_DRAWING_MIME_TYPES,
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "text/csv",
-  "text/plain",
-  "application/octet-stream"
-];
 const SHIPPING_BUFFER_DAYS = 10;
 const UPDATE_FREQUENCIES = new Set(["daily", "every_2_days", "twice_weekly", "weekly"]);
 const PROCESS_ORDER = [
@@ -622,7 +613,7 @@ export async function createSupplierPortalAccount({ supabase, supplierId, projec
 export async function loadSupplierProductionWorkspace({ supabase, user }) {
   const identity = supplierIdentity(user);
   if (!identity) throw httpError(403, "This account is not linked to a supplier factory.");
-  await ensureShopDrawingBucketConfig(supabase);
+  // Shared intake-files configuration is managed by migrations, never by opening a workspace.
   const supplier = await single(
     supabase.from("suppliers").select("*").eq("id", identity.supplierId).maybeSingle(),
     "supplier"
@@ -1702,19 +1693,6 @@ async function attachShopDrawingLink(supabase, file) {
   const bucket = file.payload?.storage_bucket || EVIDENCE_BUCKET;
   const { data } = await supabase.storage.from(bucket).createSignedUrl(file.file_path, 60 * 60);
   return { ...file, downloadUrl: data?.signedUrl || null };
-}
-
-async function ensureShopDrawingBucketConfig(supabase) {
-  try {
-    const { error } = await supabase.storage.updateBucket(EVIDENCE_BUCKET, {
-      public: false,
-      fileSizeLimit: 52_428_800,
-      allowedMimeTypes: SHOP_DRAWING_BUCKET_MIME_TYPES
-    });
-    if (error) console.warn(`Shop-drawing storage configuration was not refreshed: ${error.message}`);
-  } catch (error) {
-    console.warn(`Shop-drawing storage configuration was not refreshed: ${error.message || error}`);
-  }
 }
 
 async function attachEvidenceLinks(supabase, task) {
