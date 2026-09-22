@@ -21,7 +21,17 @@ The deployment workflow now bundles `shared/`, pauses both systemd workers, and 
 
 Runtime and frontend backups are stored privately under `/var/backups/crafton/<release-sha>/`. Only the configured web directory and the two confirmed live static roots are published; historical backup folders are excluded. Frontend entry points are replaced after assets, and old hashed assets remain available to already-open pages. The deployment checks the project editing endpoint rejects anonymous requests and that both workers stay active before publishing the frontend.
 
-Do not roll back to an older worker while staged imports remain queued. No production migration, upload or deployment was performed during this implementation.
+Do not roll back to an older worker while staged imports remain queued.
+
+## Production release — 22 September 2026
+
+- Runtime/frontend release: `e6437800f662f7283ccf6d8bb473ee4a4999a4c5`.
+- GitHub Actions [run 35701022709](https://github.com/smarthuman99/CraftonAI/actions/runs/35701022709) completed successfully at approximately 07:46 UTC.
+- Both workers were paused before the prerequisite lifecycle and project-editing migrations were applied together in one transaction. Supabase reported success, and the schema/RPC deployment gate passed.
+- Updated API and workers started successfully. Both systemd workers remained active before the two live frontend roots were published. Backups are under `/var/backups/crafton/e6437800f662f7283ccf6d8bb473ee4a4999a4c5/`.
+- Public HTTPS homepage and loading planner returned HTTP 200. `release-version.txt` matched the release commit. Anonymous project-edit requests returned HTTP 401.
+- In the authenticated production client portal, THE PORTAL retained 67 furniture lines, 264 pieces and its existing tracking codes. Edit project, Edit item and Add FF&E files loaded real project data successfully; the upload panel showed its original source file. Change requests also loaded successfully. These checks did not save edits or upload test documents to a customer project.
+- CI reran 22 project-editing tests and 15 copy/drawing/lifecycle/RFQ tests; all passed. The earlier local 99-test validation remains recorded below.
 
 ## Verification
 
