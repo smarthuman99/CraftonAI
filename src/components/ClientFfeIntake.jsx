@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   UploadCloud
 } from "lucide-react";
+import { customerServiceError, customerServiceText } from "../customerServiceCopy.js";
 
 const t = (lang, cn, en) => (lang === "Cn" ? cn : en);
 
@@ -130,25 +131,25 @@ function ClientCompletion({
               ? t(lang, "资料已准备好等待批准", "Your project draft is ready for approval")
               : manualReviewRequired
                 ? t(lang, "文件正在由 Crafton 复核", "Crafton is reviewing the source file")
-                : t(lang, "AI 已找出仍需确认的资料", "AI found the details that still need you")}
+                : t(lang, "以下资料需要您确认", "A few details need your confirmation")}
           </h2>
           <p>
             {readyForApproval
               ? t(
                   lang,
-                  "AI 已把文件和您的答案整理成结构化项目资料，管理员只需检查变更并批准。",
-                  "AI has structured the file and your answers. Crafton now only needs to review the changes and approve."
+                  "您的文件和答案已整理成项目草稿，等待 Crafton 审核并批准。",
+                  "Your files and answers have been organised into a project draft for Crafton to review and approve."
                 )
               : manualReviewRequired
                 ? t(
                     lang,
-                    "视觉提取未通过完整性检查。原文件已经安全保留，Crafton 会自动重试或人工复核；您暂时不需要补充资料。",
-                    "Visual extraction did not pass the completeness check. Your source file is safely stored while Crafton retries or reviews it; no client input is needed now."
+                    "您的文件中有部分内容需要进一步核对。文件已安全保存，您暂时无需补充资料。",
+                    "We need to check a few details in your file. It has been safely saved, and no further information is needed from you at this stage."
                   )
                 : t(
                     lang,
-                    "请只补充文件中无法确定的内容。提交后，AI 会立即更新项目并再次检查。",
-                    "Only complete what the file could not establish. AI will update and re-check the project immediately after you submit."
+                    "请补充以下需要确认的资料。提交后，我们会更新并检查您的项目草稿。",
+                    "Please confirm the details below. Once you submit your answers, we’ll update and check your project draft."
                   )}
           </p>
         </div>
@@ -180,7 +181,7 @@ function ClientCompletion({
           <strong>{items.length || t(lang, "待确认", "Pending")}</strong>
         </div>
         <div>
-          <span>{t(lang, "AI 检查结果", "AI check")}</span>
+          <span>{t(lang, "资料检查结果", "File check")}</span>
           <strong>
             {readyForApproval
               ? t(lang, "可批准", "Ready")
@@ -191,7 +192,11 @@ function ClientCompletion({
         </div>
       </div>
 
-      {job.summaryEn && <p className="ffe-extracted-summary">{job.summaryEn}</p>}
+      {(lang === "Cn" ? job.summaryCn || job.summaryEn : job.summaryEn) && (
+        <p className="ffe-extracted-summary">
+          {customerServiceText(lang === "Cn" ? job.summaryCn || job.summaryEn : job.summaryEn)}
+        </p>
+      )}
 
       {readyForApproval ? (
         <div className="ffe-ready-for-approval" role="status">
@@ -218,12 +223,12 @@ function ClientCompletion({
             <FileSearch size={24} aria-hidden="true" />
           </span>
           <div>
-            <strong>{t(lang, "Crafton 正在处理识别异常", "Crafton is resolving the extraction exception")}</strong>
+            <strong>{t(lang, "我们正在进一步核对您的文件", "We’re taking a closer look at your file")}</strong>
             <p>
               {t(
                 lang,
-                "这不是客户遗漏问题。系统会保留原 PDF，并由 Crafton 重试 AI 视觉识别或人工核对后更新项目。",
-                "This is not missing client information. Crafton will retry AI vision or review the preserved PDF, then update the project."
+                "您的原文件已安全保存。我们会核对文件内容，并在检查完成后更新项目。",
+                "Your original file is safely saved. We’ll check its contents and update your project when the review is complete."
               )}
             </p>
           </div>
@@ -233,7 +238,7 @@ function ClientCompletion({
           <div className="ffe-completion-heading">
             <div>
               <span className="ffe-kicker">{t(lang, "需要您的资料", "DETAILS TO COMPLETE")}</span>
-              <h3>{t(lang, "逐项回答，AI 会负责整理", "Answer once — AI handles the reconciliation")}</h3>
+              <h3>{t(lang, "逐项填写，我们会整理您的项目资料", "Add your answers and we’ll update your project")}</h3>
             </div>
             <span>
               {answeredCount} / {questions.length} {t(lang, "已填写", "answered")}
@@ -275,13 +280,15 @@ function ClientCompletion({
               <span>
                 {t(
                   lang,
-                  "AI 更新资料 → 再次检查 → 无阻塞项时直接等待管理员批准",
-                  "AI updates the draft → re-checks it → sends it for approval when no blockers remain"
+                  "更新项目资料 → 核对内容 → 资料齐全后提交审核",
+                  "Update draft → check details → send for approval once complete"
                 )}
               </span>
               {answerState?.message && (
                 <small className={`ffe-answer-state is-${answerState.status}`} role="status" aria-live="polite">
-                  {answerState.message}
+                  {answerState.status === "error"
+                    ? customerServiceError(answerState.message, lang)
+                    : customerServiceText(answerState.message)}
                 </small>
               )}
             </div>
@@ -297,8 +304,8 @@ function ClientCompletion({
                 <FileSearch size={18} aria-hidden="true" />
               )}
               {isSubmitting
-                ? t(lang, "AI 正在更新项目…", "AI is updating the project…")
-                : t(lang, "保存答案并让 AI 重新检查", "Save answers and let AI re-check")}
+                ? t(lang, "正在更新项目…", "We are updating the project…")
+                : t(lang, "保存答案并检查资料", "Save answers and check details")}
             </button>
           </div>
         </div>
@@ -306,7 +313,7 @@ function ClientCompletion({
 
       <div className="ffe-items-heading">
         <div>
-          <span className="ffe-kicker">{t(lang, "AI 已整理", "AI-STRUCTURED SCHEDULE")}</span>
+          <span className="ffe-kicker">{t(lang, "已整理的家具清单", "YOUR FURNITURE SCHEDULE")}</span>
           <h3>{t(lang, `已识别 ${items.length} 项家具`, `${items.length} furniture lines found`)}</h3>
         </div>
         <span>{t(lang, "点击家具查看提取资料", "Open a line to inspect extracted details")}</span>
@@ -408,7 +415,7 @@ function ClientFfeIntake({
   const uploadFailed = Boolean(fileName && warning && !fileUploaded && !uploading);
   const currentStep = isReadyForApproval ? 3 : analysisReady ? 2 : fileUploaded ? 1 : 0;
   const fileStatusLabel = uploadFailed
-    ? t(lang, "上传失败，AI 尚未开始", "Upload failed — AI has not started")
+    ? t(lang, "上传未成功，请重试", "Upload unsuccessful — please try again")
     : uploading
       ? t(lang, "正在上传", "Uploading")
       : fileUploaded
@@ -416,7 +423,7 @@ function ClientFfeIntake({
         : t(lang, "已选择，尚未上传", "Selected, not yet uploaded");
   const steps = [
     uploadFailed ? t(lang, "上传失败", "Upload failed") : t(lang, "上传文件", "Upload"),
-    t(lang, "AI 检查", "AI check"),
+    t(lang, "检查", "File check"),
     t(lang, "客户补全", "Complete"),
     t(lang, "等待批准", "Approval")
   ];
@@ -436,8 +443,8 @@ function ClientFfeIntake({
             <p>
               {t(
                 lang,
-                "上传家具清单、规格书或图纸后，AI 会立即提取和检查资料，并直接带您完成仍缺少的内容。",
-                "Upload your furniture schedule, specification pack or drawings. AI will immediately extract, check and guide you through only the details still missing."
+                "上传家具清单、规格书或图纸后，我们会整理您的项目资料，并引导您确认需要补充的内容。",
+                "Upload your furniture schedule, specification pack or drawings. We’ll organise your project details and guide you through anything that needs confirmation."
               )}
             </p>
           </div>
@@ -481,8 +488,8 @@ function ClientFfeIntake({
                     <p>
                       {t(
                         lang,
-                        "选择文件后无需再次提交，AI 会自动开始资料检查。",
-                        "Choose the file once. AI starts the document check automatically."
+                        "选择文件即可，上传完成后我们会开始检查。",
+                        "Choose your file and we’ll start checking it as soon as the upload is complete."
                       )}
                     </p>
                   </div>
@@ -495,8 +502,8 @@ function ClientFfeIntake({
                     <span>
                       {t(
                         lang,
-                        "AI 提取资料、找出遗漏并分类；您只回答客户负责的内容。",
-                        "AI extracts, finds and routes gaps. You only answer the details owned by the client."
+                        "我们会整理文件内容，您只需确认仍缺少的项目资料。",
+                        "We’ll organise the file contents and ask you to confirm any missing project details."
                       )}
                     </span>
                   </div>
@@ -524,7 +531,7 @@ function ClientFfeIntake({
                     {uploading
                       ? t(lang, "正在安全上传...", "Uploading securely...")
                       : analyzing || isProcessing
-                        ? t(lang, "AI 正在检查文件…", "AI is checking your file…")
+                        ? t(lang, "我们正在检查您的文件…", "We’re checking your files…")
                         : fileName
                           ? t(lang, "更换 FF&E 文件", "Replace FF&E file")
                           : t(lang, "选择或拖放 FF&E 文件", "Choose or drop an FF&E file")}
@@ -617,7 +624,7 @@ function ClientFfeIntake({
                 {warning && (
                   <div className="ffe-inline-alert is-error" role="alert">
                     <AlertCircle size={17} aria-hidden="true" />
-                    <span>{warning}</span>
+                    <span>{customerServiceError(warning, lang)}</span>
                   </div>
                 )}
 
@@ -670,7 +677,7 @@ function ClientFfeIntake({
                       ) : (
                         <FileSearch size={18} aria-hidden="true" />
                       )}
-                      {t(lang, "重新运行 AI 检查", "Retry AI check")}
+                      {t(lang, "重新运行检查", "Retry check")}
                     </button>
                   </div>
                 )}

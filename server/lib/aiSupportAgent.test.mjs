@@ -67,6 +67,8 @@ test("AI support keeps the authoritative lifecycle and production summary", asyn
 
     const contextMessage = capturedBody.messages[1].content;
     assert.match(capturedBody.messages[0].content, /authoritative current status/);
+    assert.match(capturedBody.messages[0].content, /Do not volunteer AI/);
+    assert.match(capturedBody.messages[0].content, /Do not claim to be a human/);
     assert.match(contextMessage, /"stageId":"S09"/);
     assert.match(contextMessage, /"phase":"production"/);
     assert.match(contextMessage, /"pendingReviewCount":1/);

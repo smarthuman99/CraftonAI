@@ -1,3 +1,4 @@
+import { activeProjectJob } from "../../shared/clientProjectEditing.mjs";
 const MAX_EMAIL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const MAX_EMAIL_ATTACHMENTS = 12;
 
@@ -55,6 +56,7 @@ export async function enrichRfqContextFromSupabase({ supabase, context = {} }) {
 export function mergeProjectIntakeJobs(jobs = []) {
   const results = jobs
     .filter(Boolean)
+    .filter(activeProjectJob)
     .map((job) => ({
       job,
       result: job.result_json && typeof job.result_json === "object" ? job.result_json : job
@@ -110,7 +112,7 @@ export function mergeProjectIntakeJobs(jobs = []) {
     items: Array.from(itemMap.values()),
     questions,
     intake_job_ids: results.map(({ job }) => job.id).filter(Boolean),
-    order_count: results.length
+    order_count: results.filter(({ job }) => !job.client_import_state).length
   };
 }
 
@@ -222,15 +224,16 @@ export async function buildEmailAttachmentsFromSupabase({ supabase, projectId, d
 }
 
 async function loadProjectSourceFiles(supabase, projectId) {
-  const jobs = await queryRows(supabase.from("intake_jobs").select("id,intake_file_id").eq("project_id", projectId));
-  const linkedIds = jobs.map((row) => row.intake_file_id).filter(Boolean);
+  const jobs = await queryRows(supabase.from("intake_jobs").select("id,intake_file_id,client_import_state").eq("project_id", projectId));
+  const excludedIds = new Set(jobs.filter((job) => !activeProjectJob(job)).map((job) => job.intake_file_id));
+  const linkedIds = jobs.filter(activeProjectJob).map((row) => row.intake_file_id).filter(Boolean);
   const [directIntakeFiles, linkedIntakeFiles, projectFiles] = await Promise.all([
     queryRows(supabase.from("intake_files").select("*").eq("project_id", projectId)),
     linkedIds.length ? queryRows(supabase.from("intake_files").select("*").in("id", linkedIds)) : [],
     queryRows(supabase.from("project_files").select("*").eq("project_id", projectId))
   ]);
 
-  const intakeFiles = mergeById(directIntakeFiles, linkedIntakeFiles).map((file) => ({
+  const intakeFiles = mergeById(directIntakeFiles, linkedIntakeFiles).filter((file) => !excludedIds.has(file.id)).map((file) => ({
     id: file.id,
     name: file.original_name,
     mimeType: file.mime_type,

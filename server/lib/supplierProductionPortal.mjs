@@ -101,10 +101,10 @@ export function productionEvidenceApprovalGate(analysis = {}, options = {}) {
 
   const requiresRiskAcknowledgement = riskLevel !== "low";
   if (requiresRiskAcknowledgement && !acknowledgeRisk) {
-    blockers.push("Cho must explicitly acknowledge the active AI evidence risk.");
+    blockers.push("Cho must explicitly acknowledge the active evidence risk.");
   }
   if (requiresRiskAcknowledgement && !note) {
-    blockers.push("A Cho review note is required when approving evidence with an active AI risk.");
+    blockers.push("A Cho review note is required when approving evidence with an active risk.");
   }
 
   return {
@@ -280,8 +280,8 @@ export function validateSupplierProductionPlan({
       code: "target_delivery_missing",
       taskId: null,
       taskName: "Order",
-      message: "The project target delivery date is missing, so AI cannot verify the shipping buffer.",
-      messageCn: "项目缺少目标交付日期，AI 暂时无法校验运输缓冲期。"
+      message: "The project target delivery date is missing, so Crafton cannot verify the shipping buffer.",
+      messageCn: "项目缺少目标交付日期，暂时无法校验运输缓冲期。"
     });
   }
 
@@ -1019,12 +1019,12 @@ export async function submitSupplierProductionPlan({ supabase, user, body = {} }
     actor: supplier?.name || user.email || "Supplier",
     message_cn:
       review.status === "changes_required"
-        ? `${supplier?.name || "供应商"} 已提交第 ${version} 版真实排产；AI 发现需要修正的问题。`
-        : `${supplier?.name || "供应商"} 已提交第 ${version} 版真实排产；AI 校验通过，等待 Cho 批准。`,
+        ? `${supplier?.name || "供应商"} 已提交第 ${version} 版真实排产；发现需要修正的问题。`
+        : `${supplier?.name || "供应商"} 已提交第 ${version} 版真实排产；校验通过，等待 Cho 批准。`,
     message_en:
       review.status === "changes_required"
-        ? `${supplier?.name || "Supplier"} submitted factory schedule v${version}; AI requires changes.`
-        : `${supplier?.name || "Supplier"} submitted factory schedule v${version}; AI validation passed for Cho approval.`,
+        ? `${supplier?.name || "Supplier"} submitted factory schedule v${version}; Crafton requires changes.`
+        : `${supplier?.name || "Supplier"} submitted factory schedule v${version}; validation passed for Cho approval.`,
     payload: { supplier_id: identity.supplierId, version, change_reason: changeReason, review }
   });
   return { ok: true, version, review };
@@ -1454,7 +1454,7 @@ export async function submitSupplierProductionEvidence({ supabase, user, body = 
       status: nextStatus,
       risk_level: analysis.riskLevel,
       reported_at: uploadedAt,
-      notes: supplierNote ? `${supplierNote}\nAI controller: ${controllerNote}` : `AI controller: ${controllerNote}`
+      notes: supplierNote ? `${supplierNote}\nAI controller: ${controllerNote}` : `Controller: ${controllerNote}`
     })
     .eq("id", task.id)
     .eq("supplier_id", identity.supplierId);
@@ -1485,8 +1485,8 @@ export async function submitSupplierProductionEvidence({ supabase, user, body = 
       ? "production_evidence_ready_for_review"
       : "supplier_production_evidence_uploaded",
     actor: supplier?.name || user.email || "Supplier",
-    message_cn: `${supplier?.name || "供应商"} 已上报 ${task.process_name} 生产证据；AI 判定：${controllerNote}`,
-    message_en: `${supplier?.name || "Supplier"} uploaded evidence for ${task.process_name}. AI controller: ${controllerNote}`,
+    message_cn: `${supplier?.name || "供应商"} 已上报 ${task.process_name} 生产证据；判定：${controllerNote}`,
+    message_en: `${supplier?.name || "Supplier"} uploaded evidence for ${task.process_name}. Controller: ${controllerNote}`,
     payload: {
       supplier_id: identity.supplierId,
       production_update_id: task.id,
@@ -1528,16 +1528,16 @@ export async function analyzeProductionProject({ supabase, projectId }) {
       .from("production_updates")
       .update({ risk_level: task.analysis.riskLevel })
       .eq("id", task.id);
-    if (error) throw new Error(`Unable to update AI risk state: ${error.message}`);
+    if (error) throw new Error(`Unable to update risk state: ${error.message}`);
     changed.push({ id: task.id, from: task.risk_level, to: task.analysis.riskLevel });
   }
   await insertEvent(supabase, {
     project_id: projectId,
     stage_id: analysis.summary.highRiskCount ? "S10" : "S09",
     event_type: "ai_production_controller_run",
-    actor: "Crafton AI",
-    message_cn: `AI 生产控制器已检查 ${tasks.length} 个工序；高风险 ${analysis.summary.highRiskCount} 项，中风险 ${analysis.summary.mediumRiskCount} 项。`,
-    message_en: `AI production controller checked ${tasks.length} work packages: ${analysis.summary.highRiskCount} high and ${analysis.summary.mediumRiskCount} medium risks.`,
+    actor: "Crafton",
+    message_cn: `生产控制器已检查 ${tasks.length} 个工序；高风险 ${analysis.summary.highRiskCount} 项，中风险 ${analysis.summary.mediumRiskCount} 项。`,
+    message_en: `Production controller checked ${tasks.length} work packages: ${analysis.summary.highRiskCount} high and ${analysis.summary.mediumRiskCount} medium risks.`,
     payload: { summary: analysis.summary, risk_changes: changed }
   });
   return { ...analysis, riskChanges: changed, analyzedAt: new Date().toISOString() };
@@ -1560,7 +1560,7 @@ export async function monitorActiveProduction({ supabase, now = new Date() }) {
         .from("production_updates")
         .update({ risk_level: task.analysis.riskLevel })
         .eq("id", task.id);
-      if (error) throw new Error(`Unable to update scheduled AI risk state: ${error.message}`);
+      if (error) throw new Error(`Unable to update scheduled risk state: ${error.message}`);
       changed.push({ id: task.id, from: task.risk_level, to: task.analysis.riskLevel });
     }
     if (changed.length) {
@@ -1569,9 +1569,9 @@ export async function monitorActiveProduction({ supabase, now = new Date() }) {
         project_id: projectId,
         stage_id: analysis.summary.highRiskCount ? "S10" : "S09",
         event_type: "ai_production_risk_changed",
-        actor: "Crafton AI",
-        message_cn: `AI 定时跟单发现 ${changed.length} 个工序风险状态发生变化。`,
-        message_en: `The scheduled AI production controller changed the risk state of ${changed.length} work package(s).`,
+        actor: "Crafton",
+        message_cn: `定时跟单发现 ${changed.length} 个工序风险状态发生变化。`,
+        message_en: `The scheduled production controller changed the risk state of ${changed.length} work package(s).`,
         payload: { summary: analysis.summary, risk_changes: changed, checked_at: now.toISOString() }
       });
     }

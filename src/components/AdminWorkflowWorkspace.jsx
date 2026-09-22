@@ -6,6 +6,7 @@ import AiOperationsAutomation from "./AiOperationsAutomation";
 import ProductionControlTower from "./ProductionControlTower";
 import { parseSupplierRfqWorkbook } from "./rfqExcel";
 import { matchSupplierReturn, mergeImportedQuoteLines, quoteLinesForBatch, quoteTotalsFromLines } from "./quoteIntake";
+import { activeProjectJob } from "../../shared/clientProjectEditing.mjs";
 
 const PROJECT_TABLES = [
   "specifications",
@@ -761,7 +762,7 @@ export default function AdminWorkflowWorkspace({
             supplierName: supplier.name,
             totalAmount: totals.total,
             currency: quoteValues.currency,
-            message: t("Automatically recorded and ready for AI comparison.", "已自动录入，可以进行 AI 比价。")
+            message: t("Automatically recorded and ready for comparison.", "已自动录入，可以进行比价。")
           });
         } catch (error) {
           updateResult(index, { status: "error", message: error.message || String(error) });
@@ -1283,7 +1284,7 @@ export default function AdminWorkflowWorkspace({
       ? {
           phase: "decide",
           label: t("Approve the winning supplier", "批准中选供应商"),
-          detail: t("AI comparison is ready for Cho's commercial decision.", "AI 比价已完成，等待 Cho 作商业决策。")
+          detail: t("Comparison is ready for Cho's commercial decision.", "比价已完成，等待 Cho 作商业决策。")
         }
       : sourcingLatestQuotes.length >= 2
         ? {
@@ -1299,8 +1300,8 @@ export default function AdminWorkflowWorkspace({
               phase: "collect",
               label: t("Upload supplier returns", "上传供应商回传"),
               detail: t(
-                `${Math.max(0, 2 - sourcingLatestQuotes.length)} more quotation(s) unlock AI comparison.`,
-                `再录入 ${Math.max(0, 2 - sourcingLatestQuotes.length)} 份报价即可启用 AI 比价。`
+                `${Math.max(0, 2 - sourcingLatestQuotes.length)} more quotation(s) unlock comparison.`,
+                `再录入 ${Math.max(0, 2 - sourcingLatestQuotes.length)} 份报价即可启用比价。`
               )
             }
           : sourcingHasDocument
@@ -1648,7 +1649,7 @@ export default function AdminWorkflowWorkspace({
 
           <StageSection
             stage="S06"
-            title="AI RFQ Excel preparation"
+            title="RFQ Excel preparation"
             status={data.rfq_batches[0]?.status || "pending"}
             description="Generate and approve a bilingual RFQ, then download the supplier-fillable Excel file for sending from your own mailbox."
             wide
@@ -1662,7 +1663,7 @@ export default function AdminWorkflowWorkspace({
               batches={data.rfq_batches}
               projectFiles={data.project_files}
               intakeFiles={data.intake_files}
-              intakeJobs={data.intake_jobs}
+              intakeJobs={data.intake_jobs.filter(activeProjectJob)}
               specifications={project?.specifications || []}
               suppliers={suppliers}
               onChanged={loadData}
@@ -1672,9 +1673,9 @@ export default function AdminWorkflowWorkspace({
 
           <StageSection
             stage="S07"
-            title="Supplier return intake and AI comparison"
+            title="Supplier return intake and comparison"
             status={`${scoredQuotes.length} quotes`}
-            description="Upload several supplier quotation workbooks. The system reads and records the prices automatically, then AI compares the offers."
+            description="Upload several supplier quotation workbooks. The system reads and records the prices automatically, then Crafton compares the offers."
             wide
             hidden={sourcingView !== "collect"}
             className="sourcing-next-panel sourcing-next-collect-panel"
@@ -1688,12 +1689,12 @@ export default function AdminWorkflowWorkspace({
           >
             <section className="bulk-quote-intake">
               <div className="bulk-quote-intake-copy">
-                <span>AI QUOTE INTAKE · NO MANUAL PRICE ENTRY</span>
+                <span>QUOTE INTAKE · NO MANUAL PRICE ENTRY</span>
                 <strong>{t("Upload all returned supplier quotations", "一次上传所有供应商回传报价")}</strong>
                 <p>
                   {t(
-                    "Select several .xlsx quotation files. Supplier identity, BOM items, unit prices, currency, MOQ, lead time and terms are read automatically. Once two quotations are recorded, AI comparison starts automatically.",
-                    "可同时选择多份 .xlsx 报价表。系统会自动读取供应商、BOM、单价、币种、MOQ、交期和条款；录入两家后会自动开始 AI 比价。"
+                    "Select several .xlsx quotation files. Supplier identity, BOM items, unit prices, currency, MOQ, lead time and terms are read automatically. Once two quotations are recorded, comparison starts automatically.",
+                    "可同时选择多份 .xlsx 报价表。系统会自动读取供应商、BOM、单价、币种、MOQ、交期和条款；录入两家后会自动开始比价。"
                   )}
                 </p>
               </div>
@@ -1712,7 +1713,7 @@ export default function AdminWorkflowWorkspace({
                 />
                 <strong>
                   {bulkQuoteBusy
-                    ? t("AI is reading quotations...", "AI 正在读取报价……")
+                    ? t("We are reading quotations...", "正在读取报价……")
                     : t("Choose several quotation files", "选择多份供应商报价表")}
                 </strong>
                 <small>{t("Excel .xlsx · up to 15 MB each", "Excel .xlsx · 每份不超过 15 MB")}</small>
@@ -2052,7 +2053,7 @@ export default function AdminWorkflowWorkspace({
                     disabled={loading || quoteImportBusy || !quoteCanSave}
                     title={
                       quoteSaveBlockReason ||
-                      t("Save this supplier return for AI comparison.", "保存供应商回传并进入 AI 比价。")
+                      t("Save this supplier return for comparison.", "保存供应商回传并进入比价。")
                     }
                   >
                     {t("Save supplier return", "保存供应商回传")}
@@ -2085,8 +2086,8 @@ export default function AdminWorkflowWorkspace({
             {sourcingScoredQuotes.length > 0 && !quoteAnalysisReady && (
               <Notice tone="error">
                 {t(
-                  "Run the S07 AI quotation comparison before Cho approves the winning supplier.",
-                  "请先在 S07 运行 AI 报价比较，再由 Cho 批准最终供应商。"
+                  "Run the S07 quotation comparison before Cho approves the winning supplier.",
+                  "请先在 S07 运行报价比较，再由 Cho 批准最终供应商。"
                 )}
               </Notice>
             )}
@@ -2102,14 +2103,14 @@ export default function AdminWorkflowWorkspace({
                       .filter(Boolean)
                       .join(" ")}
                   >
-                    <span>{quoteAnalysisReady ? `Rank #${index + 1}` : t("AI rank pending", "等待 AI 排名")}</span>
+                    <span>{quoteAnalysisReady ? `Rank #${index + 1}` : t("Rank pending", "等待排名")}</span>
                     <h4>{quote.supplier_name || quote.suppliers?.name}</h4>
                     <strong>{money(quote.unit_price, quote.currency)} / unit</strong>
                     <p>
                       {quote.lead_time_days} days · score {quote.comparisonScore}
                     </p>
                     {quote.id === recommendedQuoteId && (
-                      <small>{t("AI recommended best value", "AI 推荐综合最优")}</small>
+                      <small>{t("Recommended best value", "推荐综合最优")}</small>
                     )}
                     <button
                       className="btn-premium"
@@ -2119,7 +2120,7 @@ export default function AdminWorkflowWorkspace({
                       {quote.status === "selected"
                         ? t("Selected", "已选择")
                         : quote.id === recommendedQuoteId
-                          ? t("Approve AI recommendation", "批准 AI 推荐")
+                          ? t("Approve recommendation", "批准推荐")
                           : t("Approve supplier", "批准该供应商")}
                     </button>
                   </article>
@@ -2216,9 +2217,9 @@ export default function AdminWorkflowWorkspace({
         <div className="admin-ops-grid">
           <StageSection
             stage="S09"
-            title="AI production controller"
+            title="Production controller"
             status={data.production_updates[0]?.status || "pending"}
-            description="AI follows the factory through its private portal, validates evidence coverage and sends only exceptions or release gates to Cho."
+            description="Crafton follows the factory through its private portal, validates evidence coverage and sends only exceptions or release gates to Cho."
             wide
             actions={
               <button
@@ -2241,9 +2242,9 @@ export default function AdminWorkflowWorkspace({
               onChanged={loadData}
             />
             <div className="production-plan-divider">
-              <span>AI FRAMEWORK &amp; FACTORY COMMITMENT</span>
+              <span>FRAMEWORK &amp; FACTORY COMMITMENT</span>
               <p>
-                AI defines the work packages; the supplier submits real factory dates; AI validates them and Cho
+                Crafton defines the work packages; the supplier submits real factory dates; we check them and Cho
                 approves the active baseline.
               </p>
             </div>
@@ -2339,7 +2340,7 @@ export default function AdminWorkflowWorkspace({
             stage="S10"
             title="Delay risk control"
             status={riskUpdates.length ? `${riskUpdates.length} risks` : "clear"}
-            description="AI exception queue generated from supplier deadlines, missing evidence, duplicate files and reporting gaps."
+            description="Exception queue generated from supplier deadlines, missing evidence, duplicate files and reporting gaps."
           >
             {riskUpdates.length ? (
               riskUpdates.map((row) => (
@@ -2486,14 +2487,14 @@ export default function AdminWorkflowWorkspace({
           stage="S12"
           title="Container loading plan"
           status={data.packing_plans[0]?.status || "pending"}
-          description="Open Loading AI with this project's BOM dimensions and save its packing result back to Supabase."
+          description="Open Loading Planner with this project's BOM dimensions and save its packing result back to Supabase."
           wide
           actions={
             <button
               className="btn-premium"
               onClick={() => onOpenLoadingAi?.({ project, projectId, specifications: data.specifications })}
             >
-              Open Loading AI
+              Open Loading Planner
             </button>
           }
         >
@@ -2536,7 +2537,7 @@ export default function AdminWorkflowWorkspace({
               </table>
             </div>
           ) : (
-            <Empty>No saved loading plan. Open Loading AI and save a computed result.</Empty>
+            <Empty>No saved loading plan. Open Loading Planner and save a computed result.</Empty>
           )}
         </StageSection>
         <StageSection

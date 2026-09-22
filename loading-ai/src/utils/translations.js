@@ -1,7 +1,7 @@
 export const TRANSLATIONS = {
   cn: {
     // Header
-    title: "3D 家具智能装柜优化系统",
+    title: "3D 家具装柜规划系统",
     subtitle: "Sandra Logistics & Sales Assistant Pro",
     engineTitle: "算法核心引擎:",
     fastMode: "极速估算模式 (Fast Mode)",

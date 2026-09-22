@@ -19,8 +19,8 @@ const latestEntry = (task, type) =>
 const stateLabel = (value, zh) => {
   const labels = {
     awaiting_supplier_plan: ["Factory schedule required", "等待工厂提交排产"],
-    changes_required: ["AI requires changes", "AI 要求修改排产"],
-    ai_review: ["AI validation", "AI 校验中"],
+    changes_required: ["Crafton requires changes", "要求修改排产"],
+    ai_review: ["Validation", "校验中"],
     awaiting_cho_approval: ["Awaiting Cho approval", "等待 Cho 批准"],
     revision_pending_cho: ["Revision awaiting Cho", "改期版本等待 Cho 批准"],
     approved: ["Approved production baseline", "已批准正式生产基准"]
@@ -95,12 +95,12 @@ export default function SupplierProductionPlanForm({ project, lang, supabaseClie
       setMessage(
         response.review.status === "changes_required"
           ? t(
-              `Schedule v${response.version} was saved, but AI found issues that must be corrected before Cho approval.`,
-              `第 ${response.version} 版排产已保存，但 AI 发现必须修正的问题，暂不能提交 Cho 批准。`
+              `Schedule v${response.version} was saved, but Crafton found issues that must be corrected before Cho approval.`,
+              `第 ${response.version} 版排产已保存，但发现必须修正的问题，暂不能提交 Cho 批准。`
             )
           : t(
-              `Schedule v${response.version} passed AI validation and is waiting for Cho approval.`,
-              `第 ${response.version} 版排产已通过 AI 校验，正在等待 Cho 批准。`
+              `Schedule v${response.version} passed validation and is waiting for Cho approval.`,
+              `第 ${response.version} 版排产已通过校验，正在等待 Cho 批准。`
             )
       );
       await onSubmitted?.();
@@ -127,8 +127,8 @@ export default function SupplierProductionPlanForm({ project, lang, supabaseClie
           <h3>{stateLabel(planState, zh)}</h3>
           <p>
             {t(
-              "Crafton AI defines the work packages only. Your factory sets the real dates and capacity; AI checks feasibility, then Cho approves the production baseline.",
-              "Crafton AI 只定义工序和证据要求。真实日期与产能由贵工厂填写，AI 校验可行性后，再由 Cho 批准为正式生产基准。"
+              "Crafton defines the work packages. Your factory sets the dates and capacity; we check feasibility, then Cho approves the production baseline.",
+              "Crafton 只定义工序和证据要求。真实日期与产能由贵工厂填写，校验可行性后，再由 Cho 批准为正式生产基准。"
             )}
           </p>
         </div>
@@ -149,7 +149,7 @@ export default function SupplierProductionPlanForm({ project, lang, supabaseClie
         <div className="supplier-plan-issues">
           {issues.map((issue, index) => (
             <div className={issue.severity === "high" ? "high" : "warning"} key={`${issue.code}-${index}`}>
-              <strong>{issue.severity === "high" ? t("Must fix", "必须修正") : t("AI warning", "AI 提醒")}</strong>
+              <strong>{issue.severity === "high" ? t("Must fix", "必须修正") : t("Warning", "提醒")}</strong>
               <span>
                 {issue.taskName ? `${issue.taskName}: ` : ""}
                 {zh ? issue.messageCn || issue.message : issue.message}
@@ -197,7 +197,7 @@ export default function SupplierProductionPlanForm({ project, lang, supabaseClie
                       <strong>{row.processName}</strong>
                       {row.forecastStartsAt && (
                         <small>
-                          {t("AI forecast only", "仅供参考的 AI 预测")}:{" "}
+                          {t("Forecast only", "仅供参考的预测")}:{" "}
                           {new Date(row.forecastStartsAt).toLocaleDateString()} –{" "}
                           {new Date(row.forecastExpectedAt).toLocaleDateString()}
                         </small>
@@ -273,8 +273,8 @@ export default function SupplierProductionPlanForm({ project, lang, supabaseClie
             </p>
             <button className="primary" disabled={busy}>
               {busy
-                ? t("AI is validating...", "AI 正在校验……")
-                : t("Submit schedule for AI validation", "提交排产给 AI 校验")}
+                ? t("We are validating...", "正在校验……")
+                : t("Submit schedule for validation", "提交排产进行校验")}
             </button>
           </footer>
         </form>

@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { createClient } from "@supabase/supabase-js";
 import * as tus from "tus-js-client";
 import mockData from "./mockData";
+import { customerServiceError, customerServiceText } from "./customerServiceCopy.js";
 
 // Modularized components
 import ChairSVG from "./components/ChairSVG";
@@ -22,6 +23,8 @@ import Footer from "./components/Footer";
 import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
 import AdminWorkflowWorkspace from "./components/AdminWorkflowWorkspace";
 import ClientOrderDashboard from "./components/ClientOrderDashboard";
+import ClientChangeReview from "./components/ClientChangeReview.jsx";
+import { activeProjectJob, buildEditPlan, requiresProjectReview } from "../shared/clientProjectEditing.mjs";
 import IntakeEvidenceReview from "./components/IntakeEvidenceReview";
 import ClientFfeIntake from "./components/ClientFfeIntake";
 import CraftonHomepage from "./components/CraftonHomepage";
@@ -590,7 +593,8 @@ const normalizeReviewJob = (job = {}) => {
     ownerUserId,
     projectId: job.project_id || null,
     sourceMode: result.source_mode || result.sourceMode || "",
-    projectName: job.project_name || project.name || linkedProject.name || job.projectName || "To confirm",
+    isProjectAddition: Boolean(job.client_import_state),
+    projectName: linkedProject.name || job.project_name || project.name || job.projectName || "To confirm",
     clientName: ownerClientName || project.client_name || linkedProject.client_name || "Portal Intake Client",
     destination: job.destination || project.destination || linkedProject.client_contact || "",
     deliveryAddress: project.delivery_address || result.delivery_address || "",
@@ -610,6 +614,7 @@ const normalizeReviewJob = (job = {}) => {
     clarificationHistory: Array.isArray(result.clarification_history) ? result.clarification_history : [],
     sourceNotes: result.source_notes || job.brief_text || "",
     summaryEn: result.summary_en || "Intake draft parsed from client materials.",
+    summaryCn: result.summary_cn || "",
     visualAnalysis: safeJsonObject(result.visual_analysis, null),
     createdAt: job.created_at || job.submittedAt || "",
     currentStage: Number(linkedProject.current_stage || result.current_stage || job.current_stage || 0),
@@ -682,6 +687,7 @@ const buildProjectGroupsFromJobs = (jobs = []) => {
   const groups = new Map();
 
   jobs
+    .filter(activeProjectJob)
     .map((job) => normalizeReviewJob(job))
     .forEach((job) => {
       const projectKey =
@@ -710,6 +716,9 @@ const buildProjectGroupsFromJobs = (jobs = []) => {
 
   return Array.from(groups.values()).map((group) => ({
     ...group,
+    pendingImports: jobs.filter((job) => job.project_id === group.projectId && ["processing", "preview"].includes(job.client_import_state)).length,
+    openChangeRequests: jobs.filter((job) => job.project_id === group.projectId).reduce((total, job) => total +
+      (safeJsonObject(job.result_json, {}).client_change_requests || []).filter((request) => ["pending", "in_review"].includes(request.status)).length, 0),
     jobs: group.jobs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
   }));
 };
@@ -1389,8 +1398,8 @@ function App() {
         stage_id: "S12",
         event_type: "packing_plan_generated",
         actor: "Cho",
-        message_cn: `Loading AI 已生成 ${loadingAiResult.totalContainers || 0} 个货柜方案。`,
-        message_en: `Loading AI generated a ${loadingAiResult.totalContainers || 0}-container packing plan.`,
+        message_cn: `Loading Planner 已生成 ${loadingAiResult.totalContainers || 0} 个货柜方案。`,
+        message_en: `Loading Planner generated a ${loadingAiResult.totalContainers || 0}-container packing plan.`,
         payload: {
           container_type: loadingAiResult.containerType,
           utilization_percent: loadingAiResult.utilizationPercent,
@@ -1702,6 +1711,7 @@ function App() {
     if (role === "client") {
       setUser({
         name: "Sarah Jenkins",
+        isDemo: true,
         email: "sarah@jenkins-design.co.uk",
         company: "Jenkins Contract Interior Studio",
         messenger: "WhatsApp",
@@ -2187,7 +2197,7 @@ function App() {
       } catch (err) {
         lastError = err;
         if (attempt === 1) {
-          setSupportStatus("智能客服连接不稳定，正在自动重试...");
+          setSupportStatus("客服连接不稳定，正在自动重试...");
           await new Promise((resolve) => setTimeout(resolve, 800));
         }
       }
@@ -2258,8 +2268,8 @@ function App() {
       console.error("AI support reply failed:", err);
       const fallbackText =
         err.name === "AbortError"
-          ? "抱歉，这一轮智能回复超时了。对话没有结束，您可以继续发送消息，或稍后再试。"
-          : `抱歉，这一轮智能客服连接不稳定。对话没有结束，您可以继续发送消息，或直接提交项目需求给 Crafton 团队。${err.requestId ? `（错误编号：${err.requestId}）` : ""}`;
+          ? "抱歉，这一轮回复超时了。对话没有结束，您可以继续发送消息，或稍后再试。"
+          : `抱歉，这一轮客服连接不稳定。对话没有结束，您可以继续发送消息，或直接提交项目需求给 Crafton 团队。${err.requestId ? `（错误编号：${err.requestId}）` : ""}`;
       setSupportMessages((prev) => [
         ...prev,
         {
@@ -2611,8 +2621,8 @@ function App() {
         setIntakeUploadedFileId(fileRow.id);
         setIntakeUploadStatus(
           lang === "Cn"
-            ? "文件已安全上传，AI 正在自动开始资料检查。"
-            : "File uploaded securely. AI is starting the document check automatically."
+            ? "文件已安全上传，我们正在检查文件内容。"
+            : "Your file has been uploaded securely. We’re now checking its contents."
         );
       } else {
         setIntakeUploadStatus(
@@ -2630,11 +2640,11 @@ function App() {
       setLiveIntakeWarning(
         sizeRejected
           ? lang === "Cn"
-            ? "上传失败：储存服务拒绝了此文件的大小，AI 尚未开始分析。请重试；若仍出现此提示，请联系 Crafton 检查上传上限。"
-            : "Upload failed: storage rejected this file's size. AI has not started. Please retry; if this continues, contact Crafton to check the upload limit."
+            ? "文件超过当前上传上限。请尝试上传较小的文件，或联系 Crafton 获取帮助。"
+            : "This file exceeds the current upload limit. Please try a smaller file or contact Crafton for help."
           : lang === "Cn"
-            ? "文件未能成功上传，AI 尚未开始分析。请检查网络及登录状态，然后重新上传此文件。"
-            : "The file could not be uploaded. AI has not started. Check your connection and sign-in, then retry this upload."
+            ? "文件未能上传。请检查网络和登录状态，然后重试。"
+            : "Your file could not be uploaded. Please check your connection and sign-in, then try again."
       );
     } finally {
       setIntakeFileUploading(false);
@@ -2691,13 +2701,13 @@ function App() {
       setLatestIntakeJob(job);
       setIntakeUploadStatus(
         lang === "Cn"
-          ? "AI 正在读取 FF&E 内容；完成后会自动进入客户资料补全。"
-          : "AI is reading the FF&E file. Client Completion will open automatically when the check finishes."
+          ? "我们正在核对您的 FF&E 文件；检查完成后会自动进入资料确认步骤。"
+          : "We’re reviewing your FF&E file. You’ll be taken to the next step when the check is complete."
       );
       loadPrequoteWorkspace().catch((error) => console.warn("FF&E extraction refresh failed:", error.message || error));
     } catch (error) {
       console.error("FF&E schedule analysis failed:", error);
-      setLiveIntakeWarning(error.message || "FF&E schedule analysis failed.");
+      setLiveIntakeWarning(customerServiceError(error.message, lang));
     } finally {
       setIsIntakeUploading(false);
     }
@@ -2738,7 +2748,7 @@ function App() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       console.error("FF&E extraction confirmation failed:", error);
-      setLiveIntakeWarning(error.message || "The extracted project could not be confirmed.");
+      setLiveIntakeWarning(customerServiceError(error.message, lang));
     } finally {
       setFfeConfirmationSaving(false);
     }
@@ -2807,23 +2817,23 @@ function App() {
       },
       {
         delay: 1000,
-        cn: "🔍 [Intake Agent] 正在讀取上傳設計草圖幾何線條...",
-        en: "🔍 [Intake Agent] Analysing uploaded sketch geometry..."
+        cn: "🔍 正在核對您上傳的設計草圖…",
+        en: "🔍 We’re reviewing your uploaded sketch…"
       },
       {
         delay: 1600,
-        cn: "📐 [Spec Agent] 自動推導扶手椅與休閒椅比例及公差限制 (W:65cm, D:60cm, H:85cm)...",
-        en: "📐 [Spec Agent] Extrapolating chair dimensions and tolerances (W:65cm, D:60cm, H:85cm)..."
+        cn: "📐 正在整理扶手椅與休閒椅的尺寸及公差資料 (W:65cm, D:60cm, H:85cm)…",
+        en: "📐 Preparing chair dimensions and tolerances (W:65cm, D:60cm, H:85cm)…"
       },
       {
         delay: 2200,
-        cn: "🔥 [Compliance Agent] 比對英國 BS 5852 Crib 5 消防安全性：面料耐燃性相符...",
-        en: "🔥 [Compliance Agent] Auditing British BS 5852 Crib 5 compliance: Swatch flammability compatible..."
+        cn: "🔥 正在核對英國 BS 5852 Crib 5 消防要求及面料資料…",
+        en: "🔥 Reviewing British BS 5852 Crib 5 requirements and fabric details…"
       },
       {
         delay: 2800,
-        cn: "📝 [BOM Agent] 自動生成雙語技術 BOM 清單與圖紙歸檔...",
-        en: "📝 [BOM Agent] Compiling bilingual technical BOM spreadsheet & blueprint archives..."
+        cn: "📝 正在整理雙語技術 BOM 清單與圖紙…",
+        en: "📝 Preparing your bilingual technical BOM and drawing records…"
       },
       {
         delay: 3400,
@@ -4793,16 +4803,16 @@ function App() {
       stageIndexes: [0, 1, 2, 3, 4],
       titleCn: "接收客户订单",
       titleEn: "Client Order Intake",
-      descCn: "客户需求接入、规格补齐、BOM、产品数据审核与 Crib 5 合规闸口；AI 图仅作概念参考。",
+      descCn: "客户需求接入、规格补齐、BOM、产品数据审核与 Crib 5 合规闸口；概念图仅供参考。",
       descEn:
-        "Client requirements, spec completion, BOM, item-data review and Crib 5 compliance; AI views are reference-only."
+        "Client requirements, spec completion, BOM, item-data review and Crib 5 compliance; concept views are reference-only."
     },
     {
       id: "sourcing",
       stageIndexes: [5, 6, 7],
       titleCn: "供应商报价与最优报价",
       titleEn: "Supplier RFQ & Best Quote",
-      descCn: "生成并下载 RFQ Excel，自行邮件询价；收到回传后按供应商录入，再由 AI 比价并交 Cho 决策。",
+      descCn: "生成并下载 RFQ Excel，自行邮件询价；收到回传后按供应商录入，进行报价比较并交 Cho 决策。",
       descEn: "Dispatch RFQs, compare supplier bids, and let Cho select the best offer."
     },
     {
@@ -4829,7 +4839,7 @@ function App() {
     S03: { cn: "生成技术 BOM", en: "Technical BOM" },
     S04: { cn: "Cho 技术审核", en: "Cho Technical Review" },
     S05: { cn: "Crib 5 消防拦截", en: "Crib 5 Compliance" },
-    S06: { cn: "供应商智能询价", en: "Supplier RFQ Dispatch" },
+    S06: { cn: "供应商询价", en: "Supplier RFQ Dispatch" },
     S07: { cn: "多厂报价比较", en: "Bid Comparison" },
     S08: { cn: "Cho 比价决策", en: "Cho Supplier Decision" },
     S09: { cn: "生产状态联动", en: "Production Kickoff" },
@@ -5735,7 +5745,7 @@ function App() {
         if (!supabaseUser) {
           setAdminAccessStatus("unauthenticated");
           setIntakeReviewJobs([]);
-          setClientProjectJobs([]);
+          if (!user?.isDemo) setClientProjectJobs([]);
           return;
         }
 
@@ -5768,7 +5778,7 @@ function App() {
             reviewRowsWithOwners.map((row) => addSignedIntakeItemImages(client, row))
           );
           if (portalOwnerIdRef.current !== authenticatedOwnerId) return;
-          setIntakeReviewJobs(reviewRowsWithPreviews);
+          setIntakeReviewJobs(reviewRowsWithPreviews.filter(activeProjectJob));
           setAdminAccessStatus("ready");
         } else {
           setAdminAccessStatus("forbidden");
@@ -5781,7 +5791,7 @@ function App() {
             .select("*, intake_files(*), projects(*)")
             .or(buildPortalOwnershipFilter(authenticatedOwnerId))
             .order("created_at", { ascending: false })
-            .limit(24);
+            .limit(1000);
 
           if (clientError) throw clientError;
           if (portalOwnerIdRef.current !== authenticatedOwnerId) return;
@@ -6021,7 +6031,7 @@ function App() {
       merged.reviewStatus === "approved"
         ? "Intake draft approved. Specs are ready for RFQ package preparation."
         : merged.clarificationWorkflow?.status === "ready_for_approval"
-          ? merged.clarificationWorkflow.summaryEn || "AI updated the intake draft. It is ready for Cho approval."
+          ? merged.clarificationWorkflow.summaryEn || "Crafton updated the intake draft. It is ready for Cho approval."
           : ""
     );
     setIntakeApprovalSaving(false);
@@ -6227,7 +6237,7 @@ function App() {
         previous ? { ...previous, projectId, reviewStatus: "approved", reviewNotes: updates.review_notes } : previous
       );
       setPrequoteNotice(
-        "Item data approved for RFQ. AI concept views remain reference-only and do not form part of the manufacturing approval."
+        "Item data approved for RFQ. Concept views remain reference-only and do not form part of the manufacturing approval."
       );
       setCurrentStageIndex(3);
       addLog("Cho", "Intake draft approved for RFQ preparation.", "Intake draft approved for RFQ preparation.");
@@ -6434,7 +6444,7 @@ function App() {
         ...prev,
         [job.id]: {
           status: "submitting",
-          message: "Saving answers and asking AI to re-check the project..."
+          message: "Saving your answers and checking the updated project…"
         }
       }));
       let response;
@@ -6480,11 +6490,11 @@ function App() {
       const remainingCount = Number(reanalysis.remaining_question_count ?? response?.questions?.length ?? 0);
       const successMessage =
         reanalysis.status === "ready_for_approval"
-          ? "Answers saved. AI updated the project draft; it is now waiting for Cho approval."
+          ? "Answers saved. Crafton updated the project draft; it is now waiting for Cho approval."
           : reanalysis.continue_client_clarification
-            ? `Answer saved. AI updated the project; ${remainingCount} clarification${remainingCount === 1 ? "" : "s"} remain for you to complete.`
+            ? `Answer saved. Crafton updated the project; ${remainingCount} clarification${remainingCount === 1 ? "" : "s"} remain for you to complete.`
             : reanalysis.status === "clarification_required"
-              ? `Answers saved. AI re-checked the project and found ${remainingCount} item${remainingCount === 1 ? "" : "s"} for Cho to review.`
+              ? `Answers saved. We checked the updated project and found ${remainingCount} item${remainingCount === 1 ? "" : "s"} for Cho to review.`
               : "Answers saved. Cho will review the project update.";
       setClientAnswerDrafts((prev) => ({ ...prev, [job.id]: {} }));
       setClientAnswerSubmitState((prev) => ({
@@ -6513,8 +6523,8 @@ function App() {
           submitted_at: new Date().toISOString(),
           bom_draft_ready: false,
           error: String(err.message || err),
-          summary_en: "Client answers were saved, but AI re-analysis needs manual Cho review.",
-          summary_cn: "客户答案已保存，但 AI 重新分析未完成，需要 Cho 人工复核。"
+          summary_en: "Client answers were saved, but re-analysis needs manual Cho review.",
+          summary_cn: "客户答案已保存，但重新分析未完成，需要 Cho 人工复核。"
         }
       };
       try {
@@ -6522,7 +6532,7 @@ function App() {
           status: "needs_review",
           step: "ai_reanalysis_failed",
           review_status: "pending",
-          review_notes: "Client answers saved. AI re-analysis requires manual Cho review.",
+          review_notes: "Client answers saved. Re-analysis requires manual Cho review.",
           client_answers: answers,
           result_json: resultJson
         });
@@ -6535,13 +6545,13 @@ function App() {
         [job.id]: {
           status: fallbackAnswerSaved ? "success" : "error",
           message: fallbackAnswerSaved
-            ? "Answers were sent to Cho. AI re-analysis needs manual review."
+            ? "Answers were sent to Cho. Re-analysis needs manual review."
             : `Answers could not be saved: ${err.message || err}`
         }
       }));
       setPrequoteNotice(
         fallbackAnswerSaved
-          ? "Answers were sent to Cho. AI re-analysis needs manual review."
+          ? "Answers were sent to Cho. Re-analysis needs manual review."
           : `Answers could not be saved: ${err.message || err}`
       );
       await loadPrequoteWorkspace().catch(() => {});
@@ -7474,7 +7484,7 @@ function App() {
               key={`${message.sender}-${idx}`}
               className={`chat-bubble ${message.sender === "client" ? "bubble-client" : "bubble-agent"}`}
             >
-              {message.text}
+              {message.sender === "client" ? message.text : customerServiceText(message.text)}
             </div>
           ))}
           {supportIsTyping && <div className="chat-bubble bubble-agent">Crafton is updating the brief...</div>}
@@ -7723,6 +7733,37 @@ function App() {
     );
   };
 
+  const handleClientProjectCommand = async (body) => {
+    const context = await getPortalSupabaseContext();
+    if (!context) {
+      if (!user?.isDemo || supabaseSessionUser) throw new Error("Please sign in again to edit this project.");
+      const jobs = clientProjectJobs.filter((job) => job.project_id === body.projectId);
+      if (!jobs.length) throw new Error("This project is not available.");
+      const linked = jobs[0].projects || {};
+      const project = { id: body.projectId, name: jobs[0].project_name, current_stage: jobs[0].current_stage || 1,
+        client_edit_revision: 0, ...linked };
+      const workspace = { project, jobs, isDemo: true, requiresReview: requiresProjectReview(project, jobs),
+        version: JSON.stringify(jobs.map((job) => [job.id, job.updated_at])), imports: [], documents: [] };
+      if (body.operation === "read") return workspace;
+      if (body.operation === "queue_file" || body.referenceFileId) throw new Error("File uploads require a signed-in project account. This is a demo project.");
+      if (body.version !== workspace.version) throw new Error("Project details changed. Reload the latest details.");
+      const plan = buildEditPlan(workspace, body, { actorId: user.id || "demo", requestId: window.crypto.randomUUID() });
+      const updated = new Map(plan.patches.map((patch) => [patch.id, patch]));
+      setClientProjectJobs((previous) => previous.map((job) => job.project_id === body.projectId ? {
+        ...job, ...updated.get(job.id), updated_at: new Date().toISOString(),
+        project_name: plan.projectPatch.name || job.project_name,
+        projects: { ...project, ...plan.projectPatch, client_edit_revision: project.client_edit_revision + 1 }
+      } : job));
+      return { ok: true, outcome: plan.outcome };
+    }
+    const result = await callWorkflowAi(context.client, { ...body, action: "client_project_edit" });
+    if (body.operation !== "read") {
+      if (prequoteWorkspaceLoadRef.current) await prequoteWorkspaceLoadRef.current;
+      await loadPrequoteWorkspace({ background: true });
+    }
+    return result;
+  };
+
   const renderClientOrderDashboard = () => {
     const forceEmptyDashboard =
       import.meta.env.DEV && new window.URLSearchParams(window.location.search).has("empty-dashboard");
@@ -7779,6 +7820,8 @@ function App() {
           return sourceJob ? handleSubmitClientAnswers(sourceJob) : Promise.resolve();
         }}
         onReferenceImageUpload={uploadItemReferenceImage}
+        onProjectCommand={handleClientProjectCommand}
+        onProjectFileUpload={uploadIntakeFileRecord}
       />
     );
   };
@@ -7876,12 +7919,12 @@ function App() {
               remaining_question_count: completionDemoReady ? 0 : 2,
               continue_client_clarification: !completionDemoReady,
               summary_en: completionDemoReady
-                ? "AI intake check complete. The structured project draft is ready for Cho approval."
-                : "AI intake check complete. Two client-owned details need confirmation."
+                ? "Intake check complete. The structured project draft is ready for Cho approval."
+                : "Intake check complete. Two client-owned details need confirmation."
             },
             summary_en: completionDemoReady
-              ? "AI intake check complete. The structured project draft is ready for Cho approval."
-              : "AI extracted three furniture lines and found two details that need client confirmation."
+              ? "Intake check complete. The structured project draft is ready for Cho approval."
+              : "Crafton extracted three furniture lines and found two details that need client confirmation."
           }
         }
       : null;
@@ -8694,16 +8737,16 @@ function App() {
             >
               <div>
                 <span className="intake-next-action-icon" aria-hidden="true">
-                  AI
+                  Review
                 </span>
                 <div>
                   <strong>
                     {clarificationWorkflow.status === "ready_for_approval"
-                      ? "AI update ready for Cho approval"
+                      ? "Update ready for Cho approval"
                       : clarificationWorkflow.status === "analyzing"
-                        ? "AI is re-analysing the client answers"
+                        ? "We are re-analysing the client answers"
                         : clarificationWorkflow.status === "clarification_required"
-                          ? "AI update needs Cho review"
+                          ? "Update needs Cho review"
                           : "Client answers need manual review"}
                   </strong>
                   <p>
@@ -8714,7 +8757,7 @@ function App() {
                 </div>
               </div>
               <button type="button" onClick={() => setIntakeDisclosure("clarification")}>
-                Review AI update
+                Review update
                 <span>{Number(clarificationWorkflow.remaining_question_count || 0)}</span>
               </button>
             </section>
@@ -8832,7 +8875,7 @@ function App() {
                           {isManufacturingDrawing(drawing)
                             ? "Supplier approved"
                             : isAiConceptDrawing(drawing)
-                              ? "AI concept"
+                              ? "Concept"
                               : drawing.status === "generating"
                                 ? "Generating"
                                 : "Pending"}
@@ -8920,7 +8963,7 @@ function App() {
               <span>
                 <strong>BOM & concept references</strong>
                 <small>
-                  {conceptDrawingCount} AI concept view{conceptDrawingCount === 1 ? "" : "s"} · not for manufacture
+                  {conceptDrawingCount} concept view{conceptDrawingCount === 1 ? "" : "s"} · not for manufacture
                 </small>
               </span>
               <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
@@ -8943,7 +8986,7 @@ function App() {
                         {isManufacturingDrawing(record.drawing)
                           ? "Supplier drawing · approved"
                           : isAiConceptDrawing(record.drawing)
-                            ? "AI concept · reference only"
+                            ? "Concept · reference only"
                             : "Drawing pending"}
                       </small>
                     </button>
@@ -8961,7 +9004,7 @@ function App() {
                   aria-expanded={intakeDisclosure === "clarification"}
                 >
                   <span>
-                    <strong>Client answers & AI re-analysis</strong>
+                    <strong>Client answers & re-analysis</strong>
                     <small>
                       {clarificationWorkflow.status === "ready_for_approval"
                         ? "Ready for Cho approval"
@@ -9003,7 +9046,7 @@ function App() {
                     )}
                     {(clarificationWorkflow.change_summary || []).length > 0 && (
                       <div className="intake-next-sheet-questions">
-                        <span className="intake-next-kicker">AI draft updates</span>
+                        <span className="intake-next-kicker">Draft updates</span>
                         <ol className="intake-next-question-list">
                           {clarificationWorkflow.change_summary.map((change, index) => (
                             <li key={`${change}-${index}`}>{change}</li>
@@ -9234,7 +9277,7 @@ function App() {
                             {isManufacturingDrawing(selectedIntakeItem.drawing)
                               ? "Supplier shop drawing · approved for manufacture"
                               : isAiConceptDrawing(selectedIntakeItem.drawing)
-                                ? "AI concept reference · not for manufacture"
+                                ? "Concept reference · not for manufacture"
                                 : selectedIntakeItem.drawing.status === "generating"
                                   ? "Generating"
                                   : "Pending"}
@@ -9671,7 +9714,7 @@ function App() {
                               {isManufacturingDrawing(drawing)
                                 ? "Supplier drawing · approved for manufacture"
                                 : isAiConceptDrawing(drawing)
-                                  ? "AI concept · reference only"
+                                  ? "Concept · reference only"
                                   : drawing.status === "generating"
                                     ? "Generating"
                                     : "Pending"}
@@ -10390,7 +10433,7 @@ function App() {
       ["Cho 技术审批", "Cho technical approval"],
       ["合规放行", "Compliance release"],
       ["RFQ Excel 准备与下载", "RFQ Excel preparation and download"],
-      ["供应商回传与 AI 比价", "Supplier returns and AI comparison"],
+      ["供应商回传与比价", "Supplier returns and comparison"],
       ["Cho 供应商决策", "Cho supplier decision"],
       ["生产启动", "Production kickoff"],
       ["生产风险跟进", "Production risk follow-up"],
@@ -10416,8 +10459,8 @@ function App() {
       }
       if (stage <= 2)
         return lang === "Cn"
-          ? "审核客户资料与 AI 识别出的规格缺口"
-          : "Review the client brief and AI-detected specification gaps";
+          ? "审核客户资料与识别出的规格缺口"
+          : "Review the client brief and specification gaps";
       if (stage === 3)
         return lang === "Cn"
           ? "检查 BOM、双语规格、尺寸与材质"
@@ -10432,8 +10475,8 @@ function App() {
           : "Confirm the RFQ and suppliers, download Excel, then send it from your own mailbox";
       if (stage === 7)
         return lang === "Cn"
-          ? "把回传 Excel 录入对应供应商，再运行 AI 标准化比价"
-          : "Import each returned Excel under its supplier, then run the AI-normalized comparison";
+          ? "把回传 Excel 录入对应供应商，再运行标准化比价"
+          : "Import each returned Excel under its supplier, then run the comparison";
       if (stage === 8) return lang === "Cn" ? "由 Cho 决定中选供应商" : "Cho to select the winning supplier";
       if (stage <= 10)
         return lang === "Cn" ? "检查生产进度、证据与延期风险" : "Review production progress, evidence and delay risks";
@@ -10889,6 +10932,8 @@ function App() {
             </div>
           </div>
 
+          <ClientChangeReview lang={lang} projectId={activeAdminProject?.id} supabaseClient={getSupabaseBrowserClient()}
+            onChanged={() => loadPrequoteWorkspace({ background: true })} />
           {renderFlowWorkspace()}
         </div>
       </AdminLocalized>
@@ -11172,7 +11217,7 @@ function App() {
                   marginBottom: "40px"
                 }}
               >
-                {lang === "Cn" ? "倫敦工作室 × 智能製造" : "London Studio × Intelligent Manufacture"}
+                {lang === "Cn" ? "倫敦工作室 × 精密製造" : "London Studio × Precision Manufacturing"}
               </div>
             </div>
 
@@ -11918,7 +11963,7 @@ function App() {
               </h3>
               <p style={{ fontSize: "14px", color: "#7C7267", lineHeight: "1.6", marginBottom: "20px" }}>
                 {lang === "Cn"
-                  ? "座落於倫敦核心設計街區，負責全球合約傢俱 (Contract Furniture) 的前期概念策劃、物料板定案及歐洲嚴苛的消防法規（如 BS 5852 Crib 5）對接。我們是客戶與智能工廠之間的靈魂紐帶。"
+                  ? "座落於倫敦核心設計街區，負責全球合約傢俱 (Contract Furniture) 的前期概念策劃、物料板定案及歐洲嚴苛的消防法規（如 BS 5852 Crib 5）對接。我們是客戶與製造工廠之間的靈魂紐帶。"
                   : "Located in London's premier design district, coordinates custom material selection, FF&E consulting, and stringent European fire code compliance (BS 5852 Crib 5). The creative and compliance soul linking clients with engineering."}
               </p>
               <div
@@ -12154,7 +12199,7 @@ function App() {
               </h4>
               <p style={{ fontSize: "13px", color: "#7C7267", margin: 0, lineHeight: "1.5" }}>
                 {lang === "Cn"
-                  ? "智能識別材料消防資質，全自動卡點硬阻攔不合規物料，護航商業交付。"
+                  ? "核對材料消防資質，全自動卡點硬阻攔不合規物料，護航商業交付。"
                   : "Automated material compliance checks prevent non-compliant materials from being shipped."}
               </p>
             </div>
@@ -15241,7 +15286,7 @@ function App() {
                     descEn:
                       "An unapologetic, highly eccentric co-living development. Crafton manufactured the spectacular 'longest lounge seating bank in London' for the residents' hub, alongside custom timber wall panels and velvet phone booths, balancing bold social-media-ready features with high-traffic Crib 5 safety compliance.",
                     detailDescCn:
-                      "這是一次富有英倫幽默、反叛張揚個性與極高合約規格的共享生活空間實踐。為了替倫敦溫布利的 The Robinson 打造一個極具話題度的社交大堂，THE CRAFTON 為其高定製造了號稱「倫敦最長」的多彩拼色模塊沙發、高光煙熏尤加利 (WD-07) 護牆板，以及隔音私密絲絨電話亭。沙發選用頂級重磅奢級棉絨 (BF-12)，具備高達 100,000 次 Martindale 循環耐磨強度，並通過了高規格 Crib 5 商業消防安全防護測試。空間的色彩衝突與極高頻公共使用的耐候性在我們內部智能製造的閉環管控下得到了完美融合，成為倫敦新晉的網紅打卡地標。",
+                      "這是一次富有英倫幽默、反叛張揚個性與極高合約規格的共享生活空間實踐。為了替倫敦溫布利的 The Robinson 打造一個極具話題度的社交大堂，THE CRAFTON 為其高定製造了號稱「倫敦最長」的多彩拼色模塊沙發、高光煙熏尤加利 (WD-07) 護牆板，以及隔音私密絲絨電話亭。沙發選用頂級重磅奢級棉絨 (BF-12)，具備高達 100,000 次 Martindale 循環耐磨強度，並通過了高規格 Crib 5 商業消防安全防護測試。空間的色彩衝突與極高頻公共使用的耐候性在我們內部精密製造的閉環管控下得到了完美融合，成為倫敦新晉的網紅打卡地標。",
                     detailDescEn:
                       "A high-impact, eccentric B2B contract project designed to redefine luxury co-living in Wembley, London. Crafton manufactured the spectacular 'longest lounge seating bank in London' for the central residents' hub, alongside custom Smoked Eucalyptus (WD-07) millwork and acoustic velvet phone booths. The modular sofas are clad in our heavy-traffic Crimson Cotton Velvet (BF-12), carrying a 100k Martindale rub rate and fully certified to British Crib 5 fire-safety standards. This ambitious project showcases Crafton's capability to balance bold, social-media-ready custom aesthetics with heavy-duty commercial longevity and institutional compliance.",
                     materials: [
@@ -16824,7 +16869,7 @@ function App() {
                             whiteSpace: "pre-wrap"
                           }}
                         >
-                          {message.text}
+                          {message.sender === "client" ? message.text : customerServiceText(message.text)}
                         </div>
                       ))}
                       {supportIsTyping && (
@@ -18014,7 +18059,7 @@ function App() {
                             key={midx}
                             className={`chat-bubble ${msg.sender === "client" ? "bubble-client" : "bubble-agent"}`}
                           >
-                            {msg.text}
+                            {msg.sender === "client" ? msg.text : customerServiceText(msg.text)}
                           </div>
                         ))}
                       </div>

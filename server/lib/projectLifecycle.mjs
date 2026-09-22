@@ -34,7 +34,9 @@ export const getJobLifecycleStatus = (job = {}) => {
   return String(lifecycleFromJob(job).status || ACTIVE_STATUS).toLowerCase();
 };
 
-export const isJobAutomationActive = (job = {}) => !RETIRED_STATUSES.has(getJobLifecycleStatus(job));
+export const isJobAutomationActive = (job = {}, includePendingImports = false) =>
+  !RETIRED_STATUSES.has(getJobLifecycleStatus(job)) &&
+  (includePendingImports === true || !job.client_import_state || job.client_import_state === "merged");
 
 const appendAuditFile = (entry) => {
   try {

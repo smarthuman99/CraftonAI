@@ -40,10 +40,10 @@ export default function IntakeEvidenceReview({ result, lang }) {
       <p>
         {label("证据覆盖率", "Evidence coverage")}: {gate.evidence_coverage_percent}% ·{" "}
         {review.status === "not_required"
-          ? label("程序校验通过，无需第二次 AI 复核", "Program checks passed; no second AI review needed")
+          ? label("程序校验通过，无需第二次复核", "Program checks passed; no second review needed")
           : review.status === "failed"
-            ? label("AI 复核未完成", "AI review incomplete")
-            : label("已执行 AI 定向复核", "Targeted AI review performed")}
+            ? label("复核未完成", "Review incomplete")
+            : label("已执行定向复核", "Targeted review performed")}
       </p>
       <p>
         {label(

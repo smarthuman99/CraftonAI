@@ -14,13 +14,13 @@ export const SCORE_WEIGHTS = Object.freeze({
 export async function createQuoteAnalysis(context = {}) {
   const analysis = analyzeQuotesDeterministically(context);
   if (analysis.quotes.length < 2) {
-    const error = new Error("At least two supplier quotations are required for AI comparison.");
+    const error = new Error("At least two supplier quotations are required for comparison.");
     error.statusCode = 400;
     throw error;
   }
 
   let method = "rules_fallback";
-  let warning = "AI narrative is unavailable; verified-data scoring remains active.";
+  let warning = "The comparison summary is unavailable; verified-data scoring remains active.";
   try {
     const narrative = await requestNarrative(analysis);
     if (narrative) {
@@ -29,7 +29,8 @@ export async function createQuoteAnalysis(context = {}) {
       warning = "";
     }
   } catch (error) {
-    warning = `AI narrative failed: ${error.message}`;
+    console.warn("Quote narrative failed:", error.message);
+    warning = "The comparison summary could not be prepared. Verified-data scoring remains active.";
   }
 
   analysis.generation = {
@@ -212,9 +213,9 @@ export function analyzeQuotesDeterministically({ project = {}, rfq = {}, quotes 
       : null,
     warnings,
     warningsCn,
-    decisionNoteCn: "AI 负责标准化、核算、风险识别与推荐；最终供应商仍须由 Cho 在 S08 审批。",
+    decisionNoteCn: "报价已完成标准化、核算、风险识别与推荐；最终供应商仍须由 Cho 在 S08 审批。",
     decisionNoteEn:
-      "AI standardizes, scores, flags risks and recommends; Cho remains the final supplier-selection decision maker."
+      "The comparison standardizes quotations, scores value and highlights risks; Cho remains the final supplier-selection decision maker."
   };
 }
 

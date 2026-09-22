@@ -24,7 +24,7 @@ const faqItems = [
   {
     question: "How do you control quality overseas?",
     answer:
-      "Every order is inspected against its specification with AI-assisted checks (dimensions, finish, fire compliance) before it ships. Nothing leaves the factory unchecked."
+      "Every order is checked against its specification, including dimensions, finish and fire compliance, before it ships. Nothing leaves the factory unchecked."
   },
   {
     question: "Which markets do you deliver to?",
@@ -113,7 +113,7 @@ function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
             <div className="label">Freight, duty and delivery, all handled</div>
           </div>
           <div className="home-reference-stat">
-            <div className="number">AI-inspected</div>
+            <div className="number">Quality checked</div>
             <div className="label">Every piece checked before it ships</div>
           </div>
           <div className="home-reference-stat">
@@ -142,8 +142,8 @@ function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
               ],
               [
                 "02",
-                "AI quality control",
-                "Every piece is inspected against the spec with AI-driven checks before anything is shipped."
+                "Quality control",
+                "Every piece is checked against its specification before it ships."
               ],
               [
                 "03",
@@ -290,7 +290,7 @@ function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
               ["01", "Submit", "Send a spec, a schedule, or choose from the catalogue."],
               ["02", "Price & match", "We price it and match it to the right factory."],
               ["03", "Make", "The factory builds it; we manage the run stage by stage."],
-              ["04", "Inspect", "AI-driven quality and compliance checks before it ships."],
+              ["04", "Inspect", "Quality and compliance checks before it ships."],
               ["05", "Land", "Freight, customs and delivery to the door, DDP."]
             ].map(([number, title, copy]) => (
               <div className="home-reference-step" key={number}>

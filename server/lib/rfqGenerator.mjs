@@ -7,7 +7,7 @@ export async function createRfqDraft({ context = {} }) {
 
   const fallback = buildDeterministicRfq(source);
   if (!process.env.DEEPSEEK_API_KEY) {
-    return buildResult(fallback, "rules_fallback", "No AI model key is configured; the RFQ was assembled from verified project data.");
+    return buildResult(fallback, "rules_fallback", "The RFQ was assembled from verified project data. Please review it before approval.");
   }
 
   try {
@@ -15,7 +15,7 @@ export async function createRfqDraft({ context = {} }) {
     return buildResult(mergeWithVerifiedSource(aiDocument, fallback, source), "ai", "");
   } catch (error) {
     console.error("AI RFQ generation failed; using verified-data fallback:", error.message);
-    return buildResult(fallback, "rules_fallback", `AI generation failed: ${error.message}`);
+    return buildResult(fallback, "rules_fallback", "The RFQ was assembled from verified project data. Please review it before approval.");
   }
 }
 

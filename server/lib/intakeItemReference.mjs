@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { loadClientProjectWorkspace } from "./clientProjectEditing.mjs";
 
 const REFERENCE_BUCKET = "intake-files";
 const MAX_REFERENCE_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -184,11 +185,15 @@ export async function attachIntakeItemReference({ supabase, user, body = {} }) {
   for (let attempt = 0; attempt < LOCK_RETRY_LIMIT; attempt += 1) {
     const { data: job, error: jobError } = await supabase
       .from("intake_jobs")
-      .select("id,user_id,requested_by,status,result_json,updated_at")
+      .select("id,project_id,user_id,requested_by,status,result_json,updated_at")
       .eq("id", jobId)
       .single();
     if (jobError || !job) throw requestError("The intake project could not be found.", 404);
     if (!userOwnsJob(user, job)) throw requestError("You do not have access to this project.", 403);
+    if (job.project_id) {
+      const workspace = await loadClientProjectWorkspace({ supabase, user, projectId: job.project_id });
+      if (workspace.requiresReview) throw requestError("This project needs a change request. Open Edit item in your project to submit the new reference photo.", 409);
+    }
     if (!["needs_review", "completed"].includes(job.status)) {
       throw requestError("Wait for the intake analysis to finish before adding an item reference.", 409);
     }

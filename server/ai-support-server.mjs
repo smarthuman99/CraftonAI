@@ -12,6 +12,7 @@ import { createOperationsPlan } from "./lib/operationsAutomation.mjs";
 import { reanalyzeIntakeClarifications } from "./lib/intakeClarificationReanalysis.mjs";
 import { attachIntakeItemReference } from "./lib/intakeItemReference.mjs";
 import { changeProjectLifecycle } from "./lib/projectLifecycle.mjs";
+import { clientProjectCommand } from "./lib/clientProjectEditing.mjs";
 import {
   analyzeProductionProject,
   approveSupplierProductionPlan,
@@ -62,7 +63,10 @@ const server = http.createServer(async (req, res) => {
     let result;
 
     if (req.url === "/api/ai-support-chat") {
-      if (body.action === "generate_rfq") {
+      if (body.action === "client_project_edit") {
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        result = await clientProjectCommand({ supabase, user, body });
+      } else if (body.action === "generate_rfq") {
         const { supabase } = await requireCraftonStaff(req);
         const context = await enrichRfqContextFromSupabase({ supabase, context: body.context });
         result = await createRfqDraft({ context });
@@ -174,7 +178,7 @@ const server = http.createServer(async (req, res) => {
     logSupportError(requestId, err);
     console.error(`AI support chat failed [${requestId}]:`, err);
     sendJson(res, Number(err?.statusCode || 500), {
-      error: err?.statusCode ? err.message : "Crafton AI service is temporarily unavailable. Please try again shortly.",
+      error: err?.statusCode ? err.message : "Crafton support is temporarily unavailable. Please try again shortly.",
       requestId
     });
   }

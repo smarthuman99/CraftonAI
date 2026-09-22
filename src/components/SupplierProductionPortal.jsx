@@ -20,11 +20,11 @@ const statusLabel = (value, zh) => {
     awaiting_supplier_evidence: ["Evidence required", "等待上传证据"],
     intervention_required: ["Intervention required", "需要立即处理"],
     attention_required: ["Attention required", "需要关注"],
-    monitoring: ["AI monitoring", "AI 监控中"],
+    monitoring: ["Monitoring", "监控中"],
     awaiting_framework: ["Awaiting work packages", "等待工序框架"],
     awaiting_supplier_plan: ["Factory schedule required", "等待工厂排产"],
     changes_required: ["Schedule changes required", "排产需要修改"],
-    ai_review: ["AI schedule validation", "AI 排产校验中"],
+    ai_review: ["Schedule validation", "排产校验中"],
     awaiting_cho_approval: ["Schedule awaiting Cho", "排产等待 Cho 批准"],
     revision_pending_cho: ["Revision awaiting Cho", "改期等待 Cho 批准"],
     plan_revision_required: ["Schedule changes required", "排产需要修改"],
@@ -137,8 +137,8 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
       });
       setMessage(
         t(
-          `Evidence accepted. AI controller: ${result.message}.`,
-          `证据已接收。AI 生产控制器判定：${analysisText(result.analysis, true)}。`
+          `Evidence accepted. Controller: ${result.message}.`,
+          `证据已接收。生产控制器判定：${analysisText(result.analysis, true)}。`
         )
       );
       setActiveTaskId("");
@@ -257,8 +257,8 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
           <h1>{t("Factory production workspace", "供应商生产工作台")}</h1>
           <p>
             {t(
-              "Report each work package here. Crafton AI checks deadlines and evidence completeness, then routes exceptions to Cho.",
-              "请在这里上报每个生产工序。Crafton AI 会检查截止日期和证据完整性，并只把异常事项交给 Cho 处理。"
+              "Report each work package here. Crafton checks deadlines and evidence completeness, then routes exceptions to Cho.",
+              "请在这里上报每个生产工序。Crafton 会检查截止日期和证据完整性，并只把异常事项交给 Cho 处理。"
             )}
           </p>
         </div>
@@ -304,7 +304,7 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
           value={`${workspace?.summary?.evidenceCoveragePercent || 0}%`}
         />
         <Metric
-          label={t("AI controller", "AI 生产控制器")}
+          label={t("Controller", "生产控制器")}
           value={statusLabel(workspace?.summary?.controllerStatus, zh)}
           tone={
             workspace?.summary?.highRiskCount ? "danger" : workspace?.summary?.mediumRiskCount ? "warning" : "success"
@@ -380,8 +380,8 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
                     <h3>{t("Upload professional CAD / shop drawings", "逐项上传专业 CAD／施工图")}</h3>
                     <p>
                       {t(
-                        "The AI concept is a visual reference only. Upload a PDF preview, image, DWG or DXF revision for every item. Production release stays locked until Cho approves the latest revision.",
-                        "AI 概念图只用于外观沟通。请为每个 item 上传 PDF 预览、图片、DWG 或 DXF；最新版本全部通过 Cho 技术审核后才会放行生产。"
+                        "The concept is a visual reference only. Upload a PDF preview, image, DWG or DXF revision for every item. Production release stays locked until Cho approves the latest revision.",
+                        "概念图只用于外观沟通。请为每个 item 上传 PDF 预览、图片、DWG 或 DXF；最新版本全部通过 Cho 技术审核后才会放行生产。"
                       )}
                     </p>
                   </div>
@@ -646,8 +646,8 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
               </button>
               <button className="primary" disabled={uploading}>
                 {uploading
-                  ? t("Uploading and checking...", "正在上传并由 AI 检查……")
-                  : t("Submit to Crafton AI", "提交给 Crafton AI")}
+                  ? t("Uploading and checking...", "正在上传并检查……")
+                  : t("Submit to Crafton", "提交给 Crafton")}
               </button>
             </div>
           </form>
@@ -679,8 +679,8 @@ export default function SupplierProductionPortal({ lang = "Cn", user, supabaseCl
               <strong>{t("Manufacturing responsibility", "生产责任说明")}</strong>
               <p>
                 {t(
-                  "This revision must contain production-accurate geometry, dimensions, construction and tolerances. It supersedes the AI concept only after Cho approval.",
-                  "本版本必须包含可生产的准确几何、尺寸、结构与公差；只有 Cho 批准后才会取代 AI 概念参考。"
+                  "This revision must contain production-accurate geometry, dimensions, construction and tolerances. It supersedes the concept only after Cho approval.",
+                  "本版本必须包含可生产的准确几何、尺寸、结构与公差；只有 Cho 批准后才会取代概念参考。"
                 )}
               </p>
             </div>

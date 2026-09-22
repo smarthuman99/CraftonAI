@@ -179,7 +179,7 @@ export default function AiQuoteComparison({
         project_id: project.id,
         stage_id: "S07",
         event_type: "ai_quote_analysis_generated",
-        actor: "Crafton AI",
+        actor: "Crafton",
         message_cn: `已比较 ${next.quotes.length} 份报价，综合最优建议为 ${next.recommendation?.supplierName || "暂不推荐"}。`,
         message_en: `Compared ${next.quotes.length} quotations; the best overall value is ${next.recommendation?.supplierName || "not yet recommendable"}.`,
         payload: {
@@ -193,8 +193,8 @@ export default function AiQuoteComparison({
       setAnalysis(next);
       setMessage(
         t(
-          "AI comparison saved to Supabase with scores, risks and an audit hash.",
-          "AI 比价的评分、风险与审计哈希已保存到 Supabase。"
+          "Comparison saved to Supabase with scores, risks and an audit hash.",
+          "比价的评分、风险与审计哈希已保存到 Supabase。"
         )
       );
       await onChanged?.();
@@ -224,7 +224,7 @@ export default function AiQuoteComparison({
           </select>
         </label>
         <div>
-          <span className="ai-data-source">SUPABASE + CRAFTON AI</span>
+          <span className="ai-data-source">SUPABASE + CRAFTON</span>
           <button
             type="button"
             className="btn-premium"
@@ -240,10 +240,10 @@ export default function AiQuoteComparison({
             }
           >
             {busy
-              ? t("AI is analyzing...", "AI 正在分析...")
+              ? t("We are analyzing...", "正在分析...")
               : result
-                ? t("Re-run AI comparison", "重新运行 AI 比价")
-                : t("Analyze quotations with AI", "用 AI 分析供应商报价")}
+                ? t("Re-run comparison", "重新运行比价")
+                : t("Analyze quotations", "分析供应商报价")}
           </button>
         </div>
       </div>
@@ -254,8 +254,8 @@ export default function AiQuoteComparison({
       {staleAnalysis && (
         <div className="admin-ops-notice error">
           {t(
-            "A supplier quotation changed after the previous analysis. Re-run AI comparison before S08 approval.",
-            "上次分析后有供应商报价发生变化，请重新运行 AI 比价后再进入 S08 审批。"
+            "A supplier quotation changed after the previous analysis. Re-run comparison before S08 approval.",
+            "上次分析后有供应商报价发生变化，请重新运行比价后再进入 S08 审批。"
           )}
         </div>
       )}
@@ -271,15 +271,15 @@ export default function AiQuoteComparison({
           <p>
             {t(
               minimumMissingCount
-                ? `Import and save ${minimumMissingCount} more supplier return(s). The AI button unlocks after two suppliers are ready.`
+                ? `Import and save ${minimumMissingCount} more supplier return(s). The comparison button unlocks after two suppliers are ready.`
                 : invitedMissingCount
-                  ? `${invitedMissingCount} invited supplier response(s) are still missing. You can run a preliminary AI comparison now and re-run it later.`
-                  : "All selected supplier returns are ready. Run AI comparison to normalize price, lead time, quality, reliability and commercial risk.",
+                  ? `${invitedMissingCount} invited supplier response(s) are still missing. You can run a preliminary comparison now and re-run it later.`
+                  : "All selected supplier returns are ready. Run comparison to normalize price, lead time, quality, reliability and commercial risk.",
               minimumMissingCount
-                ? `还需导入并保存 ${minimumMissingCount} 份回传；至少两家供应商齐备后，AI 比价按钮会启用。`
+                ? `还需导入并保存 ${minimumMissingCount} 份回传；至少两家供应商齐备后，比价按钮会启用。`
                 : invitedMissingCount
-                  ? `仍缺少 ${invitedMissingCount} 家受邀供应商回传；现在可以先运行阶段性 AI 比价，收到其余报价后再重新分析。`
-                  : "所有已选供应商报价均已齐备，可以用 AI 统一比较价格、交期、质量、可靠性和商务风险。"
+                  ? `仍缺少 ${invitedMissingCount} 家受邀供应商回传；现在可以先运行阶段性比价，收到其余报价后再重新分析。`
+                  : "所有已选供应商报价均已齐备，可以统一比较价格、交期、质量、可靠性和商务风险。"
             )}
           </p>
         </div>
@@ -290,12 +290,12 @@ export default function AiQuoteComparison({
           <div className="ai-analysis-provenance" data-method={analysisMethod || "unknown"}>
             <strong>
               {analysisMethod === "ai"
-                ? t("AI narrative + verified scoring", "AI 分析说明 + 可核验评分")
+                ? t("Narrative + verified scoring", "分析说明 + 可核验评分")
                 : t("Verified scoring fallback", "可核验规则评分")}
             </strong>
             <span>
               {analysisMethod === "ai"
-                ? `${result.generation.model} · ${result.generation.promptVersion}`
+                ? t("Prepared from verified quotation data", "根据已核实的报价资料整理")
                 : t(
                     "The model narrative was unavailable; deterministic scoring and risk checks still completed.",
                     "模型分析说明暂不可用，但确定性评分和风险检查已正常完成。"
@@ -312,7 +312,7 @@ export default function AiQuoteComparison({
           {result.recommendation ? (
             <section className="ai-recommendation-banner">
               <div>
-                <span>{t("AI RECOMMENDED BEST VALUE", "AI 推荐综合最优报价")}</span>
+                <span>{t("RECOMMENDED BEST VALUE", "推荐综合最优报价")}</span>
                 <h4>{result.recommendation.supplierName}</h4>
                 <p>{zh ? result.recommendation.reasonCn : result.recommendation.reasonEn}</p>
               </div>
@@ -335,8 +335,8 @@ export default function AiQuoteComparison({
           ) : (
             <div className="admin-ops-notice error">
               {t(
-                "AI completed the risk review but cannot recommend a supplier until currencies and blocking commercial issues are normalized.",
-                "AI 已完成风险检查，但在币种及阻塞性商务问题统一前，暂不建议选择供应商。"
+                "Crafton completed the risk review but cannot recommend a supplier until currencies and blocking commercial issues are normalized.",
+                "已完成风险检查，但在币种及阻塞性商务问题统一前，暂不建议选择供应商。"
               )}
             </div>
           )}
@@ -365,7 +365,7 @@ export default function AiQuoteComparison({
                     <th>{t("Price", "价格")}</th>
                     <th>{t("MOQ / lead", "起订量 / 交期")}</th>
                     <th>{t("Score evidence", "评分依据")}</th>
-                    <th>{t("AI assessment", "AI 分析")}</th>
+                    <th>{t("Assessment", "分析")}</th>
                     <th>{t("Risks", "风险")}</th>
                   </tr>
                 </thead>

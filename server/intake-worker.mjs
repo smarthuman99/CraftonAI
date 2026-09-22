@@ -58,7 +58,7 @@ async function claimQueuedJobs() {
     if (staleError) throw staleError;
     jobs = [...jobs, ...(staleJobs || [])];
   }
-  jobs = jobs.filter(isJobAutomationActive);
+  jobs = jobs.filter((job) => isJobAutomationActive(job, true));
   if (!jobs.length) return [];
 
   const claimed = [];
@@ -147,6 +147,16 @@ async function processJob(job) {
     createdAt: completedAt
   });
   result = clientCompletion.result;
+  if (job.client_import_state === "processing") {
+    // Additions are parsed in isolation. No project, BOM, payments or drawings
+    // are changed until the client reviews and confirms this file.
+    const { error } = await supabase.from("intake_jobs").update({
+      status: "needs_review", step: "client_import_preview", client_import_state: "preview",
+      review_status: "pending", result_json: result, completed_at: completedAt
+    }).eq("id", job.id).eq("client_import_state", "processing");
+    if (error) throw error;
+    return;
+  }
   const project = await upsertProject(job, result);
   const ownerUserId = project.user_id || userId;
 
@@ -533,7 +543,7 @@ async function upsertProject(job, result) {
       const { data: updated, error: updateError } = await supabase
         .from("projects")
         .update({
-          name: isGeneratedIntakeProjectName(projectName) ? projectById[0].name : projectName,
+          name: projectById[0].client_edit_revision > 0 || isGeneratedIntakeProjectName(projectName) ? projectById[0].name : projectName,
           client_name: result.project.client_name || projectById[0].client_name,
           client_contact: result.project.destination || projectById[0].client_contact
         })

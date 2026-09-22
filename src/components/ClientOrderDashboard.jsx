@@ -2,8 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { deriveProjectLifecycle } from "../projectLifecycle.js";
+import { customerServiceError } from "../customerServiceCopy.js";
+import ClientProjectEditor from "./ClientProjectEditor.jsx";
 
 const copy = (lang, cn, en) => (lang === "Cn" ? cn : en);
+const projectOrderCount = (project) => project.jobs.filter((job) => !job.isProjectAddition).length;
 
 const formatDate = (value, lang, fallback) => {
   if (!value) return fallback || copy(lang, "日期待确认", "Date pending");
@@ -439,8 +442,8 @@ function ReferenceImageUploadSheet({ lang, candidate, state, onChooseAnother, on
           <p>
             {copy(
               lang,
-              "这张照片只会补充当前家具项目，并为它单独生成 AI 概念三视图。",
-              "This photo updates only this furniture line and queues its AI concept drawing."
+              "这张照片只会补充当前家具项目，并为它单独生成概念三视图。",
+              "This photo updates only this furniture line and queues its concept drawing."
             )}
           </p>
         </div>
@@ -581,7 +584,7 @@ function ItemTrackingSheet({ lang, project, job, item, onOpenDrawing, onClose })
               <strong>
                 {drawingIsFormal
                   ? copy(lang, "Crafton 已批准", "Crafton approved")
-                  : copy(lang, "AI 概念参考 · 不可用于生产", "AI concept reference · Not for manufacture")}
+                  : copy(lang, "概念参考 · 不可用于生产", "Concept reference · Not for manufacture")}
               </strong>
             </div>
             <span className={`cho-item-passport-drawing-status ${drawingIsFormal ? "is-formal" : "is-draft"}`}>
@@ -646,7 +649,7 @@ function ItemTrackingSheet({ lang, project, job, item, onOpenDrawing, onClose })
             <article>
               <code>R00</code>
               <span>
-                <strong>{copy(lang, "AI 概念参考", "AI concept reference")}</strong>
+                <strong>{copy(lang, "概念参考", "Concept reference")}</strong>
                 <small>{copy(lang, "仅供沟通 · 不可生产", "Reference only · Not for manufacture")}</small>
               </span>
             </article>
@@ -720,7 +723,7 @@ function ItemTrackingSheet({ lang, project, job, item, onOpenDrawing, onClose })
                 ? `${latestApprovedSupplierDrawing.payload?.revision || "R--"} · ${copy(lang, "供应商施工图已批准", "Supplier shop drawing approved")}`
                 : drawingIsFormal
                   ? copy(lang, "供应商施工图 · 已批准生产", "Supplier shop drawing · Approved for manufacture")
-                  : copy(lang, "AI 概念 R00 · 仅供参考", "AI concept R00 · Reference only")}
+                  : copy(lang, "概念 R00 · 仅供参考", "Concept R00 · Reference only")}
             </dd>
           </div>
         </dl>
@@ -927,8 +930,12 @@ function ClientProjectDetail({
   onMessageProject,
   initialTrackingId,
   onTrackingDeepLinkHandled,
+  onProjectCommand,
+  onProjectFileUpload,
   onReferenceImageUpload
 }) {
+  const [editTarget, setEditTarget] = useState(null);
+  const [editMessage, setEditMessage] = useState("");
   const [drawingPreview, setDrawingPreview] = useState(null);
   const [drawingDownloadState, setDrawingDownloadState] = useState({ status: "", message: "" });
   const [actionSheet, setActionSheet] = useState(null);
@@ -1138,7 +1145,7 @@ function ClientProjectDetail({
     } catch (error) {
       setReferenceState(itemKey, {
         status: "error",
-        message: error.message || copy(lang, "照片补录失败，请重试。", "The reference image could not be added.")
+        message: customerServiceError(error.message, lang, copy(lang, "照片补录失败，请重试。", "The reference image could not be added. Please try again."))
       });
     }
   };
@@ -1232,7 +1239,7 @@ function ClientProjectDetail({
     } catch (error) {
       setDrawingDownloadState({
         status: "error",
-        message: error.message || copy(lang, "三视图下载失败，请稍后重试。", "Download failed. Please try again.")
+        message: customerServiceError(error.message, lang, copy(lang, "三视图下载失败，请稍后重试。", "Download failed. Please try again."))
       });
     } finally {
       if (sourceObjectUrl) URL.revokeObjectURL(sourceObjectUrl);
@@ -1319,13 +1326,16 @@ function ClientProjectDetail({
               <p>
                 {[
                   project.destination || copy(lang, "交付地点待确认", "Destination pending"),
-                  `${project.jobs.length} ${copy(lang, "个订单", project.jobs.length === 1 ? "order" : "orders")}`,
+                  `${projectOrderCount(project)} ${copy(lang, "个订单", projectOrderCount(project) === 1 ? "order" : "orders")}`,
                   clientName || copy(lang, "Crafton 客户", "Crafton client"),
                   project.projectId ? `#${String(project.projectId).slice(0, 8).toUpperCase()}` : ""
                 ]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
+              {onProjectCommand && <button type="button" className="client-project-tool" onClick={() => setEditTarget({ mode: "project" })}>
+                {copy(lang, "编辑项目", "Edit project")}
+              </button>}
             </div>
             <section className="cho-project-kpis" aria-label={copy(lang, "项目指标", "Project metrics")}>
               {[
@@ -1335,7 +1345,7 @@ function ClientProjectDetail({
                     ? copy(lang, "件数（含可选）", "Pieces incl. options")
                     : copy(lang, "家具件数", "Pieces")
                 ],
-                [project.jobs.length, copy(lang, "订单", "Orders")],
+                [projectOrderCount(project), copy(lang, "订单", "Orders")],
                 [projectItems.length, copy(lang, "家具明细", "Furniture lines")],
                 [actionCount, copy(lang, "待您确认", "Action needed")]
               ].map(([value, label]) => (
@@ -1347,6 +1357,10 @@ function ClientProjectDetail({
             </section>
           </div>
           <div className="cho-project-hero-actions">
+            {onProjectCommand && <>
+              <button type="button" className="client-project-tool" onClick={() => setEditTarget({ mode: "requests" })}>{copy(lang, "变更申请", "Change requests")}{project.openChangeRequests > 0 ? ` (${project.openChangeRequests})` : ""}</button>
+              <button type="button" className="client-project-tool is-primary" onClick={() => setEditTarget({ mode: "files" })}>{copy(lang, "添加 FF&E 文件", "Add FF&E files")}{project.pendingImports > 0 ? ` (${project.pendingImports})` : ""}</button>
+            </>}
             {actionMap.projectEntries.length > 0 && (
               <button
                 type="button"
@@ -1365,6 +1379,8 @@ function ClientProjectDetail({
             <span className={`cho-project-status-pill tone-${status.tone}`}>{status.label}</span>
           </div>
         </header>
+
+        {editMessage && <p className="client-project-message" role="status">{editMessage}</p>}
 
         <section className="cho-project-card cho-project-stage-card">
           <div className="cho-project-card-label">{copy(lang, "项目阶段", "PROJECT STAGE")}</div>
@@ -1426,10 +1442,10 @@ function ClientProjectDetail({
                       src={item.imageUrl || job.previewUrl}
                       alt={itemName}
                       state={referenceState(itemKey)}
-                      disabled={drawingIsFormal}
-                      onChoose={() => chooseReferenceImage({ itemKey, job, item, itemIndex, sku: itemSku })}
+                      disabled={!onProjectCommand && drawingIsFormal}
+                      onChoose={() => onProjectCommand ? setEditTarget({ mode: "item", jobId: job.id, itemIndex, imageUrl: item.imageUrl || job.previewUrl }) : chooseReferenceImage({ itemKey, job, item, itemIndex, sku: itemSku })}
                       onCandidate={(file) =>
-                        prepareReferenceCandidate({ itemKey, job, item, itemIndex, sku: itemSku }, file)
+                        onProjectCommand ? setEditTarget({ mode: "item", jobId: job.id, itemIndex, file }) : prepareReferenceCandidate({ itemKey, job, item, itemIndex, sku: itemSku }, file)
                       }
                     />
                     <span className="cho-project-item-copy">
@@ -1505,7 +1521,7 @@ function ClientProjectDetail({
                       >
                         <img src={drawingUrl} alt="" aria-hidden="true" />
                         <span>
-                          {drawingIsFormal ? copy(lang, "正式图纸", "Formal") : copy(lang, "AI 概念参考", "AI concept")}
+                          {drawingIsFormal ? copy(lang, "正式图纸", "Formal") : copy(lang, "概念参考", "Concept")}
                         </span>
                       </button>
                     ) : (
@@ -1529,6 +1545,9 @@ function ClientProjectDetail({
                     </small>
                   </span>
                   <span className="cho-project-row-action" role="cell" data-label={copy(lang, "操作", "Action")}>
+                    {onProjectCommand && <button type="button" className="client-project-tool" onClick={() => setEditTarget({ mode: "item", jobId: job.id, itemIndex, imageUrl: item.imageUrl || job.previewUrl })}>
+                      {copy(lang, "编辑家具", "Edit item")}
+                    </button>}
                     {itemActions.length ? (
                       <button
                         type="button"
@@ -1568,6 +1587,7 @@ function ClientProjectDetail({
           </button>
           {secondaryPanel === "documents" && (
             <div className="cho-project-secondary-panel cho-project-documents">
+              {onProjectCommand && <button type="button" className="client-project-tool" onClick={() => setEditTarget({ mode: "files" })}>{copy(lang, "添加文件 / 查看导入记录", "Add files / View import history")}</button>}
               {documents.length ? (
                 documents.map((document) => {
                   const content = (
@@ -1686,7 +1706,7 @@ function ClientProjectDetail({
                   <span className="cho-client-kicker">
                     {isManufacturingDrawing(drawingPreview.drawing)
                       ? copy(lang, "供应商施工图 · 已批准生产", "SUPPLIER SHOP DRAWING · APPROVED FOR MANUFACTURE")
-                      : copy(lang, "AI 概念视图 · 仅供参考", "AI CONCEPT VIEW · REFERENCE ONLY")}
+                      : copy(lang, "概念视图 · 仅供参考", "CONCEPT VIEW · REFERENCE ONLY")}
                   </span>
                   <h2 id="cho-drawing-dialog-title">{drawingPreview.itemName}</h2>
                 </div>
@@ -1723,8 +1743,8 @@ function ClientProjectDetail({
                         )
                       : copy(
                           lang,
-                          "此为 AI 根据客户 FF&E 图片与尺寸生成的概念参考，只用于沟通外观，不能用于开料或生产。选定供应商后，将由供应商 CAD／施工图新版本取代。",
-                          "This AI concept was generated from submitted FF&E images and dimensions for visual communication only. It must not be used for manufacture; an approved supplier CAD/shop-drawing revision will replace it after supplier appointment."
+                          "此为根据客户 FF&E 图片与尺寸生成的概念参考，只用于沟通外观，不能用于开料或生产。选定供应商后，将由供应商 CAD／施工图新版本取代。",
+                          "This concept was generated from submitted FF&E images and dimensions for visual communication only. It must not be used for manufacture; an approved supplier CAD/shop-drawing revision will replace it after supplier appointment."
                         )}
                   </p>
                   <span className={`cho-drawing-download-status is-${drawingDownloadState.status}`} aria-live="polite">
@@ -1805,6 +1825,8 @@ function ClientProjectDetail({
           />,
           document.body
         )}
+      {editTarget && <ClientProjectEditor lang={lang} project={project} target={editTarget}
+        onCommand={onProjectCommand} onUpload={onProjectFileUpload} onClose={() => setEditTarget(null)} onSaved={setEditMessage} />}
     </main>
   );
 }
@@ -1822,6 +1844,8 @@ function ClientOrderDashboard({
   onNewOrder,
   onBrowseFurniture,
   onMessageProject,
+  onProjectCommand,
+  onProjectFileUpload,
   onReferenceImageUpload
 }) {
   const [projectPageKey, setProjectPageKey] = useState("");
@@ -1851,7 +1875,7 @@ function ClientOrderDashboard({
 
   const dashboardData = useMemo(() => {
     const jobs = projectGroups.flatMap((project) => project.jobs);
-    const totalOrders = jobs.length;
+    const totalOrders = projectGroups.reduce((sum, project) => sum + projectOrderCount(project), 0);
     const totalPieces = jobs.reduce((total, job) => total + getJobQuantity(job), 0);
     const productionPieces = jobs.reduce(
       (total, job) => total + ([2, 3].includes(getOrderStage(job)) ? getJobQuantity(job) : 0),
@@ -1925,6 +1949,8 @@ function ClientOrderDashboard({
         onBrowseFurniture={onBrowseFurniture}
         onMessageProject={onMessageProject || onNewOrder}
         initialTrackingId={deepLinkTrackingId}
+        onProjectCommand={onProjectCommand}
+        onProjectFileUpload={onProjectFileUpload}
         onTrackingDeepLinkHandled={() => {
           setDeepLinkTrackingId("");
           const url = new URL(window.location.href);
@@ -2129,7 +2155,7 @@ function ClientOrderDashboard({
                         </div>
                         <div className="cho-client-project-meta">
                           <span>
-                            {project.jobs.length} {copy(lang, "个订单", project.jobs.length === 1 ? "order" : "orders")}
+                            {projectOrderCount(project)} {copy(lang, "个订单", projectOrderCount(project) === 1 ? "order" : "orders")}
                           </span>
                           <span>
                             {itemCount} {copy(lang, "项家具", itemCount === 1 ? "furniture line" : "furniture lines")}

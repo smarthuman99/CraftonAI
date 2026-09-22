@@ -11,6 +11,7 @@
     "lint": "eslint src/app.jsx src/main.jsx src/components --report-unused-disable-directives --max-warnings 0",
     "test:intake": "node --test server/lib/intakeProcessor.test.mjs server/lib/intakeSourceReader.test.mjs server/lib/intakeBatchProcessor.test.mjs server/lib/intakeClientCompletion.test.mjs server/lib/intakeClarificationReanalysis.test.mjs server/lib/intakeItemReference.test.mjs server/lib/intakeDocumentReview.test.mjs server/lib/intakeProductImages.test.mjs server/lib/intakeRiskReview.test.mjs",
     "test:rfq": "node --test server/lib/rfqGenerator.test.mjs",
+    "test:project-editing": "node --test server/lib/clientProjectEditing.test.mjs server/lib/clientProjectEditing.sql.test.mjs",
     "test:rfq-excel": "node --test server/lib/rfqExcel.test.mjs",
     "test:workflow-ai": "node --test server/lib/quoteAnalyzer.test.mjs server/lib/operationsAutomation.test.mjs",
     "format": "prettier --write .",
@@ -35,6 +36,7 @@
     "tus-js-client": "^4.3.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^4.3.0",

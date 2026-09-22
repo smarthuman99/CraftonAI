@@ -256,7 +256,7 @@ const ClientPortalTeaser = ({ lang, selectedFabric, selectedLeg, setActiveIntake
                   marginBottom: "0.8rem"
                 }}
               >
-                {lang === "Cn" ? "多格式需求智能提取与抗篡改哈希" : "Loose Technical Intake & Compliance Audit"}
+                {lang === "Cn" ? "多格式项目资料整理与核对" : "Loose Technical Intake & Compliance Audit"}
               </h4>
               <p
                 style={{
@@ -333,7 +333,7 @@ const ClientPortalTeaser = ({ lang, selectedFabric, selectedLeg, setActiveIntake
                   fontWeight: "bold"
                 }}
               >
-                INTAKE AGENT AUDIT LOGS [SECURE HASH]
+                {lang === "Cn" ? "项目文件检查记录" : "PROJECT FILE REVIEW"}
               </div>
               {[
                 {
@@ -404,7 +404,7 @@ const ClientPortalTeaser = ({ lang, selectedFabric, selectedLeg, setActiveIntake
                   marginBottom: "0.8rem"
                 }}
               >
-                {lang === "Cn" ? "🔍 物理公差点云比对与全息质检卡点" : "🔍 Computer Vision Point-Cloud Match Audit"}
+                {lang === "Cn" ? "🔍 尺寸公差与外观质量检查" : "🔍 Dimensions & Finish Inspection"}
               </h4>
               <p
                 style={{

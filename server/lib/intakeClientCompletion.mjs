@@ -136,15 +136,15 @@ export function prepareInitialClientCompletion({ result = {}, jobId = "job", cre
         continue_client_clarification: clientItems.length > 0,
         bom_draft_ready: readyForApproval,
         summary_en: readyForApproval
-          ? "AI intake check complete. The structured project draft is ready for Cho approval."
+          ? "Intake check complete. The structured project draft is ready for Cho approval."
           : clientItems.length
-            ? `AI intake check complete. ${clientItems.length} client detail(s) need confirmation before approval.`
-            : "AI intake check complete. An exception needs Cho review before approval.",
+            ? `Intake check complete. ${clientItems.length} client detail(s) need confirmation before approval.`
+            : "Intake check complete. An exception needs Cho review before approval.",
         summary_cn: readyForApproval
-          ? "AI 已完成资料检查，结构化项目草稿可交由 Cho 审批。"
+          ? "已完成资料检查，结构化项目草稿可交由 Cho 审批。"
           : clientItems.length
-            ? `AI 已完成资料检查，客户仍需确认 ${clientItems.length} 项资料。`
-            : "AI 已完成资料检查，但有异常需要 Cho 审核。"
+            ? `已完成资料检查，客户仍需确认 ${clientItems.length} 项资料。`
+            : "已完成资料检查，但有异常需要 Cho 审核。"
       }
     },
     clientItems,
@@ -159,10 +159,10 @@ export function prepareInitialClientCompletion({ result = {}, jobId = "job", cre
           : "ai_intake_exception_review",
       reviewStatus: clientItems.length ? "revision_requested" : "pending",
       reviewNotes: readyForApproval
-        ? "AI intake check complete. Project draft is ready for Cho approval."
+        ? "Intake check complete. Project draft is ready for Cho approval."
         : clientItems.length
-          ? `AI found ${clientItems.length} client-owned detail(s) to complete.`
-          : `AI found ${adminExceptions.length} exception(s) for Cho review.`
+          ? `Crafton found ${clientItems.length} client-owned detail(s) to complete.`
+          : `Crafton found ${adminExceptions.length} exception(s) for Cho review.`
     }
   };
 }

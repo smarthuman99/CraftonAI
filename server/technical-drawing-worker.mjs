@@ -42,12 +42,14 @@ async function findPendingItem() {
   return null;
 }
 
-async function saveResult(jobId, result) {
-  const { error } = await supabase
+async function saveResult(jobId, result, expectedVersion) {
+  const { data, error } = await supabase
     .from("intake_jobs")
     .update({ result_json: result, updated_at: new Date().toISOString() })
-    .eq("id", jobId);
+    .eq("id", jobId).eq("updated_at", expectedVersion).select("updated_at").maybeSingle();
   if (error) throw error;
+  if (!data) throw Object.assign(new Error("The furniture specification changed during drawing generation."), { code: "EDIT_CONFLICT" });
+  return data.updated_at;
 }
 
 async function processPendingItem({ job, item, index }) {
@@ -66,7 +68,7 @@ async function processPendingItem({ job, item, index }) {
       started_at: new Date().toISOString()
     }
   };
-  await saveResult(job.id, { ...result, items });
+  const drawingVersion = await saveResult(job.id, { ...result, items }, job.updated_at);
 
   try {
     const drawing = await generateTechnicalDrawingForItem({
@@ -84,9 +86,10 @@ async function processPendingItem({ job, item, index }) {
       tracking_url: items[index].tracking_url || drawing.tracking_url,
       technical_drawing: drawing
     };
-    await saveResult(job.id, { ...result, items });
+    await saveResult(job.id, { ...result, items }, drawingVersion);
     console.log(`Generated technical drawing for intake job ${job.id}, item ${index + 1}`);
   } catch (error) {
+    if (error.code === "EDIT_CONFLICT") return;
     const waitingForQuota = Number(error?.httpStatus || 0) === 429;
     const retryAfterMs = Math.max(Number(error?.retryAfterSeconds || 0) * 1000, quotaBackoffMs);
     const retryAfter = waitingForQuota ? new Date(Date.now() + retryAfterMs).toISOString() : null;
@@ -109,7 +112,7 @@ async function processPendingItem({ job, item, index }) {
         updated_at: new Date().toISOString()
       }
     };
-    await saveResult(job.id, { ...result, items });
+    await saveResult(job.id, { ...result, items }, drawingVersion);
     console.error(`Technical drawing failed for intake job ${job.id}, item ${index + 1}:`, error.message || error);
   }
 }

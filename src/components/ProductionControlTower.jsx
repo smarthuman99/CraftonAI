@@ -25,8 +25,8 @@ const label = (value, zh) => {
     evidence_changes_required: ["Evidence changes required", "完工证据需要修改"],
     awaiting_framework: ["Awaiting framework", "等待工序框架"],
     awaiting_supplier_plan: ["Awaiting factory schedule", "等待工厂排产"],
-    changes_required: ["AI requires changes", "AI 要求修改"],
-    ai_review: ["AI validation", "AI 校验中"],
+    changes_required: ["Crafton requires changes", "要求修改"],
+    ai_review: ["Validation", "校验中"],
     awaiting_cho_approval: ["Awaiting Cho approval", "等待 Cho 批准"],
     revision_pending_cho: ["Revision awaiting Cho", "改期版本等待 Cho"],
     approved: ["Approved baseline", "正式基准已批准"]
@@ -372,8 +372,8 @@ export default function ProductionControlTower({
       });
       setMessage(
         t(
-          `AI checked ${result.summary.taskCount} work packages: ${result.summary.highRiskCount} high risks, ${result.summary.mediumRiskCount} medium risks and ${result.summary.evidenceCoveragePercent}% evidence coverage.`,
-          `AI 已检查 ${result.summary.taskCount} 个生产工序：${result.summary.highRiskCount} 个高风险、${result.summary.mediumRiskCount} 个中风险，证据完整度 ${result.summary.evidenceCoveragePercent}%。`
+          `Crafton checked ${result.summary.taskCount} work packages: ${result.summary.highRiskCount} high risks, ${result.summary.mediumRiskCount} medium risks and ${result.summary.evidenceCoveragePercent}% evidence coverage.`,
+          `已检查 ${result.summary.taskCount} 个生产工序：${result.summary.highRiskCount} 个高风险、${result.summary.mediumRiskCount} 个中风险，证据完整度 ${result.summary.evidenceCoveragePercent}%。`
         )
       );
       onChanged?.();
@@ -493,11 +493,11 @@ export default function ProductionControlTower({
     <div className="production-control-tower">
       <div className="production-controller-command">
         <div>
-          <span>CRAFTON AI · PRODUCTION CONTROLLER</span>
+          <span>CRAFTON · PRODUCTION CONTROLLER</span>
           <h4>
             {t(
-              "AI owns routine follow-up; Cho handles exceptions and release gates",
-              "AI 负责日常跟单；Cho 只处理异常和放行审核"
+              "Crafton coordinates routine follow-up; Cho handles exceptions and release gates",
+              "负责日常跟单；Cho 只处理异常和放行审核"
             )}
           </h4>
           <p>
@@ -509,8 +509,8 @@ export default function ProductionControlTower({
         </div>
         <button type="button" disabled={Boolean(busy) || !dashboard.tasks.length} onClick={runController}>
           {busy === "analyze"
-            ? t("AI is checking...", "AI 正在检查……")
-            : t("Run AI controller now", "立即运行 AI 生产控制器")}
+            ? t("We are checking...", "正在检查……")
+            : t("Run controller now", "立即运行生产控制器")}
         </button>
       </div>
 
@@ -530,7 +530,7 @@ export default function ProductionControlTower({
           </small>
         </article>
         <article className={dashboard.highRisks ? "danger" : dashboard.mediumRisks ? "warning" : "success"}>
-          <span>{t("AI exception queue", "AI 异常队列")}</span>
+          <span>{t("Exception queue", "异常队列")}</span>
           <strong>{dashboard.highRisks + dashboard.mediumRisks}</strong>
           <small>
             {dashboard.highRisks} {t("high", "高风险")} · {dashboard.mediumRisks} {t("medium", "中风险")}
@@ -597,8 +597,8 @@ export default function ProductionControlTower({
             </h4>
             <p>
               {t(
-                "AI concept views are never approved as production geometry. Review the appointed supplier's latest CAD/shop-drawing revision for every item.",
-                "AI 概念视图永远不会被批准为生产几何。请逐项审核中选供应商最新的 CAD／施工图版本。"
+                "Concept views are never approved as production geometry. Review the appointed supplier's latest CAD/shop-drawing revision for every item.",
+                "概念视图永远不会被批准为生产几何。请逐项审核中选供应商最新的 CAD／施工图版本。"
               )}
             </p>
           </div>
@@ -691,8 +691,8 @@ export default function ProductionControlTower({
             <h4>{label(dashboard.schedule.status, zh)}</h4>
             <p>
               {t(
-                "AI validates the supplier's dates, capacity, process sequence, quoted lead time and shipping buffer. Only Cho approval activates a new baseline.",
-                "AI 会校验供应商日期、产能、工序顺序、报价交期和运输缓冲期；只有 Cho 批准后，新版本才会成为正式基准。"
+                "Crafton validates the supplier's dates, capacity, process sequence, quoted lead time and shipping buffer. Only Cho approval activates a new baseline.",
+                "会校验供应商日期、产能、工序顺序、报价交期和运输缓冲期；只有 Cho 批准后，新版本才会成为正式基准。"
               )}
             </p>
           </div>
@@ -718,7 +718,7 @@ export default function ProductionControlTower({
           <div className="production-schedule-issues">
             {dashboard.schedule.issues.map((issue, index) => (
               <div className={issue.severity === "high" ? "high" : "warning"} key={`${issue.code}-${index}`}>
-                <strong>{issue.severity === "high" ? t("Must fix", "必须修正") : t("AI warning", "AI 提醒")}</strong>
+                <strong>{issue.severity === "high" ? t("Must fix", "必须修正") : t("Warning", "提醒")}</strong>
                 <span>
                   {issue.taskName ? `${issue.taskName}: ` : ""}
                   {zh ? issue.messageCn || issue.message : issue.message}
@@ -736,7 +736,7 @@ export default function ProductionControlTower({
                 )
               : t(
                   "Production overdue alerts stay disabled until the first supplier schedule is approved.",
-                  "首版供应商排产获批之前，系统不会按 AI 预测日期产生逾期警报。"
+                  "首版供应商排产获批之前，系统不会按预测日期产生逾期警报。"
                 )}
           </p>
           <button
@@ -759,8 +759,8 @@ export default function ProductionControlTower({
           <strong>{t("No released production work packages yet.", "目前尚未下达生产工序。")}</strong>
           <p>
             {t(
-              "Generate and release the AI work-package framework below after S08 supplier approval.",
-              "请在 S08 批准供应商后，于下方生成并下达 AI 生产工序框架。"
+              "Generate and release the work-package framework below after S08 supplier approval.",
+              "请在 S08 批准供应商后，于下方生成并下达生产工序框架。"
             )}
           </p>
         </div>
@@ -950,7 +950,7 @@ export default function ProductionControlTower({
                   )}
                   {reviewRequiresRiskAcknowledgement && (
                     <div className="production-review-risk-acknowledgement">
-                      <strong>{t("AI evidence risk requires Cho confirmation", "AI 证据风险需要 Cho 确认")}</strong>
+                      <strong>{t("Evidence risk requires Cho confirmation", "证据风险需要 Cho 确认")}</strong>
                       <span>
                         {reviewTask.duplicateEvidence
                           ? t(

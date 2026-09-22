@@ -45,9 +45,10 @@ test("separates AI concept references from supplier manufacturing drawings", () 
   };
   const draft = buildTechnicalDrawingSvg(input);
   const formal = buildTechnicalDrawingSvg({ ...input, formal: true });
-  assert.match(draft, /AI 概念视图/);
+  assert.match(draft, /概念视图/);
   assert.match(draft, /REFERENCE ONLY · NOT FOR MANUFACTURE/);
-  assert.match(draft, /CLIENT FF&amp;E · AI CONCEPT/);
+  assert.match(draft, /CLIENT FF&amp;E · CONCEPT/);
+  assert.doesNotMatch(draft, /\bAI\b|人工智能|人工智慧/);
   assert.match(formal, /供应商施工图/);
   assert.match(formal, /APPROVED FOR MANUFACTURE/);
   assert.match(formal, /SUPPLIER CAD \/ SHOP DRAWING/);

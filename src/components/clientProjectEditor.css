@@ -1,0 +1,339 @@
+.client-edit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: #23222065;
+  display: flex;
+  justify-content: flex-end;
+}
+.client-edit-overlay.is-modal {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.client-edit-dialog {
+  width: min(760px, 100%);
+  height: 100%;
+  background: #fbf6ec;
+  color: #232220;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 50px #23222020;
+  font:
+    14px/1.6 Inter,
+    sans-serif;
+}
+.is-modal .client-edit-dialog {
+  width: min(560px, 100%);
+  height: auto;
+  max-height: 90dvh;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.client-edit-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 32px;
+  border-bottom: 1px solid #8f806440;
+  gap: 16px;
+}
+.client-edit-dialog h2 {
+  font:
+    italic 34px/1.2 Fraunces,
+    Georgia,
+    serif;
+  margin: 4px 0 0;
+}
+.client-edit-dialog h3 {
+  font-size: 18px;
+  margin: 30px 0 16px;
+}
+.client-edit-dialog small {
+  color: #5b5446;
+  display: block;
+  overflow-wrap: anywhere;
+}
+.client-edit-dialog > header small {
+  max-width: 520px;
+}
+.client-edit-body {
+  padding: 24px 32px 32px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+.client-edit-dialog p {
+  margin: 0 0 18px;
+}
+.client-edit-dialog button,
+.client-project-tool,
+.client-edit-dialog a {
+  color: #4a3525;
+  border: 1px solid #8f806480;
+  border-radius: 24px;
+  min-height: 44px;
+  padding: 10px 18px;
+  font:
+    600 13px/1.4 Inter,
+    sans-serif;
+  cursor: pointer;
+  background: transparent;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.client-edit-dialog button:hover,
+.client-project-tool:hover {
+  background: #efe7d6;
+}
+.client-edit-dialog .client-edit-primary,
+.client-project-tool.is-primary {
+  background: #4a3525;
+  color: #fbf6ec;
+  border-color: #4a3525;
+}
+.client-edit-dialog :disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+.client-edit-dialog :focus-visible,
+.client-project-tool:focus-visible {
+  outline: 2px solid #4a3525;
+  outline-offset: 4px;
+}
+.client-edit-dialog label {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 20px;
+  min-width: 0;
+}
+.client-edit-dialog label > span {
+  font-weight: 600;
+}
+.client-edit-dialog input,
+.client-edit-dialog textarea,
+.client-edit-dialog select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  color: #232220;
+  background: #fffaf2;
+  border: 1px solid #8f806480;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+}
+.client-edit-dialog input[type="file"] {
+  padding: 14px 0;
+  border: 0;
+  background: transparent;
+}
+.client-edit-dialog textarea {
+  min-height: 94px;
+  resize: vertical;
+}
+.client-edit-dialog footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  background: #fbf6ec;
+  border-top: 1px solid #8f806440;
+  padding: 18px 0 0;
+  margin-top: 24px;
+  position: sticky;
+  bottom: -32px;
+  padding-bottom: 24px;
+}
+.client-edit-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 18px;
+}
+.client-edit-fields label:first-child,
+.client-edit-fields label:last-child {
+  grid-column: 1 / -1;
+}
+.client-edit-reference-preview {
+  display: block;
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  border: 1px solid #8f806440;
+  border-radius: 8px;
+  margin-bottom: 18px;
+  background: #fffaf2;
+}
+.client-edit-note,
+.client-edit-error {
+  background: #efe7d6;
+  padding: 16px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border-left: 3px solid #8f8064;
+}
+.client-edit-error {
+  border-left-color: #4a3525;
+}
+.client-edit-inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+}
+.client-import-row,
+.client-file-history,
+.client-change-list article,
+.client-upload-row {
+  padding: 20px 0;
+  border-bottom: 1px solid #8f806440;
+  overflow-wrap: anywhere;
+}
+.client-import-row > .client-edit-inline {
+  margin-bottom: 14px;
+}
+.client-import-row details {
+  margin-top: 12px;
+}
+.client-import-row summary {
+  padding: 12px 0;
+  cursor: pointer;
+  font-weight: 600;
+}
+.client-import-row .client-edit-note {
+  margin: 12px 0;
+}
+.client-import-confirm {
+  margin: 22px 0;
+}
+.client-file-picker {
+  border: 1px dashed #8f8064;
+  padding: 20px;
+  background: #efe7d650;
+  border-radius: 10px;
+}
+.client-upload-row {
+  display: grid;
+  gap: 8px;
+}
+.client-upload-row button {
+  justify-self: start;
+}
+.client-file-history .client-edit-inline {
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+.client-change-diff {
+  font-size: 13px;
+}
+.client-change-diff > div {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  padding: 6px 0;
+}
+.client-change-diff dd {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.client-change-diff del {
+  color: #5b5446;
+}
+.cho-project-title-copy .client-project-tool {
+  margin-top: 16px;
+}
+.cho-project-row-action .client-project-tool {
+  margin: 6px 0;
+  min-width: 100px;
+}
+.cho-project-line-items .cho-project-table-row > .cho-project-row-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-content: center;
+}
+.cho-project-line-items .cho-project-row-action > .client-project-tool {
+  background: transparent;
+  color: #4a3525;
+  border-color: #8f806480;
+  min-height: 44px;
+  width: fit-content;
+  margin: 0;
+  font:
+    600 12px/1.3 Inter,
+    sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.cho-project-line-items .cho-project-row-action > .cho-project-row-status {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.client-project-message {
+  background: #fbf6ec;
+  padding: 16px 24px;
+  border: 1px solid #8f806440;
+  border-radius: 10px;
+}
+.client-staff-changes {
+  margin: 20px 0;
+  background: #fbf6ec;
+  padding: 24px;
+  border: 1px solid #8f806440;
+  border-radius: 14px;
+}
+.client-staff-changes textarea {
+  display: block;
+  width: 100%;
+  min-height: 90px;
+  padding: 12px;
+  margin: 14px 0;
+  color: #232220;
+  background: #fffaf2;
+  border: 1px solid #8f8064;
+  border-radius: 8px;
+}
+@media (max-width: 640px) {
+  .client-edit-overlay.is-modal {
+    padding: 0;
+  }
+  .is-modal .client-edit-dialog {
+    width: 100%;
+    max-height: none;
+    height: 100%;
+    border-radius: 0;
+  }
+  .client-edit-dialog > header {
+    padding: 18px 20px;
+  }
+  .client-edit-body {
+    padding: 20px;
+  }
+  .client-edit-dialog h2 {
+    font-size: 30px;
+  }
+  .client-edit-fields {
+    grid-template-columns: 1fr;
+  }
+  .client-edit-dialog footer {
+    bottom: -20px;
+  }
+  .client-edit-dialog footer button {
+    flex: 1;
+  }
+  .cho-project-hero-actions {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .cho-project-hero-actions .client-project-tool {
+    flex: 1 1 auto;
+  }
+  .cho-project-line-items .cho-project-table-row > .cho-project-row-action {
+    grid-template-columns: 104px minmax(0, 1fr);
+  }
+  .cho-project-line-items .cho-project-row-action > * {
+    grid-column: 2;
+  }
+}

@@ -286,8 +286,8 @@ export default function AiRfqWorkspace({
       } else {
         setMessage(
           t(
-            "AI RFQ draft generated. Review all warnings before approval.",
-            "AI 询价单草稿已生成，请在批准前检查所有警示。"
+            "RFQ draft generated. Review all warnings before approval.",
+            "询价单草稿已生成，请在批准前检查所有警示。"
           )
         );
       }
@@ -800,8 +800,8 @@ export default function AiRfqWorkspace({
         <div className="ai-rfq-primary-actions wide">
           <button className="btn-premium" type="button" disabled={Boolean(busy)} onClick={() => generate()}>
             {busy === "generate"
-              ? t("AI is preparing the RFQ...", "AI 正在生成询价单...")
-              : t("Generate standard RFQ with AI", "使用 AI 生成标准询价单")}
+              ? t("We are preparing the RFQ...", "正在生成询价单...")
+              : t("Generate standard RFQ", "生成标准询价单")}
           </button>
           <span>
             {t(
@@ -867,7 +867,7 @@ export default function AiRfqWorkspace({
               <strong>{t("RFQ Excel content preview", "RFQ Excel 内容预览")}</strong>
               <span>
                 {generation?.method === "ai"
-                  ? t("AI generated from verified Supabase data", "AI 根据 Supabase 已核实资料生成")
+                  ? t("Crafton generated from verified Supabase data", "根据 Supabase 已核实资料生成")
                   : t("Verified-data fallback", "已核实资料规则生成")}
               </span>
             </div>
@@ -1094,7 +1094,7 @@ export default function AiRfqWorkspace({
                 )}
               </section>
               <section className="ai-rfq-warnings">
-                <h4>{t("AI review warnings", "AI 审核警示")}</h4>
+                <h4>{t("Review warnings", "审核警示")}</h4>
                 {document.missingInformation.length ? (
                   <ul>
                     {document.missingInformation.map((warning, index) => (

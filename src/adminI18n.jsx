@@ -1,13 +1,12 @@
 import React from "react";
 
 const ADMIN_ZH = {
-  "AI RFQ Excel preparation": "AI RFQ Excel 准备",
+  "RFQ Excel preparation": "RFQ Excel 准备",
   "Generate and approve a bilingual RFQ, then download the supplier-fillable Excel file for sending from your own mailbox.":
     "生成并批准双语 RFQ，再下载供应商可填写的 Excel 文件，并使用你自己的邮箱发送。",
-  "Supplier return intake and AI comparison": "供应商回传录入与 AI 比价",
-  "Import each supplier's returned RFQ Excel into the correct supplier slot, review the extracted values, then run AI comparison.":
-    "将每家供应商回传的 RFQ Excel 录入对应供应商栏位，核对系统读取的报价后再运行 AI 比价。",
-  "AI RFQ preparation and dispatch": "AI 询价单准备与发送",
+  "Supplier return intake and comparison": "供应商回传录入与比价",
+  "Import each supplier's returned RFQ Excel into the correct supplier slot, review the extracted values, then run comparison.":
+    "将每家供应商回传的 RFQ Excel 录入对应供应商栏位，核对系统读取的报价后再运行比价。",
   "Generate a bilingual supplier RFQ from verified Supabase order data, review it, retain every version and dispatch it after Cho approval.":
     "根据 Supabase 已核实订单资料生成双语供应商询价单，审核后保留每个版本，并在 Cho 批准后发送。",
   "30% deposit, 70% before shipment": "30% 订金，70% 出货前付清",
@@ -175,17 +174,17 @@ const ADMIN_ZH = {
   "No production records for this project.": "当前项目尚无生产记录。",
   "No quantity adjustments.": "尚无数量调整记录。",
   "No quotes recorded. Add supplier quotations to enable comparison.": "尚无报价，请录入供应商报价后进行比较。",
-  "No saved loading plan. Open Loading AI and save a computed result.":
-    "尚无已保存的装柜方案，请打开 Loading AI 计算并保存结果。",
+  "No saved loading plan. Open Loading Planner and save a computed result.":
+    "尚无已保存的装柜方案，请打开 Loading Planner 计算并保存结果。",
   "No shipment tracking record.": "尚无运输跟踪记录。",
   "No source file found": "未找到源文件",
   "No suppliers yet. Add the first supplier before creating an RFQ.": "尚无供应商，请先新增供应商再创建 RFQ。",
   "No upload found": "未找到上传文件",
   Notes: "备注",
   "Notes / evidence": "备注 / 凭证",
-  "Open Loading AI": "打开 Loading AI 装柜工具",
-  "Open Loading AI with this project's BOM dimensions and save its packing result back to Supabase.":
-    "使用当前项目的 BOM 尺寸打开 Loading AI，并将装柜结果保存回 Supabase。",
+  "Open Loading Planner": "打开 Loading Planner 装柜工具",
+  "Open Loading Planner with this project's BOM dimensions and save its packing result back to Supabase.":
+    "使用当前项目的 BOM 尺寸打开 Loading Planner，并将装柜结果保存回 Supabase。",
   "Open RFQ workspace": "打开 RFQ 工作区",
   "Open clarification questions": "待澄清问题",
   "Order item": "订单品项",
@@ -354,7 +353,7 @@ const STATUS_ZH = {
   accepted: "已验收",
   accepted_with_issues: "有条件验收",
   active: "启用",
-  ai_checking: "AI 检查中",
+  ai_checking: "检查中",
   approved: "已批准",
   archived: "已归档",
   blocked: "已阻塞",

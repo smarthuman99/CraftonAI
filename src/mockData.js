@@ -330,9 +330,9 @@ const mockData = {
       },
       {
         role: "thought",
-        text: "正在調用大模型 API (Gemini 1.5 Flash) 分析該多模态對話... 客戶登錄後上傳了 1 張手繪椅子照片及需求語音：“Hi, need 40 lobby armchairs and 20 club chairs for St Albans lobby. Blue style. Must pass UK fire safety.”",
+        text: "正在整理客戶提交的照片和需求：St Albans 大堂需要 40 張扶手椅及 20 張休閒椅，藍色風格，需符合英國消防要求。",
         textEn:
-          "Calling multimodal LLM API (Gemini 1.5 Flash) to parse user inputs... Client uploaded 1 hand-drawn chair sketch & voice message after logging in: 'Hi, need 40 lobby armchairs and 20 club chairs for St Albans lobby. Blue style. Must pass UK fire safety.'"
+          "Reviewing the submitted sketch and brief: 40 lobby armchairs and 20 club chairs for St Albans lobby, in blue, with UK fire-safety requirements."
       },
       {
         role: "action",

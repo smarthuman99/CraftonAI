@@ -199,7 +199,7 @@ const CVQASimulator = ({ lang, selectedFabric, selectedLeg }) => {
               marginBottom: "0.4rem"
             }}
           >
-            {lang === "Cn" ? "智能制造质量大门门禁" : "SMART MANUFACTURING DOOR CHECK"}
+            {lang === "Cn" ? "精密制造质量大门门禁" : "SMART MANUFACTURING DOOR CHECK"}
           </span>
           <h3
             style={{

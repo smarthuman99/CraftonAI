@@ -129,6 +129,7 @@ export function technicalDrawingEligible({ item = {}, file = null } = {}) {
 }
 
 export function technicalDrawingPendingItems(job = {}) {
+  if (job.client_import_state && job.client_import_state !== "merged") return [];
   let result = job.result_json || {};
   if (typeof result === "string") {
     try {
@@ -376,8 +377,8 @@ export function buildTechnicalDrawingSvg({
   itemIndex = 0
 }) {
   const generatedDataUrl = `data:${generatedImage.mimeType};base64,${generatedImage.dataBase64}`;
-  const statusCn = formal ? "供应商施工图" : "AI 概念视图";
-  const statusEn = formal ? "SUPPLIER SHOP DRAWING" : "AI CONCEPT VIEW";
+  const statusCn = formal ? "供应商施工图" : "概念视图";
+  const statusEn = formal ? "SUPPLIER SHOP DRAWING" : "CONCEPT VIEW";
   const statusNote = formal ? "APPROVED FOR MANUFACTURE" : "REFERENCE ONLY · NOT FOR MANUFACTURE";
   const statusColor = formal ? "#3f6249" : "#9a5e3d";
   const name = itemName(item);
@@ -398,7 +399,7 @@ export function buildTechnicalDrawingSvg({
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1300" viewBox="0 0 2000 1300" role="img" aria-labelledby="title desc">
   <title id="title">${svgText(name)} three-view furniture drawing</title>
-  <desc id="desc">${svgText(statusEn)}. ${formal ? "Supplier geometry approved for manufacture." : "AI-generated geometry for visual reference only; specifications are taken from the submitted FF&amp;E source."}</desc>
+  <desc id="desc">${svgText(statusEn)}. ${formal ? "Supplier geometry approved for manufacture." : "Concept geometry for visual reference only; specifications are taken from the submitted FF&amp;E source."}</desc>
   <defs>
     <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#eeeae3" stroke-width="1"/></pattern>
     <style>
@@ -427,14 +428,14 @@ export function buildTechnicalDrawingSvg({
   <text x="1470" y="1068" class="label">QUANTITY / 数量</text><text x="1470" y="1108" class="value">${svgText(quantity)}</text>
   <text x="80" y="1188" class="label">PROJECT CODE</text><text x="80" y="1228" class="value">${svgText(projectCode || "PENDING")}</text>
   <text x="540" y="1188" class="label">MATERIAL / FINISH</text><text x="540" y="1228" class="value">${svgText(displayMaterial)}</text>
-  <text x="1000" y="1188" class="label">DRAWING BASIS</text><text x="1000" y="1228" class="value">${formal ? "SUPPLIER CAD / SHOP DRAWING" : "CLIENT FF&amp;E · AI CONCEPT"}</text>
+  <text x="1000" y="1188" class="label">DRAWING BASIS</text><text x="1000" y="1228" class="value">${formal ? "SUPPLIER CAD / SHOP DRAWING" : "CLIENT FF&amp;E · CONCEPT"}</text>
   <text x="1470" y="1188" class="label">ISSUED</text><text x="1470" y="1228" class="value">${generatedAt}</text>
 </svg>`;
 }
 
 export function buildTechnicalDrawingOverlaySvg({ item = {}, job = {}, formal = false, itemIndex = 0 }) {
-  const statusCn = formal ? "供应商施工图" : "AI 概念视图";
-  const statusEn = formal ? "SUPPLIER SHOP DRAWING" : "AI CONCEPT VIEW";
+  const statusCn = formal ? "供应商施工图" : "概念视图";
+  const statusEn = formal ? "SUPPLIER SHOP DRAWING" : "CONCEPT VIEW";
   const statusNote = formal ? "APPROVED FOR MANUFACTURE" : "REFERENCE ONLY · NOT FOR MANUFACTURE";
   const statusColor = formal ? "#3f6249" : "#9a5e3d";
   const name = itemName(item);
@@ -477,7 +478,7 @@ export function buildTechnicalDrawingOverlaySvg({ item = {}, job = {}, formal = 
     <text x="1470" y="1068" class="label">QUANTITY / 数量</text><text x="1470" y="1108" class="value">${svgText(quantity)}</text>
     <text x="80" y="1188" class="label">PROJECT CODE</text><text x="80" y="1228" class="value">${svgText(projectCode)}</text>
     <text x="540" y="1188" class="label">MATERIAL / FINISH</text><text x="540" y="1228" class="value">${svgText(material)}</text>
-    <text x="1000" y="1188" class="label">DRAWING BASIS</text><text x="1000" y="1228" class="value">${formal ? "SUPPLIER CAD / SHOP DRAWING" : "CLIENT FF&amp;E · AI CONCEPT"}</text>
+    <text x="1000" y="1188" class="label">DRAWING BASIS</text><text x="1000" y="1228" class="value">${formal ? "SUPPLIER CAD / SHOP DRAWING" : "CLIENT FF&amp;E · CONCEPT"}</text>
     <text x="1470" y="1188" class="label">ISSUED</text><text x="1470" y="1228" class="value">${issued}</text>
   </svg>`;
 }
