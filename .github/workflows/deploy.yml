@@ -72,6 +72,19 @@ jobs:
           scp release.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
           scp server-release.tar.gz scripts/check-project-edit-schema.mjs ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
           
+      - name: Pause intake and drawing workers
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          test "$(id -u)" = "0"
+          systemctl stop crafton-intake-worker.service crafton-technical-drawing-worker.service
+          if pgrep -f "^.*node .*server/(intake-worker|technical-drawing-worker)[.]mjs" >/dev/null; then
+            echo "An unmanaged worker is still running; aborting before migration."
+            exit 1
+          fi
+          echo "CRAFTON_WORKERS_PAUSED_READY_FOR_MIGRATION"
+          REMOTE
+
       - name: Deploy and restart Crafton AI API
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} '
@@ -166,13 +179,6 @@ jobs:
             # Stop the known systemd workers before enabling staged imports.
             # Do not publish the frontend until the new API and workers pass probes.
             test -r "$old_env"
-            test "$(id -u)" = "0"
-            systemctl stop crafton-intake-worker.service crafton-technical-drawing-worker.service
-            if pgrep -f "^.*node .*server/(intake-worker|technical-drawing-worker)[.]mjs" >/dev/null; then
-              echo "An unmanaged worker is still running; aborting before migration."
-              exit 1
-            fi
-            echo "CRAFTON_WORKERS_PAUSED_READY_FOR_MIGRATION"
             if ! node --env-file="$old_env" "${{ secrets.VPS_TARGET_DIR }}/check-project-edit-schema.mjs" --wait; then
               # No runtime or frontend changes have been made yet.
               systemctl start crafton-intake-worker.service crafton-technical-drawing-worker.service
