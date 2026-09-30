@@ -40,11 +40,9 @@ const faqItems = [
 const assetPath = (name) => `/thecrafton-assets/home-reference/${name}`;
 
 function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
-  const [mode, setMode] = useState("trade");
   const [filter, setFilter] = useState("all");
   const [openFaqs, setOpenFaqs] = useState([]);
 
-  const isTrade = mode === "trade";
   const toggleFaq = (index) => {
     setOpenFaqs((current) =>
       current.includes(index) ? current.filter((item) => item !== index) : [...current, index]
@@ -58,39 +56,18 @@ function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
           <div>
             <div className="home-reference-kicker">Contract furniture, made simple</div>
             <h1>Manufacturing made easy.</h1>
-            <div className="home-reference-segment" aria-label="Audience">
-              <button className={isTrade ? "is-active" : ""} type="button" onClick={() => setMode("trade")}>
-                For the trade
-              </button>
-              <button className={!isTrade ? "is-active" : ""} type="button" onClick={() => setMode("factory")}>
-                For factories
-              </button>
-            </div>
+            <div className="home-reference-audience">For the trade</div>
             <p className="home-reference-lead">
-              {isTrade
-                ? "Spec it, and we make it and land it at your door. One partner from factory to installed, landed and duty-paid, for design studios and trade buyers."
-                : "Steady orders, clean specifications, fair terms. Join a vetted network that brings you qualified contract furniture work, with quality agreed up front."}
+              Spec it, and we make it and land it at your door. One partner from factory to installed, landed and
+              duty-paid, for design studios and trade buyers.
             </p>
             <div className="home-reference-cta">
-              {isTrade ? (
-                <>
-                  <button className="home-reference-btn home-reference-btn-fill" type="button" onClick={onStartOrder}>
-                    Start an order
-                  </button>
-                  <a className="home-reference-btn home-reference-btn-ghost" href="#collection">
-                    See the collection
-                  </a>
-                </>
-              ) : (
-                <>
-                  <a className="home-reference-btn home-reference-btn-fill" href="#factory-deep">
-                    Become a partner
-                  </a>
-                  <a className="home-reference-btn home-reference-btn-ghost" href="#how">
-                    How it works
-                  </a>
-                </>
-              )}
+              <button className="home-reference-btn home-reference-btn-fill" type="button" onClick={onStartOrder}>
+                Start an order
+              </button>
+              <a className="home-reference-btn home-reference-btn-ghost" href="#collection">
+                See the collection
+              </a>
             </div>
           </div>
           <div className="home-reference-hero-frame">
@@ -140,11 +117,7 @@ function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
                 "Landed to your door",
                 "Freight, customs, duty and install, all handled. Most suppliers stop at the factory gate. We do not."
               ],
-              [
-                "02",
-                "Quality control",
-                "Every piece is checked against its specification before it ships."
-              ],
+              ["02", "Quality control", "Every piece is checked against its specification before it ships."],
               [
                 "03",
                 "Vetted factory network",

@@ -28,6 +28,7 @@ import { activeProjectJob, buildEditPlan, requiresProjectReview } from "../share
 import IntakeEvidenceReview from "./components/IntakeEvidenceReview";
 import ClientFfeIntake from "./components/ClientFfeIntake";
 import CraftonHomepage from "./components/CraftonHomepage";
+import SiteNavigation from "./components/SiteNavigation";
 import SupplierProductionPortal from "./components/SupplierProductionPortal";
 import { AdminLocalized, adminText } from "./adminI18n";
 import { deriveProjectLifecycle, mergeProjectJobSources } from "./projectLifecycle.js";
@@ -716,9 +717,19 @@ const buildProjectGroupsFromJobs = (jobs = []) => {
 
   return Array.from(groups.values()).map((group) => ({
     ...group,
-    pendingImports: jobs.filter((job) => job.project_id === group.projectId && ["processing", "preview"].includes(job.client_import_state)).length,
-    openChangeRequests: jobs.filter((job) => job.project_id === group.projectId).reduce((total, job) => total +
-      (safeJsonObject(job.result_json, {}).client_change_requests || []).filter((request) => ["pending", "in_review"].includes(request.status)).length, 0),
+    pendingImports: jobs.filter(
+      (job) => job.project_id === group.projectId && ["processing", "preview"].includes(job.client_import_state)
+    ).length,
+    openChangeRequests: jobs
+      .filter((job) => job.project_id === group.projectId)
+      .reduce(
+        (total, job) =>
+          total +
+          (safeJsonObject(job.result_json, {}).client_change_requests || []).filter((request) =>
+            ["pending", "in_review"].includes(request.status)
+          ).length,
+        0
+      ),
     jobs: group.jobs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
   }));
 };
@@ -7740,20 +7751,44 @@ function App() {
       const jobs = clientProjectJobs.filter((job) => job.project_id === body.projectId);
       if (!jobs.length) throw new Error("This project is not available.");
       const linked = jobs[0].projects || {};
-      const project = { id: body.projectId, name: jobs[0].project_name, current_stage: jobs[0].current_stage || 1,
-        client_edit_revision: 0, ...linked };
-      const workspace = { project, jobs, isDemo: true, requiresReview: requiresProjectReview(project, jobs),
-        version: JSON.stringify(jobs.map((job) => [job.id, job.updated_at])), imports: [], documents: [] };
+      const project = {
+        id: body.projectId,
+        name: jobs[0].project_name,
+        current_stage: jobs[0].current_stage || 1,
+        client_edit_revision: 0,
+        ...linked
+      };
+      const workspace = {
+        project,
+        jobs,
+        isDemo: true,
+        requiresReview: requiresProjectReview(project, jobs),
+        version: JSON.stringify(jobs.map((job) => [job.id, job.updated_at])),
+        imports: [],
+        documents: []
+      };
       if (body.operation === "read") return workspace;
-      if (body.operation === "queue_file" || body.referenceFileId) throw new Error("File uploads require a signed-in project account. This is a demo project.");
+      if (body.operation === "queue_file" || body.referenceFileId)
+        throw new Error("File uploads require a signed-in project account. This is a demo project.");
       if (body.version !== workspace.version) throw new Error("Project details changed. Reload the latest details.");
-      const plan = buildEditPlan(workspace, body, { actorId: user.id || "demo", requestId: window.crypto.randomUUID() });
+      const plan = buildEditPlan(workspace, body, {
+        actorId: user.id || "demo",
+        requestId: window.crypto.randomUUID()
+      });
       const updated = new Map(plan.patches.map((patch) => [patch.id, patch]));
-      setClientProjectJobs((previous) => previous.map((job) => job.project_id === body.projectId ? {
-        ...job, ...updated.get(job.id), updated_at: new Date().toISOString(),
-        project_name: plan.projectPatch.name || job.project_name,
-        projects: { ...project, ...plan.projectPatch, client_edit_revision: project.client_edit_revision + 1 }
-      } : job));
+      setClientProjectJobs((previous) =>
+        previous.map((job) =>
+          job.project_id === body.projectId
+            ? {
+                ...job,
+                ...updated.get(job.id),
+                updated_at: new Date().toISOString(),
+                project_name: plan.projectPatch.name || job.project_name,
+                projects: { ...project, ...plan.projectPatch, client_edit_revision: project.client_edit_revision + 1 }
+              }
+            : job
+        )
+      );
       return { ok: true, outcome: plan.outcome };
     }
     const result = await callWorkflowAi(context.client, { ...body, action: "client_project_edit" });
@@ -10458,9 +10493,7 @@ function App() {
           : "Await the client's missing specifications and review the reply";
       }
       if (stage <= 2)
-        return lang === "Cn"
-          ? "审核客户资料与识别出的规格缺口"
-          : "Review the client brief and specification gaps";
+        return lang === "Cn" ? "审核客户资料与识别出的规格缺口" : "Review the client brief and specification gaps";
       if (stage === 3)
         return lang === "Cn"
           ? "检查 BOM、双语规格、尺寸与材质"
@@ -10932,8 +10965,12 @@ function App() {
             </div>
           </div>
 
-          <ClientChangeReview lang={lang} projectId={activeAdminProject?.id} supabaseClient={getSupabaseBrowserClient()}
-            onChanged={() => loadPrequoteWorkspace({ background: true })} />
+          <ClientChangeReview
+            lang={lang}
+            projectId={activeAdminProject?.id}
+            supabaseClient={getSupabaseBrowserClient()}
+            onChanged={() => loadPrequoteWorkspace({ background: true })}
+          />
           {renderFlowWorkspace()}
         </div>
       </AdminLocalized>
@@ -12447,189 +12484,35 @@ function App() {
         </div>
       )}
 
-      {/* Navbar Header */}
-      <nav className={`navbar ${lang === "En" ? "navbar-en" : ""}`}>
-        <div
-          className="logo-container"
-          onClick={() => {
-            setCurrentStageView("Marketing");
-            setMarketingTab("Overview");
-          }}
-          style={{ cursor: "pointer" }}
-        >
-          <img className="crafton-nav-logo" src="/thecrafton-assets/thecrafton-logo.png" alt="The Crafton" />
-        </div>
-
-        <div className="nav-links">
-          <span
-            className={`nav-link ${currentView === "Marketing" && marketingTab === "Overview" ? "active" : ""}`}
-            onClick={() => {
-              setCurrentStageView("Marketing");
-              setMarketingTab("Overview");
-            }}
-          >
-            {lang === "Cn" ? "首頁" : "HOME"}
-          </span>
-          <span
-            className={`nav-link ${currentView === "Marketing" && marketingTab === "HowItWorks" ? "active" : ""}`}
-            onClick={() => {
-              setCurrentStageView("Marketing");
-              setMarketingTab("HowItWorks");
-            }}
-          >
-            {lang === "Cn" ? "合作流程" : "HOW IT WORKS"}
-          </span>
-          <span
-            className={`nav-link ${currentView === "Marketing" && marketingTab === "MaterialLibrary" ? "active" : ""}`}
-            onClick={() => {
-              setCurrentStageView("Marketing");
-              setMarketingTab("MaterialLibrary");
-            }}
-          >
-            {lang === "Cn" ? "選材庫" : "MATERIAL LIBRARY"}
-          </span>
-          <span
-            className={`nav-link ${currentView === "Marketing" && marketingTab === "CaseStudies" ? "active" : ""}`}
-            onClick={() => {
-              setCurrentStageView("Marketing");
-              setMarketingTab("CaseStudies");
-            }}
-          >
-            {lang === "Cn" ? "經典案例" : "CASE STUDY"}
-          </span>
-          <span
-            className={`nav-link ${currentView === "Marketing" && marketingTab === "BespokeFurniture" ? "active" : ""}`}
-            onClick={() => {
-              setCurrentStageView("Marketing");
-              setMarketingTab("BespokeFurniture");
-            }}
-          >
-            {lang === "Cn" ? "高端定製" : "BESPOKE FURNITURE"}
-          </span>
-          <span
-            className={`nav-link ${currentView === "Marketing" && marketingTab === "SetFurniture" ? "active" : ""}`}
-            onClick={() => {
-              setCurrentStageView("Marketing");
-              setMarketingTab("SetFurniture");
-            }}
-          >
-            {lang === "Cn" ? "标准家具" : "SET FURNITURE"}
-          </span>
-          <span
-            className={`nav-link ${currentView === "Marketing" && marketingTab === "Contact" ? "active" : ""}`}
-            onClick={() => {
-              setCurrentStageView("Marketing");
-              setMarketingTab("Contact");
-            }}
-          >
-            {lang === "Cn" ? "聯絡我們" : "CONTACT"}
-          </span>
-        </div>
-
-        <div className="navbar-actions">
-          <button
-            className="btn-secondary"
-            onClick={handleLangToggle}
-            style={{ padding: "0.4rem 0.8rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px" }}
-          >
-            <svg
-              style={{ width: "14px", height: "14px" }}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-              <path d="M2 12h20" />
-            </svg>
-            <span>{lang === "Cn" ? "English" : "繁體中文"}</span>
-          </button>
-
-          {user ? (
-            <div style={{ display: "flex", gap: "0.8rem", alignItems: "center" }}>
-              <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                {lang === "Cn"
-                  ? `歡迎，${String(user.name || "").replace(/\(Manager\)$/i, "(管理员)")}`
-                  : `Welcome, ${user.name}`}
-              </span>
-              {isSupplierUser ? (
-                <span
-                  className={`nav-link ${currentView === "SupplierPortal" ? "active" : ""}`}
-                  onClick={() => setCurrentStageView("SupplierPortal")}
-                  style={{ fontSize: "0.85rem", cursor: "pointer" }}
-                >
-                  {lang === "Cn" ? "工厂生产工作台" : "Factory Workspace"}
-                </span>
-              ) : (
-                <span
-                  className={`nav-link ${currentView === "ClientPortal" ? "active" : ""}`}
-                  onClick={() => {
-                    setCurrentStageView("ClientPortal");
-                    setClientPortalTab("Tracker");
-                  }}
-                  style={{ fontSize: "0.85rem", cursor: "pointer" }}
-                >
-                  {lang === "Cn" ? "客戶中心" : "Client Portal"}
-                </span>
-              )}
-              {isStaffUser && (
-                <span
-                  className={`nav-link ${currentView === "Backoffice" ? "active" : ""}`}
-                  onClick={openBackofficeOverview}
-                  style={{ fontSize: "0.85rem", cursor: "pointer" }}
-                >
-                  {lang === "Cn" ? "管理控制台" : "Backoffice"}
-                </span>
-              )}
-              <button
-                onClick={handleAuthLogout}
-                style={{
-                  background: "none",
-                  border: "none",
-                  fontSize: "0.85rem",
-                  color: "var(--accent-red)",
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                  padding: 0
-                }}
-              >
-                {lang === "Cn" ? "登出" : "Sign Out"}
-              </button>
-            </div>
-          ) : (
-            <>
-              <button
-                className="nav-link"
-                onClick={() => {
-                  setAuthMode("login");
-                  setShowAuthGate(true);
-                }}
-                style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
-              >
-                {lang === "Cn" ? "登入" : "Sign In"}
-              </button>
-              <button
-                className="btn-premium animate-pulse"
-                onClick={() => {
-                  if (user) {
-                    setCurrentStageView("ClientPortal");
-                    setClientPortalTab("Intake");
-                  } else {
-                    setAuthMode("signup");
-                    setShowAuthGate(true);
-                  }
-                }}
-                style={{ padding: "0.5rem 1.2rem", fontSize: "0.85rem", fontWeight: "600" }}
-              >
-                {lang === "Cn" ? "啟動項目" : "Start Project"}
-              </button>
-            </>
-          )}
-        </div>
-      </nav>
+      <SiteNavigation
+        lang={lang}
+        user={user}
+        currentView={currentView}
+        marketingTab={marketingTab}
+        onLanguageToggle={handleLangToggle}
+        onMarketingNavigate={(tab) => {
+          setCurrentStageView("Marketing");
+          setMarketingTab(tab);
+        }}
+        onPortalOpen={() => {
+          if (isSupplierUser) {
+            setCurrentStageView("SupplierPortal");
+          } else {
+            setCurrentStageView("ClientPortal");
+            setClientPortalTab("Tracker");
+          }
+        }}
+        onBackofficeOpen={openBackofficeOverview}
+        onSignIn={() => {
+          setAuthMode("login");
+          setShowAuthGate(true);
+        }}
+        onStartProject={() => {
+          setAuthMode("signup");
+          setShowAuthGate(true);
+        }}
+        onSignOut={handleAuthLogout}
+      />
 
       {dbError && !dbConnected && import.meta.env.DEV && (
         <div
