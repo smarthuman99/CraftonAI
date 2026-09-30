@@ -9899,39 +9899,6 @@ select:focus,
   color: var(--home-good);
 }
 
-.home-reference-statbar {
-  border-bottom: 1px solid var(--home-line);
-  background: var(--home-paper);
-}
-
-.home-reference-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.home-reference-stat {
-  padding: 26px 24px;
-  border-right: 1px solid var(--home-line);
-}
-
-.home-reference-stat:last-child {
-  border-right: 0;
-}
-
-.home-reference-stat .number {
-  color: var(--home-walnut);
-  font-family: "Fraunces", serif;
-  font-size: 30px;
-  font-style: italic;
-  line-height: 1;
-}
-
-.home-reference-stat .label {
-  margin-top: 8px;
-  color: #4a4438;
-  font-size: 12px;
-}
-
 .home-reference-page section {
   padding: 80px 0;
 }
@@ -10453,7 +10420,6 @@ select:focus,
   .home-reference-two,
   .home-reference-steps,
   .home-reference-product-grid,
-  .home-reference-stats,
   .home-reference-market-grid,
   .home-reference-band,
   .home-reference-footer-grid {

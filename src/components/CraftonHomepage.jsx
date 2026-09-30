@@ -79,27 +79,6 @@ function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
         </div>
       </header>
 
-      <div className="home-reference-statbar">
-        <div className="home-reference-wrap home-reference-stats">
-          <div className="home-reference-stat">
-            <div className="number">6 markets</div>
-            <div className="label">UK, Europe, India, USA, Australia, Thailand</div>
-          </div>
-          <div className="home-reference-stat">
-            <div className="number">Landed DDP</div>
-            <div className="label">Freight, duty and delivery, all handled</div>
-          </div>
-          <div className="home-reference-stat">
-            <div className="number">Quality checked</div>
-            <div className="label">Every piece checked before it ships</div>
-          </div>
-          <div className="home-reference-stat">
-            <div className="number">Catalogue + bespoke</div>
-            <div className="label">Order a Stand piece or build to spec</div>
-          </div>
-        </div>
-      </div>
-
       <section id="about">
         <div className="home-reference-wrap">
           <div className="home-reference-section-head">
