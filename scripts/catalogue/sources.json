@@ -1,0 +1,33 @@
+{
+  "ownerId": "3a8fa647-e7c7-4caf-ac64-d4bdcc68d0fc",
+  "clientName": "Craftonadmin",
+  "projects": [
+    { "id": "bcd22bca-305e-4582-a797-30a5749ae13b", "name": "The Bower" },
+    { "id": "c9e709d1-0667-4468-8dfb-f05ea35923e9", "name": "The Portal Apartment" },
+    { "id": "20913df0-479b-4418-aa30-4a8b760d1f27", "name": "The Portal Amenity" }
+  ],
+  "overrides": {
+    "dd9aad2b-4a93-41e4-8b1d-6811ee67c693:DRAFT-ITEM-10": {
+      "mergeInto": "dd9aad2b-4a93-41e4-8b1d-6811ee67c693:DRAFT-ITEM-5",
+      "reason": "Same side table photo and dimensions/material, repeated in another room."
+    },
+    "dd9aad2b-4a93-41e4-8b1d-6811ee67c693:DRAFT-ITEM-14": {
+      "mergeInto": "dd9aad2b-4a93-41e4-8b1d-6811ee67c693:DRAFT-ITEM-4",
+      "reason": "Same Calacatta Viola coffee table photo and specification, repeated in another room."
+    },
+    "dd9aad2b-4a93-41e4-8b1d-6811ee67c693:DRAFT-ITEM-22": {
+      "mergeInto": "dd9aad2b-4a93-41e4-8b1d-6811ee67c693:DRAFT-ITEM-11",
+      "reason": "Same bistro table name, 750 x 750 x 760 mm dimensions and cast-iron/Calacatta Verde specification."
+    },
+    "304736a3-ba6f-459b-adeb-f787c175c419:DRAFT-ITEM-57": {
+      "mergeInto": "304736a3-ba6f-459b-adeb-f787c175c419:DRAFT-ITEM-39",
+      "reason": "Same sideboard photo and 1750 x 400 x 780 mm specification, repeated in another room."
+    },
+    "304736a3-ba6f-459b-adeb-f787c175c419:DRAFT-ITEM-44": {
+      "category": "chairs",
+      "name": "Dining Chair",
+      "nameCn": "餐椅",
+      "reason": "Source title says Dining Table; the attached product photo clearly shows a chair. Reference dimensions retained unchanged."
+    }
+  }
+}

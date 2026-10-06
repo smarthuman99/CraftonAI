@@ -24,3 +24,7 @@ Thumbs.db
 *.suo
 *.ntvsoc
 *.user
+
+# Private catalogue source snapshots and publication audit reports
+/scratch/craftonadmin-catalogue-source.json
+/output/catalogue-sync/

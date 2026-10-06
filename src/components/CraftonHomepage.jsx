@@ -1,14 +1,5 @@
 import React, { useState } from "react";
-
-const products = [
-  { name: "Bower", price: "from £1,240", type: "Swivel lounge chair", category: "seating", image: "bower.jpg" },
-  { name: "Viano", price: "from £420", type: "Dining chair", category: "seating", image: "viano.jpg" },
-  { name: "Marne", price: "from £1,460", type: "Sideboard", category: "storage", image: "marne.jpg" },
-  { name: "Raz", price: "from £340", type: "Barrel dining chair", category: "seating", image: "raz.jpg" },
-  { name: "Crate", price: "from £980", type: "Dining table", category: "tables", image: "crate.jpg" },
-  { name: "Tell", price: "from £360", type: "Carver armchair", category: "seating", image: "tell.jpg" },
-  { name: "Fold", price: "from £480", type: "Accent chair", category: "seating", image: "fold.jpg" }
-];
+import { CATALOGUE_CATEGORIES, CATALOGUE_FEATURED as products } from "../data/projectFurniture.js";
 
 const faqItems = [
   {
@@ -19,7 +10,7 @@ const faqItems = [
   {
     question: "Can I order bespoke, or only the catalogue?",
     answer:
-      "Both. Order a Stand piece as it is, or send a specification and we build to order through the same vetted network."
+      "Both. Choose a piece from The Crafton Collection, or send a specification and we build to order through the same vetted network."
   },
   {
     question: "How do you control quality overseas?",
@@ -105,7 +96,7 @@ function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
               [
                 "04",
                 "Catalogue and bespoke",
-                "Order a piece from The Stand collection, or send a spec and we build it to order."
+                "Choose a piece from The Crafton Collection, or send a spec and we build it to order."
               ]
             ].map(([number, title, copy]) => (
               <article className="home-reference-value-card" key={number}>
@@ -121,22 +112,23 @@ function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
       <section id="collection" className="home-reference-paper-section">
         <div className="home-reference-wrap">
           <div className="home-reference-section-head">
-            <div className="home-reference-kicker">The Stand collection</div>
+            <div className="home-reference-kicker">The Crafton Collection</div>
             <h2>Ready-made, made properly.</h2>
             <p>
-              Contract-grade pieces you can order directly, made through the same network and landed the same way. A
-              selection below.
+              Explore furniture from our project collection, with reference photographs, dimensions and materials.
+              Choose your pieces and request a project quote.
             </p>
           </div>
           <div className="home-reference-filters" aria-label="Collection filters">
-            {["all", "seating", "tables", "storage"].map((item) => (
+            {[{ slug: "all", nameEn: "All" }, ...CATALOGUE_CATEGORIES].map((item) => (
               <button
-                className={filter === item ? "is-active" : ""}
+                className={filter === item.slug ? "is-active" : ""}
                 type="button"
-                onClick={() => setFilter(item)}
-                key={item}
+                onClick={() => setFilter(item.slug)}
+                key={item.slug}
+                aria-pressed={filter === item.slug}
               >
-                {item}
+                {item.nameEn}
               </button>
             ))}
           </div>
@@ -144,22 +136,28 @@ function CraftonHomepage({ onStartOrder, onOpenCollection, onFactoryApply }) {
             {products
               .filter((product) => filter === "all" || product.category === filter)
               .map((product) => (
-                <article className="home-reference-product" key={product.name}>
-                  <div className="photo">
-                    <img src={assetPath(product.image)} alt={product.name} />
-                  </div>
-                  <div className="info">
-                    <div className="row">
-                      <span className="name">{product.name}</span>
-                      <span className="price">{product.price}</span>
+                <article className="home-reference-product" key={product.id}>
+                  <button type="button" className="home-catalogue-link" onClick={() => onOpenCollection(product)}>
+                    <div className="photo">
+                      <img className="project-catalogue-photo" src={product.image} alt={product.name} loading="lazy" />
                     </div>
-                    <div className="type">{product.type}</div>
-                  </div>
+                    <div className="info">
+                      <div className="row">
+                        <span className="name">{product.name}</span>
+                        <span className="price">Quote on request</span>
+                      </div>
+                      <div className="type">{product.dimensions || "Dimensions to confirm"}</div>
+                    </div>
+                  </button>
                 </article>
               ))}
           </div>
           <div className="home-reference-collection-more">
-            <button className="home-reference-btn home-reference-btn-ghost" type="button" onClick={onOpenCollection}>
+            <button
+              className="home-reference-btn home-reference-btn-ghost"
+              type="button"
+              onClick={() => onOpenCollection()}
+            >
               Browse the full collection
             </button>
           </div>

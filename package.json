@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "catalogue:sync": "node --env-file=server/.env scripts/sync-project-catalogue.mjs",
+    "test:catalogue": "node --test shared/publishedFurniture.test.mjs",
     "report:build": "node scripts/build-self-contained-report.mjs",
     "lint": "eslint src/app.jsx src/main.jsx src/components --report-unused-disable-directives --max-warnings 0",
     "test:intake": "node --test server/lib/intakeProcessor.test.mjs server/lib/intakeSourceReader.test.mjs server/lib/intakeBatchProcessor.test.mjs server/lib/intakeClientCompletion.test.mjs server/lib/intakeClarificationReanalysis.test.mjs server/lib/intakeItemReference.test.mjs server/lib/intakeDocumentReview.test.mjs server/lib/intakeProductImages.test.mjs server/lib/intakeRiskReview.test.mjs",

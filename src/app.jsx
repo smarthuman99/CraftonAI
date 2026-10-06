@@ -3019,14 +3019,15 @@ function App() {
             quantity_text: `${Number(itemQuantity || 0)} pcs`,
             dimensions_text: product.dimensions,
             material_en: product.material,
-            material_cn: product.material,
-            finish: product.finish,
-            fire_standard: product.compliance,
-            image_url: product.image || category.image,
-            original_unit_price: Number(product.price || 0),
-            unit_price: Number(product.price || 0),
+            material_cn: product.materialCn || product.material,
+            finish: product.finish || "",
+            fire_standard: product.compliance || "",
+            image_url: product.image || "",
+            ...(Number.isFinite(product.price)
+              ? { original_unit_price: product.price, unit_price: product.price }
+              : {}),
             currency: product.currency || "USD",
-            notes_en: product.description,
+            notes_en: product.description || "Catalogue reference. Final specifications and price to be confirmed.",
             usage_location: category.nameEn
           })),
           fire_standard: selectedSetFurnitureItems.map(({ product }) => product.compliance).join(" · "),
@@ -3308,7 +3309,7 @@ function App() {
                     marginBottom: "0.4rem"
                   }}
                 >
-                  {lang === "Cn" ? "⚡ 精選設計配套已加載" : "⚡ CURATED DESIGN PACKAGE PRE-LOADED"}
+                  {lang === "Cn" ? "已选家具" : "Selected furniture"}
                 </span>
                 <span style={{ fontSize: "0.88rem", color: "var(--text-primary)", fontWeight: "bold" }}>
                   {modalProjectName}
@@ -3332,7 +3333,11 @@ function App() {
                           {product.code} · {lang === "Cn" ? product.nameCn : product.name}
                         </span>
                         <strong>
-                          {quantity} × {product.currency} {Number(product.price || 0).toLocaleString()}
+                          {Number.isFinite(product.price)
+                            ? `${quantity} × ${product.currency} ${product.price.toLocaleString()}`
+                            : lang === "Cn"
+                              ? `${quantity} 件 · 待报价`
+                              : `${quantity} pcs · Quote pending`}
                         </strong>
                       </div>
                     ))}
@@ -12575,9 +12580,9 @@ function App() {
                   setShowAuthGate(true);
                 }
               }}
-              onOpenCollection={() => {
-                setSetFurnitureCategory("");
-                setSetFurnitureProduct("");
+              onOpenCollection={(product) => {
+                setSetFurnitureCategory(product?.category || "all");
+                setSetFurnitureProduct(product?.id || "");
                 setMarketingTab("SetFurniture");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
@@ -16021,7 +16026,7 @@ function App() {
                   selectedItems
                     .map(
                       ({ product, category, quantity }) =>
-                        `${quantity} × ${product.name} (${product.code}). Category: ${category.nameEn}. Unit price: ${product.currency} ${product.price}. Material: ${product.material}. Reference dimensions: ${product.dimensions}. Compliance: ${product.compliance}.`
+                        `${quantity} × ${product.name} (${product.code}). Category: ${category.nameEn}. Price: to be quoted. Material: ${product.material || "To confirm"}. Reference dimensions: ${product.dimensions || "To confirm"}.`
                     )
                     .join("\n")
                 );
