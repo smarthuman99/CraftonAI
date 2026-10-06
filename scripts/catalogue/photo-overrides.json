@@ -1,0 +1,2043 @@
+{
+  "cf-c52fa8351659db": {
+    "code": "CRF-TP-QVDML-R01",
+    "images": ["/thecrafton-assets/project-catalogue/f311cf69a0d4baa8beaafd58.webp"],
+    "sources": [
+      {
+        "width": 1259,
+        "height": 1024,
+        "sourceWidth": 1536,
+        "sourceHeight": 1024,
+        "crop": {
+          "left": 163,
+          "top": 0,
+          "width": 1259,
+          "height": 1024
+        },
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B9",
+          "item": "WO-04",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-3f44aad2cc5417": {
+    "code": "CRF-EHO-JM07G-R01",
+    "images": ["/thecrafton-assets/project-catalogue/cde7e8687c8fc7db9a02df56.webp"],
+    "sources": [
+      {
+        "width": 849,
+        "height": 409,
+        "sourceWidth": 1105,
+        "sourceHeight": 665,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 3,
+          "xref": 310
+        }
+      }
+    ]
+  },
+  "cf-779c31e3e26124": {
+    "code": "CRF-EHO-3BPZ9-R01",
+    "images": ["/thecrafton-assets/project-catalogue/deb44d581e4f921aa0e94ad3.webp"],
+    "sources": [
+      {
+        "width": 563,
+        "height": 250,
+        "sourceWidth": 634,
+        "sourceHeight": 605,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 7,
+          "xref": 408
+        }
+      }
+    ]
+  },
+  "cf-6134f51efea04e": {
+    "code": "CRF-EHO-ITXEY-R01",
+    "images": ["/thecrafton-assets/project-catalogue/7320e53977985043b81b5bd8.webp"],
+    "sources": [
+      {
+        "width": 691,
+        "height": 237,
+        "sourceWidth": 756,
+        "sourceHeight": 520,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 5,
+          "xref": 65
+        }
+      }
+    ]
+  },
+  "cf-a5137910ba4a9b": {
+    "code": "CRF-TP-5NPA0-R01",
+    "images": ["/thecrafton-assets/project-catalogue/5f811f9c90e94af153673ee9.webp"],
+    "sources": [
+      {
+        "width": 1242,
+        "height": 682,
+        "sourceWidth": 1242,
+        "sourceHeight": 682,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "THE APARTMENT",
+          "cell": "B6",
+          "item": "AP-01",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-9cc9f6504d9417": {
+    "code": "CRF-TP-7BS01-R01",
+    "images": ["/thecrafton-assets/project-catalogue/5ae51ac862ee77987320b2c0.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 997,
+        "sourceWidth": 2620,
+        "sourceHeight": 1632,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "TERRACE",
+          "cell": "B6",
+          "item": "TE-01",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-a1e93f0fed3e88": {
+    "code": "CRF-TP-8EZDQ-R01",
+    "images": ["/thecrafton-assets/project-catalogue/576f6230f78d261bb864c86d.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 1128,
+        "sourceWidth": 2450,
+        "sourceHeight": 1728,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GARDEN ROOM",
+          "cell": "B6",
+          "item": "GA-01",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-a954cd3ecc8340": {
+    "code": "CRF-TP-9MZ46-R01",
+    "images": ["/thecrafton-assets/project-catalogue/0512b916f31997b13f0ff3c1.webp"],
+    "sources": [
+      {
+        "width": 1412,
+        "height": 1114,
+        "sourceWidth": 1412,
+        "sourceHeight": 1114,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "SNUG",
+          "cell": "B6",
+          "item": "SN-01",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-6fdc8f4bf62a76": {
+    "code": "CRF-TP-YU6V3-R01",
+    "images": ["/thecrafton-assets/project-catalogue/c6ab9110f305585a6bce7138.webp"],
+    "sources": [
+      {
+        "width": 1200,
+        "height": 378,
+        "sourceWidth": 1200,
+        "sourceHeight": 378,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 5,
+          "xref": 54
+        }
+      }
+    ]
+  },
+  "cf-ea2b937c6c567a": {
+    "code": "CRF-TP-U111Q-R01",
+    "images": [
+      "/thecrafton-assets/project-catalogue/c6ab9110f305585a6bce7138.webp",
+      "/thecrafton-assets/project-catalogue/6cc9ff59cc4a47feaf6744bf.webp"
+    ],
+    "sources": [
+      {
+        "width": 1200,
+        "height": 378,
+        "sourceWidth": 1200,
+        "sourceHeight": 378,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 5,
+          "xref": 54
+        }
+      },
+      {
+        "width": 1274,
+        "height": 557,
+        "sourceWidth": 1274,
+        "sourceHeight": 1234,
+        "crop": {
+          "left": 0,
+          "top": 342,
+          "width": 1274,
+          "height": 557
+        },
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 9,
+          "xref": 91
+        }
+      }
+    ]
+  },
+  "cf-35144f82891aa4": {
+    "code": "CRF-EHO-2R6PJ-R01",
+    "images": ["/thecrafton-assets/project-catalogue/ba9b5dbde61e8caf97ec1797.webp"],
+    "sources": [
+      {
+        "width": 374,
+        "height": 450,
+        "sourceWidth": 496,
+        "sourceHeight": 528,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 7,
+          "xref": 416
+        }
+      }
+    ]
+  },
+  "cf-efa9e1cd5ba68d": {
+    "code": "CRF-EHO-8MEJJ-R01",
+    "images": ["/thecrafton-assets/project-catalogue/75cadb30a1b495cefd052228.webp"],
+    "sources": [
+      {
+        "width": 493,
+        "height": 443,
+        "sourceWidth": 825,
+        "sourceHeight": 845,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 5,
+          "xref": 69
+        }
+      }
+    ]
+  },
+  "cf-242408154cc686": {
+    "code": "CRF-EHO-VXLLD-R01",
+    "images": ["/thecrafton-assets/project-catalogue/9a7b580643a671653a3ac4bc.webp"],
+    "sources": [
+      {
+        "width": 454,
+        "height": 431,
+        "sourceWidth": 615,
+        "sourceHeight": 615,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 3,
+          "xref": 46
+        }
+      }
+    ]
+  },
+  "cf-c9fc0bd395c059": {
+    "code": "CRF-TP-0YPN6-R01",
+    "images": ["/thecrafton-assets/project-catalogue/22dbd6ab2a4fb36bb5c11644.webp"],
+    "sources": [
+      {
+        "width": 707,
+        "height": 709,
+        "sourceWidth": 812,
+        "sourceHeight": 754,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "THE APARTMENT",
+          "cell": "B8",
+          "item": "AP-03",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-9c352275253cfb": {
+    "code": "CRF-TP-9V9E0-R01",
+    "images": ["/thecrafton-assets/project-catalogue/702bd207c58df50812852b59.webp"],
+    "sources": [
+      {
+        "width": 1212,
+        "height": 951,
+        "sourceWidth": 1402,
+        "sourceHeight": 1122,
+        "crop": {
+          "left": 86,
+          "top": 108,
+          "width": 1212,
+          "height": 951
+        },
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B12",
+          "item": "WO-07",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-7b0fe53983611b": {
+    "code": "CRF-TP-A440Q-R01",
+    "images": ["/thecrafton-assets/project-catalogue/7f71cbea8bdef70f009517e8.webp"],
+    "sources": [
+      {
+        "width": 1193,
+        "height": 1076,
+        "sourceWidth": 1312,
+        "sourceHeight": 1199,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GAMES ROOM",
+          "cell": "B6",
+          "item": "GM-01",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-7b3542d5de2534": {
+    "code": "CRF-TP-5CU38-R01",
+    "images": [
+      "/thecrafton-assets/project-catalogue/81d8df4147c33a2497e733a3.webp",
+      "/thecrafton-assets/project-catalogue/8690c3cca0b7fed53c22b173.webp"
+    ],
+    "sources": [
+      {
+        "width": 692,
+        "height": 638,
+        "sourceWidth": 1000,
+        "sourceHeight": 800,
+        "crop": {
+          "left": 141,
+          "top": 86,
+          "width": 692,
+          "height": 638
+        },
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 5,
+          "xref": 55
+        }
+      },
+      {
+        "width": 1376,
+        "height": 1143,
+        "sourceWidth": 1376,
+        "sourceHeight": 1143,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 9,
+          "xref": 94
+        }
+      }
+    ]
+  },
+  "cf-547fc69773b586": {
+    "code": "CRF-TP-8J8R5-R01",
+    "images": ["/thecrafton-assets/project-catalogue/70cd642e694cdf1412d1370d.webp"],
+    "sources": [
+      {
+        "width": 1230,
+        "height": 1278,
+        "sourceWidth": 1230,
+        "sourceHeight": 1278,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "SNUG",
+          "cell": "B7",
+          "item": "SN-02",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-0e2140faebed07": {
+    "code": "CRF-TP-BO52H-R01",
+    "images": ["/thecrafton-assets/project-catalogue/edf7d0575c19462247a946ab.webp"],
+    "sources": [
+      {
+        "width": 740,
+        "height": 812,
+        "sourceWidth": 740,
+        "sourceHeight": 812,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GARDEN ROOM",
+          "cell": "B7",
+          "item": "GA-02",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-34ab2241ae0198": {
+    "code": "CRF-TP-2XQ2P-R01",
+    "images": ["/thecrafton-assets/project-catalogue/db5c5a07581e7a54a43b31d7.webp"],
+    "sources": [
+      {
+        "width": 175,
+        "height": 157,
+        "sourceWidth": 175,
+        "sourceHeight": 157,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "SNUG",
+          "cell": "B8",
+          "item": "SN-03",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-b51f4988ce5e4e": {
+    "code": "CRF-TP-JQSF8-R01",
+    "images": ["/thecrafton-assets/project-catalogue/353e7b6a4bbdaed331d63eec.webp"],
+    "sources": [
+      {
+        "width": 1297,
+        "height": 1600,
+        "sourceWidth": 1856,
+        "sourceHeight": 2290,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GARDEN ROOM",
+          "cell": "B8",
+          "item": "GA-03",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-b148fc35e589f5": {
+    "code": "CRF-TP-FABNA-R01",
+    "images": ["/thecrafton-assets/project-catalogue/1c37fcf5f4c6edcf61728c47.webp"],
+    "sources": [
+      {
+        "width": 1064,
+        "height": 1162,
+        "sourceWidth": 1064,
+        "sourceHeight": 1162,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "SNUG",
+          "cell": "B9",
+          "item": "SN-04",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-cf4c6af6e46e1f": {
+    "code": "CRF-EHO-AEWK9-R01",
+    "images": ["/thecrafton-assets/project-catalogue/a3e699f1bf9e8e31327261e6.webp"],
+    "sources": [
+      {
+        "width": 236,
+        "height": 444,
+        "sourceWidth": 602,
+        "sourceHeight": 640,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 7,
+          "xref": 97
+        }
+      }
+    ]
+  },
+  "cf-ca6da1cf0c2d3b": {
+    "code": "CRF-TP-BZPYR-R01",
+    "images": ["/thecrafton-assets/project-catalogue/a15a0fbb4fb27f5c3aeffbab.webp"],
+    "sources": [
+      {
+        "width": 860,
+        "height": 1024,
+        "sourceWidth": 860,
+        "sourceHeight": 1024,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GARDEN ROOM",
+          "cell": "B13",
+          "item": "GA-08",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-ee590d16ff6dc4": {
+    "code": "CRF-TP-FIDXP-R01",
+    "images": ["/thecrafton-assets/project-catalogue/c5aa56758247a03374df955f.webp"],
+    "sources": [
+      {
+        "width": 1109,
+        "height": 1600,
+        "sourceWidth": 1728,
+        "sourceHeight": 2492,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "TERRACE",
+          "cell": "B9",
+          "item": "TE-04",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-b42f7a183ba85e": {
+    "code": "CRF-TP-M7JUO-R01",
+    "images": ["/thecrafton-assets/project-catalogue/2202c50e771b7e1bfa91942a.webp"],
+    "sources": [
+      {
+        "width": 747,
+        "height": 1418,
+        "sourceWidth": 1051,
+        "sourceHeight": 1497,
+        "crop": {
+          "left": 140,
+          "top": 79,
+          "width": 747,
+          "height": 1418
+        },
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GAMES ROOM",
+          "cell": "B8",
+          "item": "GM-03",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-725c1fcacc92a1": {
+    "code": "CRF-TP-GB166-R01",
+    "images": ["/thecrafton-assets/project-catalogue/afe05b61f0f88293e5ad165e.webp"],
+    "sources": [
+      {
+        "width": 1328,
+        "height": 1100,
+        "sourceWidth": 1429,
+        "sourceHeight": 1100,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "CINEMA ROOM",
+          "cell": "B6",
+          "item": "CI-01",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-eb5b67ede8ed85": {
+    "code": "CRF-TP-A5LEG-R01",
+    "images": ["/thecrafton-assets/project-catalogue/5e318b864d10bd67a16cbd32.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 1283,
+        "sourceWidth": 2304,
+        "sourceHeight": 1848,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "TERRACE",
+          "cell": "B8",
+          "item": "TE-03",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-17d2cd04c7189f": {
+    "code": "CRF-EHO-EQLPO-R01",
+    "images": ["/thecrafton-assets/project-catalogue/abc046fe7064fbf9012525c2.webp"],
+    "sources": [
+      {
+        "width": 399,
+        "height": 542,
+        "sourceWidth": 687,
+        "sourceHeight": 770,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 7,
+          "xref": 85
+        }
+      }
+    ]
+  },
+  "cf-338c749006505e": {
+    "code": "CRF-TP-SWZG4-R01",
+    "images": ["/thecrafton-assets/project-catalogue/56ec95841daf1baec6ccf80b.webp"],
+    "sources": [
+      {
+        "width": 586,
+        "height": 946,
+        "sourceWidth": 586,
+        "sourceHeight": 946,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "TERRACE",
+          "cell": "B12",
+          "item": "TE-07",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-bb73ee25357abc": {
+    "code": "CRF-TP-OJLG5-R01",
+    "images": ["/thecrafton-assets/project-catalogue/264b5e11fc4e61410b5f4924.webp"],
+    "sources": [
+      {
+        "width": 1127,
+        "height": 1396,
+        "sourceWidth": 1127,
+        "sourceHeight": 1396,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B6",
+          "item": "WO2-01",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-26df67bab826d4": {
+    "code": "CRF-TP-J9LYD-R01",
+    "images": ["/thecrafton-assets/project-catalogue/dc0378916af789addb375584.webp"],
+    "sources": [
+      {
+        "width": 1126,
+        "height": 1397,
+        "sourceWidth": 1126,
+        "sourceHeight": 1397,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B9",
+          "item": "WO2-04",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-be89ee48339b5a": {
+    "code": "CRF-TP-MEC7Z-R01",
+    "images": ["/thecrafton-assets/project-catalogue/c256538c7bfdfe8821cd01fc.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 708,
+        "sourceWidth": 3110,
+        "sourceHeight": 1376,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "TERRACE",
+          "cell": "B11",
+          "item": "TE-06",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-a5a6428550b450": {
+    "code": "CRF-TP-XT3BR-R01",
+    "images": ["/thecrafton-assets/project-catalogue/1818856673301baa71d43f3e.webp"],
+    "sources": [
+      {
+        "width": 459,
+        "height": 617,
+        "sourceWidth": 715,
+        "sourceHeight": 780,
+        "crop": {
+          "left": 127,
+          "top": 81,
+          "width": 459,
+          "height": 617
+        },
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 11,
+          "xref": 115
+        }
+      }
+    ]
+  },
+  "cf-576b9edf04286d": {
+    "code": "CRF-TP-DACSV-R01",
+    "images": ["/thecrafton-assets/project-catalogue/292e0f87db373f3698f414b6.webp"],
+    "sources": [
+      {
+        "width": 1158,
+        "height": 1600,
+        "sourceWidth": 1760,
+        "sourceHeight": 2432,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GARDEN ROOM",
+          "cell": "B9",
+          "item": "GA-04",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-927d3ae843539e": {
+    "code": "CRF-TP-EE5QS-R01",
+    "images": ["/thecrafton-assets/project-catalogue/cbae40a0d2d7e26cf486b96d.webp"],
+    "sources": [
+      {
+        "width": 1116,
+        "height": 1388,
+        "sourceWidth": 1116,
+        "sourceHeight": 1388,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "THE APARTMENT",
+          "cell": "B10",
+          "item": "AP-05",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-8f2585eba7f6aa": {
+    "code": "CRF-TP-BBBNN-R01",
+    "images": ["/thecrafton-assets/project-catalogue/53de44c92faf350b25d60ee0.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 1500,
+        "sourceWidth": 1925,
+        "sourceHeight": 1805,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "BACK OF HOUSE OFFICE",
+          "cell": "B9",
+          "item": "OF-04",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-c740e04f64fd75": {
+    "code": "CRF-TP-51D5L-R01",
+    "images": ["/thecrafton-assets/project-catalogue/40bb30eee153a4eaaeb5e06c.webp"],
+    "sources": [
+      {
+        "width": 1183,
+        "height": 1330,
+        "sourceWidth": 1183,
+        "sourceHeight": 1330,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B6",
+          "item": "WO-01",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-31eff8b511b0a0": {
+    "code": "CRF-TP-H2DSF-R01",
+    "images": ["/thecrafton-assets/project-catalogue/bd15bb119f74c0333a62b0c5.webp"],
+    "sources": [
+      {
+        "width": 1158,
+        "height": 1600,
+        "sourceWidth": 1760,
+        "sourceHeight": 2432,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B15",
+          "item": "WO-10",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-58445671eba29c": {
+    "code": "CRF-TP-6ZRGM-R01",
+    "images": ["/thecrafton-assets/project-catalogue/264b5e11fc4e61410b5f4924.webp"],
+    "sources": [
+      {
+        "width": 1127,
+        "height": 1396,
+        "sourceWidth": 1127,
+        "sourceHeight": 1396,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B12",
+          "item": "WO2-07",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-ddd1279e9d2aa5": {
+    "code": "CRF-TP-O8LSD-R01",
+    "images": ["/thecrafton-assets/project-catalogue/6bd86bfe423adfcfaf838175.webp"],
+    "sources": [
+      {
+        "width": 670,
+        "height": 864,
+        "sourceWidth": 827,
+        "sourceHeight": 946,
+        "crop": {
+          "left": 157,
+          "top": 43,
+          "width": 670,
+          "height": 864
+        },
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "BACK OF HOUSE OFFICE",
+          "cell": "B7",
+          "item": "OF-02",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-5a0d8c28a552ab": {
+    "code": "CRF-TP-UOHOS-R01",
+    "images": ["/thecrafton-assets/project-catalogue/903d5cf186b5727ca22c5606.webp"],
+    "sources": [
+      {
+        "width": 1071,
+        "height": 1468,
+        "sourceWidth": 1071,
+        "sourceHeight": 1468,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B14",
+          "item": "WO2-09",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-d2204a7b1ae257": {
+    "code": "CRF-TP-IP2ON-R01",
+    "images": ["/thecrafton-assets/project-catalogue/5f020546b00b79e65270e6da.webp"],
+    "sources": [
+      {
+        "width": 1076,
+        "height": 1461,
+        "sourceWidth": 1076,
+        "sourceHeight": 1461,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B15",
+          "item": "WO2-10",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-6a05a3002f9703": {
+    "code": "CRF-EHO-75QVI-R01",
+    "images": ["/thecrafton-assets/project-catalogue/79e21bcd7fc9ea72fcc9e088.webp"],
+    "sources": [
+      {
+        "width": 302,
+        "height": 343,
+        "sourceWidth": 460,
+        "sourceHeight": 434,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 7,
+          "xref": 92
+        }
+      }
+    ]
+  },
+  "cf-6ae5366ab0ac43": {
+    "code": "CRF-EHO-9B6G5-R01",
+    "images": ["/thecrafton-assets/project-catalogue/50fce3f39b18fe1076e8acd7.webp"],
+    "sources": [
+      {
+        "width": 358,
+        "height": 465,
+        "sourceWidth": 517,
+        "sourceHeight": 559,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 3,
+          "xref": 48
+        }
+      }
+    ]
+  },
+  "cf-9b549f6f70b412": {
+    "code": "CRF-TP-ENOZ7-R01",
+    "images": ["/thecrafton-assets/project-catalogue/008ce0da38cf79a5b629b4cc.webp"],
+    "sources": [
+      {
+        "width": 1085,
+        "height": 1450,
+        "sourceWidth": 1085,
+        "sourceHeight": 1450,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B11",
+          "item": "WO-06",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-ff1bd26194724d": {
+    "code": "CRF-TP-L81PB-R01",
+    "images": ["/thecrafton-assets/project-catalogue/c7de5a4107fd337046b7d0bd.webp"],
+    "sources": [
+      {
+        "width": 902,
+        "height": 296,
+        "sourceWidth": 902,
+        "sourceHeight": 296,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "LOBBY",
+          "cell": "B8",
+          "item": "LO-03",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-c97d1e4da5d6e6": {
+    "code": "CRF-TP-6IA21-R01",
+    "images": ["/thecrafton-assets/project-catalogue/aafb81a57760ca1554c693d5.webp"],
+    "sources": [
+      {
+        "width": 1120,
+        "height": 1600,
+        "sourceWidth": 1728,
+        "sourceHeight": 2468,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GAMES ROOM",
+          "cell": "B9",
+          "item": "GM-04",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-c570b7cd7f9131": {
+    "code": "CRF-EHO-20I6H-R01",
+    "images": ["/thecrafton-assets/project-catalogue/7455b3ed7e782254e8bacb96.webp"],
+    "sources": [
+      {
+        "width": 427,
+        "height": 403,
+        "sourceWidth": 615,
+        "sourceHeight": 605,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 9,
+          "xref": 117
+        }
+      }
+    ]
+  },
+  "cf-dc7305f7394a5d": {
+    "code": "CRF-EHO-ZWV3L-R01",
+    "images": ["/thecrafton-assets/project-catalogue/7455b3ed7e782254e8bacb96.webp"],
+    "sources": [
+      {
+        "width": 427,
+        "height": 403,
+        "sourceWidth": 615,
+        "sourceHeight": 605,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 7,
+          "xref": 89
+        }
+      }
+    ]
+  },
+  "cf-6818412a6934ed": {
+    "code": "CRF-TP-JHZ95-R01",
+    "images": ["/thecrafton-assets/project-catalogue/7d8729ed888282c8a24cdbcb.webp"],
+    "sources": [
+      {
+        "width": 1412,
+        "height": 1540,
+        "sourceWidth": 1412,
+        "sourceHeight": 1540,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "TERRACE",
+          "cell": "B13",
+          "item": "TE-08",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-36ef5642cc96ac": {
+    "code": "CRF-EHO-7XTO0-R01",
+    "images": ["/thecrafton-assets/project-catalogue/cc83c03da2e106e8cd698435.webp"],
+    "sources": [
+      {
+        "width": 550,
+        "height": 310,
+        "sourceWidth": 650,
+        "sourceHeight": 533,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 7,
+          "xref": 91
+        }
+      }
+    ]
+  },
+  "cf-2cad869dd52b68": {
+    "code": "CRF-EHO-EKI0K-R01",
+    "images": ["/thecrafton-assets/project-catalogue/fca07634bb851c8113057063.webp"],
+    "sources": [
+      {
+        "width": 556,
+        "height": 272,
+        "sourceWidth": 632,
+        "sourceHeight": 453,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 5,
+          "xref": 68
+        }
+      }
+    ]
+  },
+  "cf-8fd42d279bdf5d": {
+    "code": "CRF-TP-3P5S3-R01",
+    "images": ["/thecrafton-assets/project-catalogue/1f0d2324d3a949316977104a.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 726,
+        "sourceWidth": 1736,
+        "sourceHeight": 788,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "TERRACE",
+          "cell": "B7",
+          "item": "TE-02",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-61b02c1c141c41": {
+    "code": "CRF-TP-H0WW7-R01",
+    "images": ["/thecrafton-assets/project-catalogue/ec5b4059c0d58035d6866c90.webp"],
+    "sources": [
+      {
+        "width": 1234,
+        "height": 706,
+        "sourceWidth": 1234,
+        "sourceHeight": 706,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "SNUG",
+          "cell": "B10",
+          "item": "SN-05",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-e3b1704810db80": {
+    "code": "CRF-TP-YFGKJ-R01",
+    "images": ["/thecrafton-assets/project-catalogue/f0f14c1836274220283fcdc9.webp"],
+    "sources": [
+      {
+        "width": 1508,
+        "height": 1434,
+        "sourceWidth": 1508,
+        "sourceHeight": 1434,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "THE APARTMENT",
+          "cell": "B7",
+          "item": "AP-02",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-4c6f306913bbc8": {
+    "code": "CRF-TP-O7EM5-R01",
+    "images": ["/thecrafton-assets/project-catalogue/1b0ae0e611956fdf1830c2bd.webp"],
+    "sources": [
+      {
+        "width": 1266,
+        "height": 884,
+        "sourceWidth": 1266,
+        "sourceHeight": 884,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GARDEN ROOM",
+          "cell": "B11",
+          "item": "GA-06",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-a162e798c09985": {
+    "code": "CRF-TP-77ADK-R01",
+    "images": ["/thecrafton-assets/project-catalogue/f8d1b97e92c0cca7808e3295.webp"],
+    "sources": [
+      {
+        "width": 716,
+        "height": 838,
+        "sourceWidth": 716,
+        "sourceHeight": 838,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GARDEN ROOM",
+          "cell": "B12",
+          "item": "GA-07",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-6e555211ffe923": {
+    "code": "CRF-EHO-X1BYE-R01",
+    "images": ["/thecrafton-assets/project-catalogue/507bc33be1f959d564b5bfbe.webp"],
+    "sources": [
+      {
+        "width": 550,
+        "height": 446,
+        "sourceWidth": 592,
+        "sourceHeight": 574,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 3,
+          "xref": 45
+        }
+      }
+    ]
+  },
+  "cf-3bf8da7f78e6b0": {
+    "code": "CRF-EHO-T374R-R01",
+    "images": ["/thecrafton-assets/project-catalogue/d95d1ae9219b7bce4935c425.webp"],
+    "sources": [
+      {
+        "width": 566,
+        "height": 541,
+        "sourceWidth": 659,
+        "sourceHeight": 636,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 3,
+          "xref": 50
+        }
+      }
+    ]
+  },
+  "cf-ffd8433252c545": {
+    "code": "CRF-EHO-8BBUJ-R01",
+    "images": ["/thecrafton-assets/project-catalogue/be41cc075872c42f008628de.webp"],
+    "sources": [
+      {
+        "width": 381,
+        "height": 337,
+        "sourceWidth": 496,
+        "sourceHeight": 436,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 9,
+          "xref": 120
+        }
+      }
+    ]
+  },
+  "cf-dc12485d602fb5": {
+    "code": "CRF-EHO-8SIP4-R01",
+    "images": ["/thecrafton-assets/project-catalogue/be41cc075872c42f008628de.webp"],
+    "sources": [
+      {
+        "width": 381,
+        "height": 337,
+        "sourceWidth": 496,
+        "sourceHeight": 436,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 9,
+          "xref": 120
+        }
+      }
+    ]
+  },
+  "cf-f13374b38c56b5": {
+    "code": "CRF-TP-NTAPE-R01",
+    "images": ["/thecrafton-assets/project-catalogue/1aabb7e35981b5367fcbce83.webp"],
+    "sources": [
+      {
+        "width": 874,
+        "height": 758,
+        "sourceWidth": 874,
+        "sourceHeight": 758,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "BACK OF HOUSE OFFICE",
+          "cell": "B6",
+          "item": "OF-01",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-c27d2d518bc1f2": {
+    "code": "CRF-TP-1E0Q5-R01",
+    "images": ["/thecrafton-assets/project-catalogue/00e3b63eb27c07709785ce73.webp"],
+    "sources": [
+      {
+        "width": 1048,
+        "height": 662,
+        "sourceWidth": 1048,
+        "sourceHeight": 662,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "THE APARTMENT",
+          "cell": "B9",
+          "item": "AP-04",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-5a8b95f163cf6d": {
+    "code": "CRF-TP-F32UQ-R01",
+    "images": ["/thecrafton-assets/project-catalogue/4f33f295be52a81871a91bbe.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 748,
+        "sourceWidth": 1732,
+        "sourceHeight": 810,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "TERRACE",
+          "cell": "B10",
+          "item": "TE-05",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-a5955eea6cbd75": {
+    "code": "CRF-TP-NS3J6-R01",
+    "images": ["/thecrafton-assets/project-catalogue/45af4e6943b6007dd67168c1.webp"],
+    "sources": [
+      {
+        "width": 1140,
+        "height": 982,
+        "sourceWidth": 1140,
+        "sourceHeight": 982,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GARDEN ROOM",
+          "cell": "B10",
+          "item": "GA-05",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-82c1c6dd43b80b": {
+    "code": "CRF-TP-L1BXT-R01",
+    "images": ["/thecrafton-assets/project-catalogue/f820d4b07934861fd202ec87.webp"],
+    "sources": [
+      {
+        "width": 886,
+        "height": 692,
+        "sourceWidth": 1000,
+        "sourceHeight": 720,
+        "crop": {
+          "left": 24,
+          "top": 12,
+          "width": 886,
+          "height": 692
+        },
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 11,
+          "xref": 117
+        }
+      }
+    ]
+  },
+  "cf-c534efd3ef04e1": {
+    "code": "CRF-TP-Y2Z0S-R01",
+    "images": ["/thecrafton-assets/project-catalogue/f03b5e8c99182e1ac10b456f.webp"],
+    "sources": [
+      {
+        "width": 1000,
+        "height": 640,
+        "sourceWidth": 1000,
+        "sourceHeight": 640,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 11,
+          "xref": 114
+        }
+      }
+    ]
+  },
+  "cf-5c90d8bf60e45d": {
+    "code": "CRF-TP-YHZHI-R01",
+    "images": ["/thecrafton-assets/project-catalogue/bfc14694415a843e1a26418e.webp"],
+    "sources": [
+      {
+        "width": 1000,
+        "height": 885,
+        "sourceWidth": 1000,
+        "sourceHeight": 885,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 11,
+          "xref": 116
+        }
+      }
+    ]
+  },
+  "cf-048ef519d3f775": {
+    "code": "CRF-TP-IE8C6-R01",
+    "images": ["/thecrafton-assets/project-catalogue/fd969c18a7714b640bc68a53.webp"],
+    "sources": [
+      {
+        "width": 1328,
+        "height": 868,
+        "sourceWidth": 1328,
+        "sourceHeight": 868,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GARDEN ROOM",
+          "cell": "B14",
+          "item": "GA-09",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-f6e99c52c67ce7": {
+    "code": "CRF-TP-31MMZ-R01",
+    "images": ["/thecrafton-assets/project-catalogue/6576173ed55b929859f63abd.webp"],
+    "sources": [
+      {
+        "width": 1494,
+        "height": 683,
+        "sourceWidth": 1536,
+        "sourceHeight": 1024,
+        "crop": {
+          "left": 20,
+          "top": 252,
+          "width": 1494,
+          "height": 683
+        },
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B11",
+          "item": "WO2-06",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-9251ba76070102": {
+    "code": "CRF-TP-7P5NC-R01",
+    "images": ["/thecrafton-assets/project-catalogue/51cb06c97dea1e4dccb9f112.webp"],
+    "sources": [
+      {
+        "width": 512,
+        "height": 502,
+        "sourceWidth": 512,
+        "sourceHeight": 502,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "BACK OF HOUSE OFFICE",
+          "cell": "B8",
+          "item": "OF-03",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-21726a35561c36": {
+    "code": "CRF-TP-C70DA-R01",
+    "images": ["/thecrafton-assets/project-catalogue/4f8ba502c2c9c90db2ddd318.webp"],
+    "sources": [
+      {
+        "width": 1436,
+        "height": 871,
+        "sourceWidth": 1536,
+        "sourceHeight": 1024,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B14",
+          "item": "WO-09",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-37f1e79288de44": {
+    "code": "CRF-TP-5W13L-R01",
+    "images": ["/thecrafton-assets/project-catalogue/4f8ba502c2c9c90db2ddd318.webp"],
+    "sources": [
+      {
+        "width": 1436,
+        "height": 871,
+        "sourceWidth": 1536,
+        "sourceHeight": 1024,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B13",
+          "item": "WO2-08",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-1424b63c67c75e": {
+    "code": "CRF-TP-2RSPE-R01",
+    "images": ["/thecrafton-assets/project-catalogue/e647e380cd05a728e6199fa8.webp"],
+    "sources": [
+      {
+        "width": 1000,
+        "height": 649,
+        "sourceWidth": 1000,
+        "sourceHeight": 649,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 5,
+          "xref": 50
+        }
+      }
+    ]
+  },
+  "cf-9b49d0cd1239b4": {
+    "code": "CRF-EHO-YRCHQ-R01",
+    "images": ["/thecrafton-assets/project-catalogue/01dd965099b8b07a5196d734.webp"],
+    "sources": [
+      {
+        "width": 456,
+        "height": 290,
+        "sourceWidth": 548,
+        "sourceHeight": 406,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 9,
+          "xref": 127
+        }
+      }
+    ]
+  },
+  "cf-8ea4691d599e7d": {
+    "code": "CRF-TP-2KA9C-R01",
+    "images": ["/thecrafton-assets/project-catalogue/1d6b3ed32e4f7d29b27e503f.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 1241,
+        "sourceWidth": 1622,
+        "sourceHeight": 1258,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B7",
+          "item": "WO-02",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-78772f1bf11c9e": {
+    "code": "CRF-TP-GLL7E-R01",
+    "images": ["/thecrafton-assets/project-catalogue/e7f2f681f5f22d7b4e017c0c.webp"],
+    "sources": [
+      {
+        "width": 1399,
+        "height": 948,
+        "sourceWidth": 1399,
+        "sourceHeight": 948,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B7",
+          "item": "WO2-02",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  },
+  "cf-83c244d0aa4a56": {
+    "code": "CRF-TP-F0YG3-R01",
+    "images": ["/thecrafton-assets/project-catalogue/51fa8343749b92bbcaec5ac5.webp"],
+    "sources": [
+      {
+        "width": 770,
+        "height": 857,
+        "sourceWidth": 770,
+        "sourceHeight": 857,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 5,
+          "xref": 57
+        }
+      }
+    ]
+  },
+  "cf-110e413fbe1b6a": {
+    "code": "CRF-EHO-3YK5S-R01",
+    "images": ["/thecrafton-assets/project-catalogue/d261b216669f1fcd478813b5.webp"],
+    "sources": [
+      {
+        "width": 395,
+        "height": 551,
+        "sourceWidth": 556,
+        "sourceHeight": 694,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 3,
+          "xref": 47
+        }
+      }
+    ]
+  },
+  "cf-963c24c5bd7fbc": {
+    "code": "CRF-TP-6CKYD-R01",
+    "images": ["/thecrafton-assets/project-catalogue/8e8e63b8f76f78ab8f818b58.webp"],
+    "sources": [
+      {
+        "width": 928,
+        "height": 974,
+        "sourceWidth": 928,
+        "sourceHeight": 974,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "SNUG",
+          "cell": "B12",
+          "item": "SN-07",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-8be14fe8f3e086": {
+    "code": "CRF-TP-7HW63-R01",
+    "images": ["/thecrafton-assets/project-catalogue/ea05d65edac0df1e29c802a8.webp"],
+    "sources": [
+      {
+        "width": 624,
+        "height": 754,
+        "sourceWidth": 624,
+        "sourceHeight": 754,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "CINEMA ROOM",
+          "cell": "B7",
+          "item": "CI-02",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-522e1168726793": {
+    "code": "CRF-TP-7XQ4F-R01",
+    "images": ["/thecrafton-assets/project-catalogue/6137b7c16b7c832515a0e065.webp"],
+    "sources": [
+      {
+        "width": 1189,
+        "height": 1547,
+        "sourceWidth": 1458,
+        "sourceHeight": 1752,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "THE APARTMENT",
+          "cell": "B11",
+          "item": "AP-06",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-8d31b3e805650e": {
+    "code": "CRF-TP-BC6TN-R01",
+    "images": ["/thecrafton-assets/project-catalogue/d4d65cb70d494d07c2cbca45.webp"],
+    "sources": [
+      {
+        "width": 920,
+        "height": 1146,
+        "sourceWidth": 920,
+        "sourceHeight": 1146,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GAMES ROOM",
+          "cell": "B7",
+          "item": "GM-02",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-5bf0ad94a0f300": {
+    "code": "CRF-TP-FG621-R01",
+    "images": ["/thecrafton-assets/project-catalogue/f41f7e2a35a53008bef097b6.webp"],
+    "sources": [
+      {
+        "width": 688,
+        "height": 836,
+        "sourceWidth": 688,
+        "sourceHeight": 836,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B13",
+          "item": "WO-08",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-fd9c68a1d7f6a3": {
+    "code": "CRF-EHO-A0QOM-R01",
+    "images": ["/thecrafton-assets/project-catalogue/568c5b9b1e5c968f7690dc15.webp"],
+    "sources": [
+      {
+        "width": 56,
+        "height": 68,
+        "sourceWidth": 56,
+        "sourceHeight": 68,
+        "source": {
+          "file": "Henley_FFE_Schedule20260902_updated.xlsx",
+          "sheet": "RESTAURANT",
+          "cell": "B17",
+          "item": "FOS-B-21"
+        }
+      }
+    ]
+  },
+  "cf-4ed31f238f8867": {
+    "code": "CRF-TP-HRGOS-R01",
+    "images": ["/thecrafton-assets/project-catalogue/32286a755020f5510ee2d075.webp"],
+    "sources": [
+      {
+        "width": 1236,
+        "height": 1102,
+        "sourceWidth": 1236,
+        "sourceHeight": 1102,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "SNUG",
+          "cell": "B11",
+          "item": "SN-06",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-3c04060954a7b4": {
+    "code": "CRF-TP-373SD-R01",
+    "images": ["/thecrafton-assets/project-catalogue/fb616eaa88b54a6be0051761.webp"],
+    "sources": [
+      {
+        "width": 467,
+        "height": 548,
+        "sourceWidth": 467,
+        "sourceHeight": 548,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 5,
+          "xref": 53
+        }
+      }
+    ]
+  },
+  "cf-c98045ff88a2f8": {
+    "code": "CRF-TP-QG2JM-R01",
+    "images": ["/thecrafton-assets/project-catalogue/054b6d8f8b0f8ed3a2571b64.webp"],
+    "sources": [
+      {
+        "width": 1120,
+        "height": 1600,
+        "sourceWidth": 1728,
+        "sourceHeight": 2468,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B10",
+          "item": "WO-05",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-91dbff6f929b96": {
+    "code": "CRF-TP-DWZO0-R01",
+    "images": ["/thecrafton-assets/project-catalogue/98ada2074bda56cd58b5be46.webp"],
+    "sources": [
+      {
+        "width": 1434,
+        "height": 926,
+        "sourceWidth": 1434,
+        "sourceHeight": 926,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B10",
+          "item": "WO2-05",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-ad6345c5d15efc": {
+    "code": "CRF-TP-1S7GU-R01",
+    "images": ["/thecrafton-assets/project-catalogue/3a01558386bbc3244f457ffa.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 871,
+        "sourceWidth": 1748,
+        "sourceHeight": 952,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "THE APARTMENT",
+          "cell": "B12",
+          "item": "AP-07",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-a8f56a4fea66bb": {
+    "code": "CRF-TP-WNICQ-R01",
+    "images": ["/thecrafton-assets/project-catalogue/0fc01f3f73ffb0bc2911706b.webp"],
+    "sources": [
+      {
+        "width": 1000,
+        "height": 627,
+        "sourceWidth": 1000,
+        "sourceHeight": 627,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 6,
+          "xref": 65
+        }
+      }
+    ]
+  },
+  "cf-18c7b1baf5ae32": {
+    "code": "CRF-TP-H1LAZ-R01",
+    "images": [
+      "/thecrafton-assets/project-catalogue/0fc01f3f73ffb0bc2911706b.webp",
+      "/thecrafton-assets/project-catalogue/59d2c9f2113b1ee1e6962571.webp"
+    ],
+    "sources": [
+      {
+        "width": 1000,
+        "height": 627,
+        "sourceWidth": 1000,
+        "sourceHeight": 627,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 6,
+          "xref": 65
+        }
+      },
+      {
+        "width": 1322,
+        "height": 1190,
+        "sourceWidth": 1322,
+        "sourceHeight": 1190,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 10,
+          "xref": 102
+        }
+      }
+    ]
+  },
+  "cf-8f68822738a0bb": {
+    "code": "CRF-TP-3BBZ2-R01",
+    "images": ["/thecrafton-assets/project-catalogue/ee9a4055b80e05e0a1f333de.webp"],
+    "sources": [
+      {
+        "width": 804,
+        "height": 908,
+        "sourceWidth": 804,
+        "sourceHeight": 908,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "GAMES ROOM",
+          "cell": "B10",
+          "item": "GM-05",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-c9008fa81dfdcb": {
+    "code": "CRF-TP-X23BZ-R01",
+    "images": [
+      "/thecrafton-assets/project-catalogue/332c2c46dabab9f6504905f3.webp",
+      "/thecrafton-assets/project-catalogue/2b75439e0c68acc940951d5e.webp"
+    ],
+    "sources": [
+      {
+        "width": 1100,
+        "height": 982,
+        "sourceWidth": 1100,
+        "sourceHeight": 982,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 6,
+          "xref": 67
+        }
+      },
+      {
+        "width": 1254,
+        "height": 1254,
+        "sourceWidth": 1254,
+        "sourceHeight": 1254,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 10,
+          "xref": 103
+        }
+      }
+    ]
+  },
+  "cf-b540132344ab50": {
+    "code": "CRF-TP-G8XER-R01",
+    "images": [
+      "/thecrafton-assets/project-catalogue/bf42a0b9544f91b3ca3772e9.webp",
+      "/thecrafton-assets/project-catalogue/fd4b5b4fb65d4cc5e1dad9b3.webp"
+    ],
+    "sources": [
+      {
+        "width": 1024,
+        "height": 1004,
+        "sourceWidth": 1024,
+        "sourceHeight": 1004,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 6,
+          "xref": 66
+        }
+      },
+      {
+        "width": 1275,
+        "height": 1233,
+        "sourceWidth": 1275,
+        "sourceHeight": 1233,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 10,
+          "xref": 105
+        }
+      }
+    ]
+  },
+  "cf-38fad4c1854932": {
+    "code": "CRF-TP-SBZ68-R01",
+    "images": ["/thecrafton-assets/project-catalogue/e4fb620e28012464c304f593.webp"],
+    "sources": [
+      {
+        "width": 1402,
+        "height": 826,
+        "sourceWidth": 1402,
+        "sourceHeight": 826,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "CINEMA ROOM",
+          "cell": "B8",
+          "item": "CI-03",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-644e8ce9ec5377": {
+    "code": "CRF-EHO-YDQLD-R01",
+    "images": ["/thecrafton-assets/project-catalogue/e60a0afa3817583d10183872.webp"],
+    "sources": [
+      {
+        "width": 486,
+        "height": 467,
+        "sourceWidth": 584,
+        "sourceHeight": 586,
+        "source": {
+          "file": "The Bower FF&E.pdf",
+          "page": 9,
+          "xref": 125
+        }
+      }
+    ]
+  },
+  "cf-5f3cc43b5cde82": {
+    "code": "CRF-TP-LHE2G-R01",
+    "images": [
+      "/thecrafton-assets/project-catalogue/aaf3714eccc0edac9b9add46.webp",
+      "/thecrafton-assets/project-catalogue/d9f63e59b02f61afc7ed08c0.webp"
+    ],
+    "sources": [
+      {
+        "width": 983,
+        "height": 470,
+        "sourceWidth": 999,
+        "sourceHeight": 604,
+        "crop": {
+          "left": 16,
+          "top": 108,
+          "width": 983,
+          "height": 470
+        },
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 5,
+          "xref": 56
+        }
+      },
+      {
+        "width": 1600,
+        "height": 967,
+        "sourceWidth": 1614,
+        "sourceHeight": 975,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 9,
+          "xref": 92
+        }
+      }
+    ]
+  },
+  "cf-0f157668f84a03": {
+    "code": "CRF-TP-W0AH2-R01",
+    "images": ["/thecrafton-assets/project-catalogue/43bbae77669e89a312276c6a.webp"],
+    "sources": [
+      {
+        "width": 641,
+        "height": 547,
+        "sourceWidth": 641,
+        "sourceHeight": 547,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 5,
+          "xref": 52
+        }
+      }
+    ]
+  },
+  "cf-4ab917d2166d17": {
+    "code": "CRF-TP-1VOB4-R01",
+    "images": ["/thecrafton-assets/project-catalogue/c3d7b337a095313891302deb.webp"],
+    "sources": [
+      {
+        "width": 1100,
+        "height": 673,
+        "sourceWidth": 1100,
+        "sourceHeight": 673,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 17,
+          "xref": 210
+        }
+      }
+    ]
+  },
+  "cf-03b8c8bc2b71e0": {
+    "code": "CRF-TP-IJMXD-R01",
+    "images": ["/thecrafton-assets/project-catalogue/2600f33e54573ea43e89ecfc.webp"],
+    "sources": [
+      {
+        "width": 1000,
+        "height": 611,
+        "sourceWidth": 1000,
+        "sourceHeight": 611,
+        "source": {
+          "file": "3. Portal_Furniture_Specs_0615 REV D - FOR CISSY.pdf",
+          "page": 5,
+          "xref": 51
+        }
+      }
+    ]
+  },
+  "cf-383225ae31f35f": {
+    "code": "CRF-TP-2XSFV-R01",
+    "images": ["/thecrafton-assets/project-catalogue/1d6b3ed32e4f7d29b27e503f.webp"],
+    "sources": [
+      {
+        "width": 1600,
+        "height": 1241,
+        "sourceWidth": 1622,
+        "sourceHeight": 1258,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE",
+          "cell": "B8",
+          "item": "WO-03",
+          "kind": "drawing"
+        }
+      }
+    ]
+  },
+  "cf-fd3518cc2dcd7f": {
+    "code": "CRF-TP-SSCX6-R01",
+    "images": ["/thecrafton-assets/project-catalogue/e7f2f681f5f22d7b4e017c0c.webp"],
+    "sources": [
+      {
+        "width": 1399,
+        "height": 948,
+        "sourceWidth": 1399,
+        "sourceHeight": 948,
+        "source": {
+          "file": "4684d006-555b-4d9a-af33-149557cd92dc.xlsx",
+          "sheet": "WORK SPACE 2",
+          "cell": "B8",
+          "item": "WO2-03",
+          "kind": "in-cell"
+        }
+      }
+    ]
+  }
+}

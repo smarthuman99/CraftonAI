@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { applyCataloguePhotos } from "./cataloguePhotos.mjs";
 import {
   catalogueImageSources,
   classifyFurniture,
@@ -7,6 +8,22 @@ import {
   groupFurniture,
   publicFurniture
 } from "./publishedFurniture.mjs";
+
+test("reviewed photos survive synchronization without leaking source metadata or changing specifications", () => {
+  const product = { id: "cf-1", code: "CODE-1", dimensions: "500 mm", image: "", images: [] };
+  const image = "/thecrafton-assets/project-catalogue/1234567890abcdef12345678.webp";
+  const overrides = { "cf-1": { code: "CODE-1", images: [image], sources: [{ file: "private.xlsx", cell: "B8" }] } };
+  const [updated] = applyCataloguePhotos([product], overrides);
+  assert.equal(updated.image, image);
+  assert.equal(updated.dimensions, product.dimensions);
+  assert.equal("sources" in updated, false);
+  assert.equal(product.image, "");
+  assert.throws(() => applyCataloguePhotos([{ ...product, code: "DIFFERENT" }], overrides), /identity/);
+  assert.throws(
+    () => applyCataloguePhotos([product], { "cf-1": { code: product.code, images: ["/private/file"] } }),
+    /Invalid/
+  );
+});
 
 test("classifies furniture without confusing bedsides, benches or screen desks", () => {
   for (const [name, expected] of [

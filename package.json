@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "catalogue:sync": "node --env-file=server/.env scripts/sync-project-catalogue.mjs",
+    "catalogue:photos": "node scripts/apply-catalogue-photos.mjs",
     "test:catalogue": "node --test shared/publishedFurniture.test.mjs",
     "report:build": "node scripts/build-self-contained-report.mjs",
     "lint": "eslint src/app.jsx src/main.jsx src/components --report-unused-disable-directives --max-warnings 0",

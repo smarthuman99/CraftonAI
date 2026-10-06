@@ -8,6 +8,26 @@
   background: #fbf6ec;
 }
 
+/* Give original product photos the same inset while keeping complete outlines. */
+.set-project-catalogue .set-furniture-product-image,
+.set-project-catalogue .set-product-detail-image,
+.set-project-catalogue .set-furniture-reference-card-image,
+.set-project-catalogue .set-furniture-reference-cover {
+  background: #fbf6ec;
+}
+.set-project-catalogue .set-furniture-product-image img,
+.set-project-catalogue .set-product-detail-image img,
+.set-project-catalogue .set-furniture-reference-card-image img,
+.set-project-catalogue .set-furniture-reference-cover img {
+  box-sizing: border-box;
+  padding: 10%;
+  object-position: center;
+}
+.set-project-catalogue .set-furniture-product-card:hover .set-furniture-product-image img,
+.set-project-catalogue .set-furniture-reference-feature:hover .set-furniture-reference-cover img {
+  transform: none;
+}
+
 .set-category-link {
   display: block;
   width: 100%;
@@ -148,6 +168,8 @@
 .home-reference-product .photo img.project-catalogue-photo {
   object-fit: contain;
   background: #fbf6ec;
+  box-sizing: border-box;
+  padding: 8%;
 }
 .home-reference-product .home-catalogue-link {
   display: block;

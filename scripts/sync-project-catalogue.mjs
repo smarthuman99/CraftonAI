@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { applyCataloguePhotos } from "../shared/cataloguePhotos.mjs";
 import { createSupabaseAdmin } from "../server/lib/supabaseAdmin.mjs";
 import {
   catalogueImageSources,
@@ -11,6 +12,9 @@ import {
 } from "../shared/publishedFurniture.mjs";
 
 const config = JSON.parse(await fs.readFile(new URL("./catalogue/sources.json", import.meta.url), "utf8"));
+const photoOverrides = JSON.parse(
+  await fs.readFile(new URL("./catalogue/photo-overrides.json", import.meta.url), "utf8")
+);
 const db = createSupabaseAdmin();
 const assetRoot = path.resolve("public/thecrafton-assets/project-catalogue");
 const reportRoot = path.resolve("output/catalogue-sync");
@@ -130,7 +134,10 @@ merged.push(
     into: sourceProducts.get(merge.target).id
   }))
 );
-const catalogue = { title: "The Crafton Collection", categories: groupFurniture(unique) };
+const published = applyCataloguePhotos(unique, photoOverrides);
+for (const image of new Set(published.flatMap((product) => product.images)))
+  await fs.access(path.resolve(`public${image}`));
+const catalogue = { title: "The Crafton Collection", categories: groupFurniture(published) };
 await fs.mkdir("src/data", { recursive: true });
 await fs.writeFile("src/data/projectFurniture.json.tmp", `${JSON.stringify(catalogue, null, 2)}\n`);
 await fs.rename("src/data/projectFurniture.json.tmp", "src/data/projectFurniture.json");
@@ -138,8 +145,8 @@ const report = {
   syncedAt: new Date().toISOString(),
   sourceItems: products.length,
   publishedProducts: unique.length,
-  withPhotos: unique.filter((item) => item.image).length,
-  missingPhotos: unique.filter((item) => !item.image).map((item) => item.id),
+  withPhotos: published.filter((item) => item.image).length,
+  missingPhotos: published.filter((item) => !item.image).map((item) => item.id),
   excluded,
   merged,
   references
