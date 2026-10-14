@@ -4,7 +4,8 @@ import {
   createRefreshQueue,
   createSignedPreviewCache,
   getVerifiedBrowserUser,
-  clearVerifiedBrowserUser
+  clearVerifiedBrowserUser,
+  mergeReviewPreviewUrls
 } from "./portalPerformance.mjs";
 import { readPortalWorkspace, readClientProgress, signIntakeRows } from "./portalWorkspace.mjs";
 
@@ -19,6 +20,82 @@ const deferred = () => {
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 const ownerId = "11111111-1111-4111-8111-111111111111";
 const otherId = "22222222-2222-4222-8222-222222222222";
+
+test("preview hydration preserves in-progress specifications, notes and manually changed photos", () => {
+  const base = {
+    projectKey: "project",
+    previewUrl: "",
+    items: [
+      {
+        id: "chair",
+        sourceJobIds: ["job"],
+        qty: 1,
+        notesEn: "original",
+        imageUrl: "",
+        technicalDrawing: { status: "pending", url: "" }
+      },
+      { id: "table", sourceJobIds: ["job"], imageUrl: "" }
+    ]
+  };
+  const draft = {
+    ...base,
+    reviewNotes: "Unsaved review",
+    items: [
+      { ...base.items[0], qty: 7, notesEn: "Unsaved specification" },
+      { ...base.items[1], imageUrl: "new-user-photo" }
+    ]
+  };
+  const refreshed = {
+    ...base,
+    items: base.items.map((item) => ({
+      ...item,
+      imageUrl: "signed-photo",
+      technicalDrawing: { status: "old-server-status", url: "signed-drawing" }
+    }))
+  };
+  const merged = mergeReviewPreviewUrls(draft, refreshed, base);
+  assert.equal(merged.reviewNotes, "Unsaved review");
+  assert.equal(merged.items[0].qty, 7);
+  assert.equal(merged.items[0].notesEn, "Unsaved specification");
+  assert.equal(merged.items[0].imageUrl, "signed-photo");
+  assert.equal(merged.items[0].technicalDrawing.status, "pending");
+  assert.equal(merged.items[0].technicalDrawing.url, "signed-drawing");
+  assert.equal(merged.items[1].imageUrl, "new-user-photo");
+});
+
+test("admin list does not wait for Storage signatures", async () => {
+  const image = deferred(),
+    reviews = [];
+  const row = {
+    id: "job",
+    user_id: ownerId,
+    result_json: { items: [{ id: "chair", image_storage_bucket: "b", image_storage_path: "p" }] }
+  };
+  const client = database(({ table, filters }) => {
+    if (table === "user_profiles") return { data: [{ user_id: ownerId, full_name: "QA" }] };
+    if (table === "intake_jobs") return { data: filters.some(([method]) => method === "or") ? [] : [row] };
+    return { data: [] };
+  });
+  const pending = readPortalWorkspace({
+    client,
+    ownerId,
+    isStaff: true,
+    previews: { sign: (_client, bucket) => (bucket ? image.promise : Promise.resolve("")) },
+    onClientRows: () => {},
+    onReviewRows: (rows, metadata) => reviews.push({ rows, metadata }),
+    onReviewError: assert.fail,
+    onProgressError: assert.fail,
+    loadDrawings: async () => ({ files: [] })
+  });
+  await turn();
+  assert.equal(reviews.length, 1);
+  assert.equal(reviews[0].metadata.previewsOnly, false);
+  assert.equal(reviews[0].rows[0].owner_profile.full_name, "QA");
+  image.resolve("signed");
+  await pending;
+  assert.equal(reviews[1].metadata.previewsOnly, true);
+  assert.equal(reviews[1].rows[0].result_json.items[0].image_url, "signed");
+});
 
 test("concurrent reads share one request, but a save during it triggers a fresh read", async () => {
   const queue = createRefreshQueue();

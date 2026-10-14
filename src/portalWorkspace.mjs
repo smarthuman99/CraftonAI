@@ -163,20 +163,23 @@ export async function readPortalWorkspace({
       if (error) throw error;
       const rows = data || [];
       const ids = [...new Set(rows.map(getPortalJobOwnerId).filter(Boolean))];
-      const [signed, profiles] = await Promise.all([
-        signIntakeRows(client, rows, previews),
-        ids.length
-          ? client.from("user_profiles").select("user_id,public_id,full_name,company").in("user_id", ids)
-          : { data: [] }
-      ]);
+      const signing = signIntakeRows(client, rows, previews).catch((error) => {
+        onProgressError(error);
+        return rows;
+      });
+      const profiles = await (ids.length
+        ? client.from("user_profiles").select("user_id,public_id,full_name,company").in("user_id", ids)
+        : { data: [] });
       if (profiles.error) throw profiles.error;
       const byId = new Map((profiles.data || []).map((profile) => [String(profile.user_id), profile]));
-      onReviewRows(
-        signed
+      const withOwners = (records) =>
+        records
           .filter(activeProjectJob)
-          .map((row) => ({ ...row, owner_profile: byId.get(getPortalJobOwnerId(row)) || null }))
-      );
+          .map((row) => ({ ...row, owner_profile: byId.get(getPortalJobOwnerId(row)) || null }));
+      onReviewRows(withOwners(rows), { previewsOnly: false });
       timing("admin-list-data");
+      onReviewRows(withOwners(await signing), { previewsOnly: true });
+      timing("admin-previews");
     } catch (error) {
       onReviewError(error);
     }

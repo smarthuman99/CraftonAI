@@ -29,6 +29,34 @@ export function clearVerifiedBrowserUser(client) {
   if (client) verifiedUsers.delete(client);
 }
 
+// Preview hydration may arrive after an administrator starts editing. Only
+// replace URLs which still match the original draft; never reset their inputs.
+export function mergeReviewPreviewUrls(draft, refreshed, base) {
+  if (!draft || draft.projectKey !== refreshed?.projectKey) return draft;
+  const identity = (item) => JSON.stringify([item.id, item.sourceJobIds || []]);
+  const refreshedItems = new Map((refreshed.items || []).map((item) => [identity(item), item]));
+  const baseItems = new Map((base?.items || []).map((item) => [identity(item), item]));
+  const nextUrl = (current, original, incoming) => (current === original ? incoming || current : current);
+  return {
+    ...draft,
+    previewUrl: nextUrl(draft.previewUrl, base?.previewUrl, refreshed.previewUrl),
+    items: draft.items.map((item) => {
+      const next = refreshedItems.get(identity(item)),
+        original = baseItems.get(identity(item));
+      if (!next || !original) return item;
+      const drawing = { ...item.technicalDrawing };
+      for (const key of ["url", "draftUrl", "formalUrl"]) {
+        drawing[key] = nextUrl(
+          item.technicalDrawing?.[key],
+          original.technicalDrawing?.[key],
+          next.technicalDrawing?.[key]
+        );
+      }
+      return { ...item, imageUrl: nextUrl(item.imageUrl, original.imageUrl, next.imageUrl), technicalDrawing: drawing };
+    })
+  };
+}
+
 // Calls in one burst share a request. An invalidation during that request causes
 // one trailing read, so a completed save/realtime event cannot be swallowed.
 export function createRefreshQueue() {

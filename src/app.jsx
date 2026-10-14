@@ -27,7 +27,8 @@ import {
   clearVerifiedBrowserUser,
   createRefreshQueue,
   createSignedPreviewCache,
-  getVerifiedBrowserUser
+  getVerifiedBrowserUser,
+  mergeReviewPreviewUrls
 } from "./portalPerformance.mjs";
 const AdminWorkflowWorkspace = deferredWorkspace(() => import("./components/AdminWorkflowWorkspace"));
 const ClientOrderDashboard = deferredWorkspace(() => import("./components/ClientOrderDashboard"));
@@ -1310,6 +1311,9 @@ function App() {
   const portalEpochRef = useRef(0);
   const portalRefreshRef = useRef(createRefreshQueue());
   const previewCacheRef = useRef(createSignedPreviewCache());
+  const reviewDataVersionRef = useRef(0);
+  const reviewPreviewRowsRef = useRef(null);
+  const lastReviewSyncRef = useRef(null);
   const operationalProjectRef = useRef(order?.id || "");
   operationalProjectRef.current = order?.id || "";
 
@@ -1695,6 +1699,9 @@ function App() {
     portalEpochRef.current += 1;
     portalRefreshRef.current = createRefreshQueue();
     previewCacheRef.current = createSignedPreviewCache();
+    reviewDataVersionRef.current += 1;
+    reviewPreviewRowsRef.current = null;
+    lastReviewSyncRef.current = null;
     clearVerifiedBrowserUser(getSupabaseBrowserClient());
     setIntakeReviewJobs([]);
     resetAdminOperationalData();
@@ -4922,7 +4929,23 @@ function App() {
     const projectGroups = buildProjectGroupsFromJobs(intakeReviewJobs);
     const selectedProject =
       projectGroups.find((project) => project.jobs.some((job) => job.id === selectedJob.id)) || projectGroups[0];
-    syncReviewDraftFromProject(selectedProject, selectedJob.id);
+    const selection = `${selectedProject?.key}:${selectedJob.id}`;
+    const previousSync = lastReviewSyncRef.current;
+    if (
+      reviewPreviewRowsRef.current === intakeReviewJobs &&
+      previousSync?.version === reviewDataVersionRef.current &&
+      previousSync.selection === selection
+    ) {
+      const refreshed = mergeNormalizedProjectJobs(selectedProject?.jobs || [], selectedJob.id, selectedProject?.key);
+      setReviewDraft((draft) => mergeReviewPreviewUrls(draft, refreshed, previousSync.base));
+    } else {
+      syncReviewDraftFromProject(selectedProject, selectedJob.id);
+      lastReviewSyncRef.current = {
+        version: reviewDataVersionRef.current,
+        selection,
+        base: mergeNormalizedProjectJobs(selectedProject?.jobs || [], selectedJob.id, selectedProject?.key)
+      };
+    }
   }, [intakeReviewJobs, selectedReviewJobId]);
 
   useEffect(() => {
@@ -5714,6 +5737,7 @@ function App() {
           setAdminAccessStatus("forbidden");
           setIntakeReviewJobs([]);
         }
+        let publishedReviewRows = null;
         try {
           await readPortalWorkspace({
             client,
@@ -5735,9 +5759,17 @@ function App() {
               prequoteWorkspaceLoadedRef.current = true;
               setClientProjectsLoading(false);
             },
-            onReviewRows: (rows) => {
+            onReviewRows: (rows, { previewsOnly = false } = {}) => {
               if (!current()) return;
-              setIntakeReviewJobs(rows);
+              if (previewsOnly) {
+                reviewPreviewRowsRef.current = rows;
+                setIntakeReviewJobs((previous) => (previous === publishedReviewRows ? rows : previous));
+              } else {
+                reviewDataVersionRef.current += 1;
+                reviewPreviewRowsRef.current = null;
+                publishedReviewRows = rows;
+                setIntakeReviewJobs(rows);
+              }
               setAdminAccessStatus("ready");
             },
             onReviewError: (error) => {
