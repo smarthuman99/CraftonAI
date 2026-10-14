@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { PaginationControls, usePaginatedRows } from "./ListPagination.jsx";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { deriveProjectLifecycle } from "../projectLifecycle.js";
@@ -947,6 +948,7 @@ function ClientProjectDetail({
   const referenceFileInputRef = useRef(null);
   const referenceTargetRef = useRef(null);
   const projectItems = useMemo(() => getProjectItems(project), [project]);
+  const itemPage = usePaginatedRows(projectItems, { resetKey: project.key });
   const projectStage = getProjectStage(project);
   const status = getProjectStatus(project, lang);
   const totalPieces = project.jobs.reduce((total, job) => total + getJobQuantity(job), 0);
@@ -1145,7 +1147,11 @@ function ClientProjectDetail({
     } catch (error) {
       setReferenceState(itemKey, {
         status: "error",
-        message: customerServiceError(error.message, lang, copy(lang, "照片补录失败，请重试。", "The reference image could not be added. Please try again."))
+        message: customerServiceError(
+          error.message,
+          lang,
+          copy(lang, "照片补录失败，请重试。", "The reference image could not be added. Please try again.")
+        )
       });
     }
   };
@@ -1239,7 +1245,11 @@ function ClientProjectDetail({
     } catch (error) {
       setDrawingDownloadState({
         status: "error",
-        message: customerServiceError(error.message, lang, copy(lang, "三视图下载失败，请稍后重试。", "Download failed. Please try again."))
+        message: customerServiceError(
+          error.message,
+          lang,
+          copy(lang, "三视图下载失败，请稍后重试。", "Download failed. Please try again.")
+        )
       });
     } finally {
       if (sourceObjectUrl) URL.revokeObjectURL(sourceObjectUrl);
@@ -1333,9 +1343,15 @@ function ClientProjectDetail({
                   .filter(Boolean)
                   .join(" · ")}
               </p>
-              {onProjectCommand && <button type="button" className="client-project-tool" onClick={() => setEditTarget({ mode: "project" })}>
-                {copy(lang, "编辑项目", "Edit project")}
-              </button>}
+              {onProjectCommand && (
+                <button
+                  type="button"
+                  className="client-project-tool"
+                  onClick={() => setEditTarget({ mode: "project" })}
+                >
+                  {copy(lang, "编辑项目", "Edit project")}
+                </button>
+              )}
             </div>
             <section className="cho-project-kpis" aria-label={copy(lang, "项目指标", "Project metrics")}>
               {[
@@ -1357,10 +1373,26 @@ function ClientProjectDetail({
             </section>
           </div>
           <div className="cho-project-hero-actions">
-            {onProjectCommand && <>
-              <button type="button" className="client-project-tool" onClick={() => setEditTarget({ mode: "requests" })}>{copy(lang, "变更申请", "Change requests")}{project.openChangeRequests > 0 ? ` (${project.openChangeRequests})` : ""}</button>
-              <button type="button" className="client-project-tool is-primary" onClick={() => setEditTarget({ mode: "files" })}>{copy(lang, "添加 FF&E 文件", "Add FF&E files")}{project.pendingImports > 0 ? ` (${project.pendingImports})` : ""}</button>
-            </>}
+            {onProjectCommand && (
+              <>
+                <button
+                  type="button"
+                  className="client-project-tool"
+                  onClick={() => setEditTarget({ mode: "requests" })}
+                >
+                  {copy(lang, "变更申请", "Change requests")}
+                  {project.openChangeRequests > 0 ? ` (${project.openChangeRequests})` : ""}
+                </button>
+                <button
+                  type="button"
+                  className="client-project-tool is-primary"
+                  onClick={() => setEditTarget({ mode: "files" })}
+                >
+                  {copy(lang, "添加 FF&E 文件", "Add FF&E files")}
+                  {project.pendingImports > 0 ? ` (${project.pendingImports})` : ""}
+                </button>
+              </>
+            )}
             {actionMap.projectEntries.length > 0 && (
               <button
                 type="button"
@@ -1380,7 +1412,11 @@ function ClientProjectDetail({
           </div>
         </header>
 
-        {editMessage && <p className="client-project-message" role="status">{editMessage}</p>}
+        {editMessage && (
+          <p className="client-project-message" role="status">
+            {editMessage}
+          </p>
+        )}
 
         <section className="cho-project-card cho-project-stage-card">
           <div className="cho-project-card-label">{copy(lang, "项目阶段", "PROJECT STAGE")}</div>
@@ -1415,7 +1451,7 @@ function ClientProjectDetail({
               <span role="columnheader">{copy(lang, "阶段", "Stage")}</span>
               <span role="columnheader">{copy(lang, "操作", "Action")}</span>
             </div>
-            {projectItems.map(({ job, item }) => {
+            {itemPage.rows.map(({ job, item }) => {
               const itemKey = `${job.id}-${item.id}`;
               const itemIndex = job.items.indexOf(item);
               const itemActions = actionMap.itemEntries.get(itemKey) || [];
@@ -1443,9 +1479,20 @@ function ClientProjectDetail({
                       alt={itemName}
                       state={referenceState(itemKey)}
                       disabled={!onProjectCommand && drawingIsFormal}
-                      onChoose={() => onProjectCommand ? setEditTarget({ mode: "item", jobId: job.id, itemIndex, imageUrl: item.imageUrl || job.previewUrl }) : chooseReferenceImage({ itemKey, job, item, itemIndex, sku: itemSku })}
+                      onChoose={() =>
+                        onProjectCommand
+                          ? setEditTarget({
+                              mode: "item",
+                              jobId: job.id,
+                              itemIndex,
+                              imageUrl: item.imageUrl || job.previewUrl
+                            })
+                          : chooseReferenceImage({ itemKey, job, item, itemIndex, sku: itemSku })
+                      }
                       onCandidate={(file) =>
-                        onProjectCommand ? setEditTarget({ mode: "item", jobId: job.id, itemIndex, file }) : prepareReferenceCandidate({ itemKey, job, item, itemIndex, sku: itemSku }, file)
+                        onProjectCommand
+                          ? setEditTarget({ mode: "item", jobId: job.id, itemIndex, file })
+                          : prepareReferenceCandidate({ itemKey, job, item, itemIndex, sku: itemSku }, file)
                       }
                     />
                     <span className="cho-project-item-copy">
@@ -1493,7 +1540,13 @@ function ClientProjectDetail({
                         title={copy(lang, "打开已批准的供应商施工图", "Open approved supplier shop drawing")}
                       >
                         {isDrawingPreviewImage(approvedSupplierDrawing) ? (
-                          <img src={approvedSupplierDrawing.file_url} alt="" aria-hidden="true" />
+                          <img
+                            src={approvedSupplierDrawing.file_url}
+                            alt=""
+                            aria-hidden="true"
+                            loading="lazy"
+                            decoding="async"
+                          />
                         ) : (
                           <i className="fa-regular fa-file-lines" aria-hidden="true"></i>
                         )}
@@ -1519,7 +1572,7 @@ function ClientProjectDetail({
                         }}
                         title={copy(lang, "打开家具三视图", "Open furniture three-view")}
                       >
-                        <img src={drawingUrl} alt="" aria-hidden="true" />
+                        <img src={drawingUrl} alt="" aria-hidden="true" loading="lazy" decoding="async" />
                         <span>
                           {drawingIsFormal ? copy(lang, "正式图纸", "Formal") : copy(lang, "概念参考", "Concept")}
                         </span>
@@ -1545,9 +1598,22 @@ function ClientProjectDetail({
                     </small>
                   </span>
                   <span className="cho-project-row-action" role="cell" data-label={copy(lang, "操作", "Action")}>
-                    {onProjectCommand && <button type="button" className="client-project-tool" onClick={() => setEditTarget({ mode: "item", jobId: job.id, itemIndex, imageUrl: item.imageUrl || job.previewUrl })}>
-                      {copy(lang, "编辑家具", "Edit item")}
-                    </button>}
+                    {onProjectCommand && (
+                      <button
+                        type="button"
+                        className="client-project-tool"
+                        onClick={() =>
+                          setEditTarget({
+                            mode: "item",
+                            jobId: job.id,
+                            itemIndex,
+                            imageUrl: item.imageUrl || job.previewUrl
+                          })
+                        }
+                      >
+                        {copy(lang, "编辑家具", "Edit item")}
+                      </button>
+                    )}
                     {itemActions.length ? (
                       <button
                         type="button"
@@ -1571,6 +1637,7 @@ function ClientProjectDetail({
           </div>
         </section>
 
+        <PaginationControls pagination={itemPage} lang={lang} />
         <section
           className="cho-project-secondary-disclosures"
           aria-label={copy(lang, "项目次要资料", "Project details")}
@@ -1587,7 +1654,11 @@ function ClientProjectDetail({
           </button>
           {secondaryPanel === "documents" && (
             <div className="cho-project-secondary-panel cho-project-documents">
-              {onProjectCommand && <button type="button" className="client-project-tool" onClick={() => setEditTarget({ mode: "files" })}>{copy(lang, "添加文件 / 查看导入记录", "Add files / View import history")}</button>}
+              {onProjectCommand && (
+                <button type="button" className="client-project-tool" onClick={() => setEditTarget({ mode: "files" })}>
+                  {copy(lang, "添加文件 / 查看导入记录", "Add files / View import history")}
+                </button>
+              )}
               {documents.length ? (
                 documents.map((document) => {
                   const content = (
@@ -1825,8 +1896,17 @@ function ClientProjectDetail({
           />,
           document.body
         )}
-      {editTarget && <ClientProjectEditor lang={lang} project={project} target={editTarget}
-        onCommand={onProjectCommand} onUpload={onProjectFileUpload} onClose={() => setEditTarget(null)} onSaved={setEditMessage} />}
+      {editTarget && (
+        <ClientProjectEditor
+          lang={lang}
+          project={project}
+          target={editTarget}
+          onCommand={onProjectCommand}
+          onUpload={onProjectFileUpload}
+          onClose={() => setEditTarget(null)}
+          onSaved={setEditMessage}
+        />
+      )}
     </main>
   );
 }
@@ -1919,6 +1999,8 @@ function ClientOrderDashboard({
   }, [lang, projectGroups]);
 
   const projectPage = projectGroups.find((project) => String(project.key) === String(projectPageKey));
+  const furniturePage = usePaginatedRows(dashboardData.furnitureRows);
+  const projectsPage = usePaginatedRows(projectGroups, { pageSize: 12 });
   const firstName = String(clientName || "")
     .trim()
     .split(/\s+/)[0];
@@ -2129,7 +2211,7 @@ function ClientOrderDashboard({
                 </p>
               </div>
               <div className="cho-client-project-grid">
-                {projectGroups.map((project, projectIndex) => {
+                {projectsPage.rows.map((project, projectIndex) => {
                   const image = getProjectImage(project);
                   const itemCount = getProjectItems(project).length;
                   const pieceCount = project.jobs.reduce((total, job) => total + getJobQuantity(job), 0);
@@ -2155,7 +2237,8 @@ function ClientOrderDashboard({
                         </div>
                         <div className="cho-client-project-meta">
                           <span>
-                            {projectOrderCount(project)} {copy(lang, "个订单", projectOrderCount(project) === 1 ? "order" : "orders")}
+                            {projectOrderCount(project)}{" "}
+                            {copy(lang, "个订单", projectOrderCount(project) === 1 ? "order" : "orders")}
                           </span>
                           <span>
                             {itemCount} {copy(lang, "项家具", itemCount === 1 ? "furniture line" : "furniture lines")}
@@ -2189,6 +2272,7 @@ function ClientOrderDashboard({
               </div>
             </section>
 
+            <PaginationControls pagination={projectsPage} lang={lang} />
             <section className="cho-client-operations">
               <div className="cho-client-tracker">
                 <div className="cho-client-section-heading compact">
@@ -2205,7 +2289,7 @@ function ClientOrderDashboard({
                     <span role="columnheader">{copy(lang, "数量", "Qty")}</span>
                     <span role="columnheader">{copy(lang, "当前阶段", "Current stage")}</span>
                   </div>
-                  {dashboardData.furnitureRows.map(({ project, job, item }) => {
+                  {furniturePage.rows.map(({ project, job, item }) => {
                     const itemName = lang === "Cn" ? item.typeCn : item.typeEn;
                     const itemStatus = getOrderStatus(job, lang);
                     return (
@@ -2234,6 +2318,7 @@ function ClientOrderDashboard({
                     );
                   })}
                 </div>
+                <PaginationControls pagination={furniturePage} lang={lang} />
               </div>
               <aside className="cho-client-updates" aria-labelledby="cho-client-updates-title">
                 <div className="cho-client-section-heading compact">

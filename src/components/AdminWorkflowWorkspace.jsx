@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createRefreshQueue, getVerifiedBrowserUser, WORKFLOW_TABLES } from "../portalPerformance.mjs";
 import { AdminLocalized, adminText } from "../adminI18n";
 import AiRfqWorkspace from "./AiRfqWorkspace";
 import AiQuoteComparison from "./AiQuoteComparison";
@@ -138,6 +139,10 @@ export default function AdminWorkflowWorkspace({
   onProjectChanged
 }) {
   const projectId = project?.id || null;
+  const requestQueue = useRef(createRefreshQueue());
+  const loadScope = useRef(null);
+  const scope = useMemo(() => ({}), [projectId, flow, supabaseClient, dbConnected]);
+  loadScope.current = scope;
   const t = (en, cn) => (lang === "Cn" ? cn : en);
   const localize = (content) => <AdminLocalized lang={lang}>{content}</AdminLocalized>;
   const [data, setData] = useState(EMPTY_DATA);
@@ -234,53 +239,76 @@ export default function AdminWorkflowWorkspace({
     signed_at: ""
   });
 
-  const loadData = useCallback(async () => {
-    if (!supabaseClient || !dbConnected) return;
-    setLoading(true);
-    setMessage("");
-    const missing = [];
+  const loadData = useCallback(
+    (options = {}) =>
+      requestQueue.current.run(
+        scope,
+        async () => {
+          if (!supabaseClient || !dbConnected) return;
+          const current = () => loadScope.current === scope;
+          setLoading(true);
+          setMessage("");
+          const missing = [];
 
-    const authResult = await supabaseClient.auth.getUser().catch(() => ({ data: { user: null } }));
-    setAuthStatus(authResult?.data?.user ? "authenticated" : "anonymous");
+          const verifiedUser = await getVerifiedBrowserUser(supabaseClient);
+          if (!current()) return;
+          setAuthStatus(verifiedUser ? "authenticated" : "anonymous");
+          if (!verifiedUser) {
+            setData(EMPTY_DATA);
+            setSuppliers([]);
+            setLoading(false);
+            return;
+          }
 
-    const readTable = async (table, queryBuilder) => {
-      try {
-        const { data: rows, error } = await queryBuilder(supabaseClient.from(table).select("*"));
-        if (error) throw error;
-        return rows || [];
-      } catch (error) {
-        if (/does not exist|schema cache|relation/i.test(error.message || "")) missing.push(table);
-        else setMessage((current) => current || `${table}: ${error.message || error}`);
-        return [];
-      }
-    };
+          const readTable = async (table, queryBuilder) => {
+            try {
+              const { data: rows, error } = await queryBuilder(supabaseClient.from(table).select("*"));
+              if (error) throw error;
+              return rows || [];
+            } catch (error) {
+              if (/does not exist|schema cache|relation/i.test(error.message || "")) missing.push(table);
+              else if (current()) setMessage((message) => message || `${table}: ${error.message || error}`);
+              return [];
+            }
+          };
 
-    const supplierRows = await readTable("suppliers", (query) => query.order("name", { ascending: true }));
-    setSuppliers(supplierRows);
+          const [supplierRows, entries] = await Promise.all([
+            flow === "shipping" ? [] : readTable("suppliers", (query) => query.order("name", { ascending: true })),
+            projectId
+              ? Promise.all(
+                  (WORKFLOW_TABLES[flow] || PROJECT_TABLES).map(async (table) => {
+                    const rows = await readTable(table, (query) =>
+                      query.eq("project_id", projectId).order("created_at", { ascending: false }).limit(100)
+                    );
+                    return [table, rows];
+                  })
+                )
+              : []
+          ]);
+          if (!current()) return;
+          setSuppliers(supplierRows);
+          setData({ ...EMPTY_DATA, ...Object.fromEntries(entries) });
 
-    if (projectId) {
-      const entries = await Promise.all(
-        PROJECT_TABLES.map(async (table) => {
-          const rows = await readTable(table, (query) =>
-            query.eq("project_id", projectId).order("created_at", { ascending: false }).limit(100)
-          );
-          return [table, rows];
-        })
-      );
-      setData(Object.fromEntries(entries));
-    } else {
-      setData(EMPTY_DATA);
-    }
-
-    setMissingTables([...new Set(missing)]);
-    setLoading(false);
-  }, [dbConnected, projectId, supabaseClient]);
+          setMissingTables([...new Set(missing)]);
+          setLoading(false);
+        },
+        { invalidate: options.invalidate !== false }
+      ),
+    [dbConnected, projectId, supabaseClient, flow, scope]
+  );
 
   useEffect(() => {
-    loadData();
+    loadScope.current = scope;
+    setData(EMPTY_DATA);
+    setSuppliers([]);
+    setAuthStatus("checking");
+    loadData({ invalidate: false });
     const refresh = () => loadData();
     window.addEventListener("crafton:workflow-refresh", refresh);
-    return () => window.removeEventListener("crafton:workflow-refresh", refresh);
+    return () => {
+      loadScope.current = null;
+      window.removeEventListener("crafton:workflow-refresh", refresh);
+    };
   }, [loadData]);
 
   useEffect(() => {
@@ -1141,11 +1169,22 @@ export default function AdminWorkflowWorkspace({
 
   const archiveProject = () => {
     runAction("Project archive manifest generated with SHA-256 hash.", async () => {
+      // Archive counts must cover every stage, including tables not loaded in this view.
+      const counts = await Promise.all(
+        PROJECT_TABLES.map(async (table) => {
+          const { count, error } = await supabaseClient
+            .from(table)
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", projectId);
+          if (error) throw error;
+          return [table, count || 0];
+        })
+      );
       const manifest = {
         project_id: projectId,
         project_name: project?.orderId,
         generated_at: new Date().toISOString(),
-        record_counts: Object.fromEntries(PROJECT_TABLES.map((table) => [table, data[table]?.length || 0]))
+        record_counts: Object.fromEntries(counts)
       };
       const digest = await window.crypto.subtle.digest(
         "SHA-256",
@@ -2109,9 +2148,7 @@ export default function AdminWorkflowWorkspace({
                     <p>
                       {quote.lead_time_days} days · score {quote.comparisonScore}
                     </p>
-                    {quote.id === recommendedQuoteId && (
-                      <small>{t("Recommended best value", "推荐综合最优")}</small>
-                    )}
+                    {quote.id === recommendedQuoteId && <small>{t("Recommended best value", "推荐综合最优")}</small>}
                     <button
                       className="btn-premium"
                       disabled={loading || quote.status === "selected" || !quoteAnalysisReady}

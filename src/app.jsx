@@ -21,15 +21,23 @@ import ContactBlock from "./components/ContactBlock";
 import ProjectDetailModal from "./components/ProjectDetailModal";
 import Footer from "./components/Footer";
 import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
-import AdminWorkflowWorkspace from "./components/AdminWorkflowWorkspace";
-import ClientOrderDashboard from "./components/ClientOrderDashboard";
-import ClientChangeReview from "./components/ClientChangeReview.jsx";
+import { readPortalWorkspace } from "./portalWorkspace.mjs";
+import { deferredWorkspace } from "./components/DeferredWorkspace.jsx";
+import {
+  clearVerifiedBrowserUser,
+  createRefreshQueue,
+  createSignedPreviewCache,
+  getVerifiedBrowserUser
+} from "./portalPerformance.mjs";
+const AdminWorkflowWorkspace = deferredWorkspace(() => import("./components/AdminWorkflowWorkspace"));
+const ClientOrderDashboard = deferredWorkspace(() => import("./components/ClientOrderDashboard"));
+const ClientChangeReview = deferredWorkspace(() => import("./components/ClientChangeReview.jsx"));
 import { activeProjectJob, buildEditPlan, requiresProjectReview } from "../shared/clientProjectEditing.mjs";
-import IntakeEvidenceReview from "./components/IntakeEvidenceReview";
-import ClientFfeIntake from "./components/ClientFfeIntake";
+const IntakeEvidenceReview = deferredWorkspace(() => import("./components/IntakeEvidenceReview"));
+const ClientFfeIntake = deferredWorkspace(() => import("./components/ClientFfeIntake"));
 import CraftonHomepage from "./components/CraftonHomepage";
 import SiteNavigation from "./components/SiteNavigation";
-import SupplierProductionPortal from "./components/SupplierProductionPortal";
+const SupplierProductionPortal = deferredWorkspace(() => import("./components/SupplierProductionPortal"));
 import { AdminLocalized, adminText } from "./adminI18n";
 import { deriveProjectLifecycle, mergeProjectJobSources } from "./projectLifecycle.js";
 import { normalizeProjectItemsForLoading } from "./loadingAiProjectItems.js";
@@ -1299,6 +1307,11 @@ function App() {
   const prequoteWorkspaceLoadedRef = useRef(false);
   const trackingAuthPromptedRef = useRef(false);
   const portalOwnerIdRef = useRef("");
+  const portalEpochRef = useRef(0);
+  const portalRefreshRef = useRef(createRefreshQueue());
+  const previewCacheRef = useRef(createSignedPreviewCache());
+  const operationalProjectRef = useRef(order?.id || "");
+  operationalProjectRef.current = order?.id || "";
 
   // Material Studio Swatch Configurator States
   const [selectedFabric, setSelectedFabric] = useState("FAB-02"); // default Navy Classic Linen
@@ -1679,6 +1692,12 @@ function App() {
   };
 
   const resetClientPortalAccountData = () => {
+    portalEpochRef.current += 1;
+    portalRefreshRef.current = createRefreshQueue();
+    previewCacheRef.current = createSignedPreviewCache();
+    clearVerifiedBrowserUser(getSupabaseBrowserClient());
+    setIntakeReviewJobs([]);
+    resetAdminOperationalData();
     setClientProjectJobs([]);
     setClientProjectsLoading(true);
     setClientAnswerDrafts({});
@@ -1762,8 +1781,7 @@ function App() {
     const client = getSupabaseBrowserClient();
     if (!client) return null;
 
-    const authResult = await client.auth.getUser().catch(() => ({ data: { user: null } }));
-    const supabaseUser = authResult?.data?.user || null;
+    const supabaseUser = await getVerifiedBrowserUser(client);
 
     if (requireAuth && !supabaseUser) {
       // Quick-access demo users intentionally run the complete intake flow locally.
@@ -5002,506 +5020,512 @@ function App() {
   }, [currentView, reviewDraft, lang]);
 
   // Fetch real-time data from Supabase if connected
-  const fetchSupabaseData = async (shouldThrow = false) => {
-    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
-      setDbConnected(false);
-      return;
-    }
-
-    setDbLoading(true);
-    setDbError("");
-
-    try {
-      const url = getSupabaseUrl();
-      const key = getSupabaseKey();
-      const client = getSupabaseBrowserClient(url, key);
-      const authResult = await client.auth.getUser().catch(() => ({ data: { user: null } }));
-      const supabaseUser = authResult?.data?.user || null;
-
-      if (!supabaseUser) {
-        setDbConnected(true);
-        return;
-      }
-
-      const resetPortalDraftState = () => {
-        setSubmittedTrackerProject(null);
-        setLatestIntakeJob(null);
-        setOrder((prev) => ({
-          ...prev,
-          id: null,
-          orderId: "",
-          clientName: user?.name || "",
-          projectLocation: "",
-          currentStageId: "S01",
-          quoteStatus: null,
-          items: [],
-          payments: []
-        }));
-        setLogs([]);
-        setCurrentStageIndex(0);
-      };
-
-      // 1. Fetch live Project named 'CRAFT-202605-01'
-      const { data: projectsData, error: projectErr } = await client
-        .from("projects")
-        .select("*")
-        .eq("user_id", supabaseUser.id)
-        .eq("name", "CRAFT-202605-01")
-        .limit(1);
-
-      if (projectErr) throw projectErr;
-
-      let dbProject = null;
-      let needToSeed = false;
-
-      if (!projectsData || projectsData.length === 0) {
-        resetPortalDraftState();
-        setDbConnected(true);
-        return;
-      } else {
-        dbProject = projectsData[0];
-
-        const isSeededDemoProject =
-          dbProject.name === "CRAFT-202605-01" &&
-          dbProject.client_name === "Client Design Studio (UK)" &&
-          dbProject.client_contact === "St Albans, UK";
-
-        if (isSeededDemoProject) {
-          resetPortalDraftState();
-          setDbConnected(true);
+  const fetchSupabaseData = (shouldThrow = false) => {
+    const epoch = portalEpochRef.current;
+    return portalRefreshRef.current.run(
+      `legacy:${epoch}`,
+      async () => {
+        if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
+          setDbConnected(false);
           return;
         }
 
-        // Robustness integrity check: Ensure all child tables are actually populated
-        const { data: specsCheck, error: specsErr } = await client
-          .from("specifications")
-          .select("id")
-          .eq("project_id", dbProject.id)
-          .limit(1);
+        setDbLoading(true);
+        setDbError("");
 
-        const { data: paymentsCheck, error: paymentsErr } = await client
-          .from("payments")
-          .select("id")
-          .eq("project_id", dbProject.id)
-          .limit(1);
+        try {
+          const url = getSupabaseUrl();
+          const key = getSupabaseKey();
+          const client = getSupabaseBrowserClient(url, key);
+          const supabaseUser = await getVerifiedBrowserUser(client);
 
-        if (
-          specsErr ||
-          paymentsErr ||
-          !specsCheck ||
-          specsCheck.length === 0 ||
-          !paymentsCheck ||
-          paymentsCheck.length === 0
-        ) {
-          console.log(
-            "Project CRAFT-202605-01 exists, but specifications or payments are empty. Skipping demo auto-seed for authenticated client."
-          );
-          resetPortalDraftState();
-          setDbConnected(true);
-          return;
-        }
-      }
+          if (portalEpochRef.current !== epoch) return;
+          if (!supabaseUser) {
+            setDbConnected(true);
+            return;
+          }
 
-      if (needToSeed) {
-        console.log("Running client-side auto-seeding...");
+          const resetPortalDraftState = () => {
+            setSubmittedTrackerProject(null);
+            setLatestIntakeJob(null);
+            setOrder((prev) => ({
+              ...prev,
+              id: null,
+              orderId: "",
+              clientName: user?.name || "",
+              projectLocation: "",
+              currentStageId: "S01",
+              quoteStatus: null,
+              items: [],
+              payments: []
+            }));
+            setLogs([]);
+            setCurrentStageIndex(0);
+          };
 
-        // 1. Insert default project
-        const { data: newProjData, error: seedProjErr } = await client
-          .from("projects")
-          .insert({
-            user_id: supabaseUser.id,
-            name: "CRAFT-202605-01",
-            client_name: "Client Design Studio (UK)",
-            client_contact: "St Albans, UK",
-            current_stage: 1,
-            selected_fabric: "FAB-02",
-            selected_leg: "matte-black",
-            fabric_compatibility_test: null,
-            is_crib5_blocked: false,
-            selected_supplier: null,
-            split_delivery_active: false
-          })
-          .select();
-
-        if (seedProjErr) throw new Error("Auto-seeding Projects failed: " + seedProjErr.message);
-
-        let insertedProj = newProjData && newProjData.length > 0 ? newProjData[0] : null;
-
-        // Robust fallback: if insert-select returns empty (common with some RLS/triggers/SDK issues), select explicitly by name
-        if (!insertedProj) {
-          console.warn("Insert select returned empty, attempting fallback select by name...");
-          const { data: fallbackData, error: fallbackErr } = await client
+          // 1. Fetch live Project named 'CRAFT-202605-01'
+          const { data: projectsData, error: projectErr } = await client
             .from("projects")
             .select("*")
             .eq("user_id", supabaseUser.id)
             .eq("name", "CRAFT-202605-01")
             .limit(1);
 
-          if (fallbackErr) {
-            throw new Error("Fallback project retrieval failed: " + fallbackErr.message);
-          }
-          if (fallbackData && fallbackData.length > 0) {
-            insertedProj = fallbackData[0];
-          }
-        }
+          if (portalEpochRef.current !== epoch) return;
+          if (projectErr) throw projectErr;
 
-        if (insertedProj) {
-          // 2. Insert standard specifications linked to the project
-          const { error: seedSpecsErr } = await client.from("specifications").insert([
-            {
-              project_id: insertedProj.id,
-              user_id: supabaseUser.id,
-              item_type_cn: "大堂扶手椅",
-              item_type_en: "Lobby Armchair",
-              quantity: 40,
-              material_cn: "海军蓝亚麻 (L-4410)",
-              material_en: "Navy Classic Linen (L-4410)",
-              original_unit_price: 210,
-              unit_price: 210,
-              notes_cn: "",
-              notes_en: ""
-            },
-            {
-              project_id: insertedProj.id,
-              item_type_cn: "贵宾单人椅",
-              item_type_en: "VIP Club Chair",
-              quantity: 20,
-              material_cn: "皇家蓝丝绒 (V-9082)",
-              material_en: "Royal Velvet (V-9082)",
-              original_unit_price: 280,
-              unit_price: 280,
-              notes_cn: "",
-              notes_en: ""
-            },
-            {
-              project_id: insertedProj.id,
-              item_type_cn: "定制实木大茶几",
-              item_type_en: "Custom Oak Coffee Table",
-              quantity: 5,
-              material_cn: "天然白橡木",
-              material_en: "Natural Solid White Oak",
-              original_unit_price: 450,
-              unit_price: 450,
-              notes_cn: "",
-              notes_en: ""
-            }
-          ]);
+          let dbProject = null;
+          let needToSeed = false;
 
-          if (seedSpecsErr) throw new Error("Auto-seeding Specifications failed: " + seedSpecsErr.message);
+          if (!projectsData || projectsData.length === 0) {
+            resetPortalDraftState();
+            setDbConnected(true);
+            return;
+          } else {
+            dbProject = projectsData[0];
 
-          // 3. Insert standard payment milestones
-          const { error: seedPaymentsErr } = await client.from("payments").insert([
-            {
-              project_id: insertedProj.id,
-              milestone_cn: "50% 首期定金 (已付)",
-              milestone_en: "50% Deposit (Paid)",
-              amount: 10450,
-              status: "Paid",
-              payment_date: "2026-05-25"
-            },
-            {
-              project_id: insertedProj.id,
-              milestone_cn: "40% 出货中款 (未核销)",
-              milestone_en: "40% Shipping Release (Pending)",
-              amount: 8360,
-              status: "Pending",
-              payment_date: "Pending"
-            },
-            {
-              project_id: insertedProj.id,
-              milestone_cn: "10% 交付尾款 (未核销)",
-              milestone_en: "10% Handover Balance (Pending)",
-              amount: 2090,
-              status: "Pending",
-              payment_date: "Pending"
-            }
-          ]);
-          if (seedPaymentsErr) throw new Error("Auto-seeding Payments failed: " + seedPaymentsErr.message);
+            const isSeededDemoProject =
+              dbProject.name === "CRAFT-202605-01" &&
+              dbProject.client_name === "Client Design Studio (UK)" &&
+              dbProject.client_contact === "St Albans, UK";
 
-          // 4. Insert initial human-AI audit logs
-          const { error: seedLogsErr } = await client.from("agent_logs").insert([
-            {
-              project_id: insertedProj.id,
-              operator: "Crafton System",
-              action_desc_cn: "解析會員中心內置對話框需求及手稿，自動生成主訂單草稿",
-              action_desc_en: "Parsed member portal message and sketch, auto-generated project master draft."
-            },
-            {
-              project_id: insertedProj.id,
-              operator: "Crafton System",
-              action_desc_cn: "自動通過內置消息通道向客户追問補充椅子的金屬腿部塗裝工藝和公差",
-              action_desc_en: "Automatically followed up via member portal to query metal legs coating and tolerance."
-            },
-            {
-              project_id: insertedProj.id,
-              operator: "Crafton System",
-              action_desc_cn: "一鍵生成中英文對照規格書，尺寸標準定義：W: 650mm, D: 600mm, H: 850mm",
-              action_desc_en: "Bilingual specifications generated. Dimensions defined: W: 650mm, D: 600mm, H: 850mm."
-            }
-          ]);
-
-          if (seedLogsErr) throw new Error("Auto-seeding Agent Logs failed: " + seedLogsErr.message);
-
-          // 5. Insert detailed technical agent thought trace logs (for all 17 stages)
-          const seedThoughtRows = [];
-          Object.entries(mockData.agentThoughtLogs).forEach(([stageId, logList]) => {
-            logList.forEach((line) => {
-              seedThoughtRows.push({
-                project_id: insertedProj.id,
-                stage_id: stageId,
-                role: line.role,
-                log_text_cn: line.text,
-                log_text_en: line.textEn || line.text
-              });
-            });
-          });
-          if (seedThoughtRows.length > 0) {
-            const { error: seedThoughtsErr } = await client.from("agent_thought_logs").insert(seedThoughtRows);
-            if (seedThoughtsErr) throw new Error("Auto-seeding Agent Thought Logs failed: " + seedThoughtsErr.message);
-          }
-
-          dbProject = insertedProj;
-        } else {
-          throw new Error("Failed to retrieve auto-seeded project.");
-        }
-      } else {
-        dbProject = projectsData[0];
-      }
-
-      // Load specs, payments, logs and thought logs
-      if (dbProject) {
-        // 2. Fetch live Specifications
-        const { data: itemsData, error: itemsErr } = await client
-          .from("specifications")
-          .select("*")
-          .eq("project_id", dbProject.id);
-
-        if (itemsErr) throw itemsErr;
-
-        // 3. Fetch live Payments Schedule
-        const { data: paymentsData, error: paymentsErr } = await client
-          .from("payments")
-          .select("*")
-          .eq("project_id", dbProject.id)
-          .order("created_at", { ascending: true });
-
-        if (paymentsErr) throw paymentsErr;
-
-        // 4. Fetch live Agent Logs
-        const { data: logsData } = await client
-          .from("agent_logs")
-          .select("*")
-          .eq("project_id", dbProject.id)
-          .order("created_at", { ascending: false });
-
-        // 5. Fetch live Agent Thought Logs
-        const { data: dbThoughtLogs, error: thoughtsErr } = await client
-          .from("agent_thought_logs")
-          .select("*")
-          .eq("project_id", dbProject.id);
-
-        if (thoughtsErr) throw thoughtsErr;
-
-        // Apply dbThoughtLogs to in-memory mockData.agentThoughtLogs with English healing
-        if (dbThoughtLogs && dbThoughtLogs.length > 0) {
-          const newThoughtLogs = {};
-
-          // Sort or group by stage_id, and preserve insertion order
-          const sortedDbThoughtLogs = [...dbThoughtLogs].sort((a, b) => {
-            if (a.stage_id !== b.stage_id) return a.stage_id.localeCompare(b.stage_id);
-            return new Date(a.created_at || 0) - new Date(b.created_at || 0);
-          });
-
-          sortedDbThoughtLogs.forEach((row) => {
-            if (!newThoughtLogs[row.stage_id]) {
-              newThoughtLogs[row.stage_id] = [];
+            if (isSeededDemoProject) {
+              resetPortalDraftState();
+              setDbConnected(true);
+              return;
             }
 
-            const currentIdx = newThoughtLogs[row.stage_id].length;
-            const localLines = mockData.agentThoughtLogs[row.stage_id];
-            const localLine = localLines ? localLines[currentIdx] : null;
+            // Robustness integrity check: Ensure all child tables are actually populated
+            const { data: specsCheck, error: specsErr } = await client
+              .from("specifications")
+              .select("id")
+              .eq("project_id", dbProject.id)
+              .limit(1);
 
-            let textEn = row.log_text_en || row.log_text_cn;
-            // If DB English text is missing or contains Chinese, but we have a clean local English text, use local
+            const { data: paymentsCheck, error: paymentsErr } = await client
+              .from("payments")
+              .select("id")
+              .eq("project_id", dbProject.id)
+              .limit(1);
+
+            if (portalEpochRef.current !== epoch) return;
             if (
-              localLine &&
-              localLine.textEn &&
-              (!row.log_text_en || row.log_text_en === row.log_text_cn || /[\u4e00-\u9fa5]/.test(row.log_text_en))
+              specsErr ||
+              paymentsErr ||
+              !specsCheck ||
+              specsCheck.length === 0 ||
+              !paymentsCheck ||
+              paymentsCheck.length === 0
             ) {
-              textEn = localLine.textEn;
+              console.log(
+                "Project CRAFT-202605-01 exists, but specifications or payments are empty. Skipping demo auto-seed for authenticated client."
+              );
+              resetPortalDraftState();
+              setDbConnected(true);
+              return;
+            }
+          }
+
+          if (needToSeed) {
+            console.log("Running client-side auto-seeding...");
+
+            // 1. Insert default project
+            const { data: newProjData, error: seedProjErr } = await client
+              .from("projects")
+              .insert({
+                user_id: supabaseUser.id,
+                name: "CRAFT-202605-01",
+                client_name: "Client Design Studio (UK)",
+                client_contact: "St Albans, UK",
+                current_stage: 1,
+                selected_fabric: "FAB-02",
+                selected_leg: "matte-black",
+                fabric_compatibility_test: null,
+                is_crib5_blocked: false,
+                selected_supplier: null,
+                split_delivery_active: false
+              })
+              .select();
+
+            if (seedProjErr) throw new Error("Auto-seeding Projects failed: " + seedProjErr.message);
+
+            let insertedProj = newProjData && newProjData.length > 0 ? newProjData[0] : null;
+
+            // Robust fallback: if insert-select returns empty (common with some RLS/triggers/SDK issues), select explicitly by name
+            if (!insertedProj) {
+              console.warn("Insert select returned empty, attempting fallback select by name...");
+              const { data: fallbackData, error: fallbackErr } = await client
+                .from("projects")
+                .select("*")
+                .eq("user_id", supabaseUser.id)
+                .eq("name", "CRAFT-202605-01")
+                .limit(1);
+
+              if (fallbackErr) {
+                throw new Error("Fallback project retrieval failed: " + fallbackErr.message);
+              }
+              if (fallbackData && fallbackData.length > 0) {
+                insertedProj = fallbackData[0];
+              }
             }
 
-            newThoughtLogs[row.stage_id].push({
-              role: row.role,
-              text: row.log_text_cn || row.log_text_en,
-              textEn: textEn
-            });
-          });
+            if (insertedProj) {
+              // 2. Insert standard specifications linked to the project
+              const { error: seedSpecsErr } = await client.from("specifications").insert([
+                {
+                  project_id: insertedProj.id,
+                  user_id: supabaseUser.id,
+                  item_type_cn: "大堂扶手椅",
+                  item_type_en: "Lobby Armchair",
+                  quantity: 40,
+                  material_cn: "海军蓝亚麻 (L-4410)",
+                  material_en: "Navy Classic Linen (L-4410)",
+                  original_unit_price: 210,
+                  unit_price: 210,
+                  notes_cn: "",
+                  notes_en: ""
+                },
+                {
+                  project_id: insertedProj.id,
+                  item_type_cn: "贵宾单人椅",
+                  item_type_en: "VIP Club Chair",
+                  quantity: 20,
+                  material_cn: "皇家蓝丝绒 (V-9082)",
+                  material_en: "Royal Velvet (V-9082)",
+                  original_unit_price: 280,
+                  unit_price: 280,
+                  notes_cn: "",
+                  notes_en: ""
+                },
+                {
+                  project_id: insertedProj.id,
+                  item_type_cn: "定制实木大茶几",
+                  item_type_en: "Custom Oak Coffee Table",
+                  quantity: 5,
+                  material_cn: "天然白橡木",
+                  material_en: "Natural Solid White Oak",
+                  original_unit_price: 450,
+                  unit_price: 450,
+                  notes_cn: "",
+                  notes_en: ""
+                }
+              ]);
 
-          Object.assign(mockData.agentThoughtLogs, newThoughtLogs);
-        }
+              if (seedSpecsErr) throw new Error("Auto-seeding Specifications failed: " + seedSpecsErr.message);
 
-        const stageNum = dbProject.current_stage || 1;
-        const currentStageId = "S" + String(stageNum).padStart(2, "0");
+              // 3. Insert standard payment milestones
+              const { error: seedPaymentsErr } = await client.from("payments").insert([
+                {
+                  project_id: insertedProj.id,
+                  milestone_cn: "50% 首期定金 (已付)",
+                  milestone_en: "50% Deposit (Paid)",
+                  amount: 10450,
+                  status: "Paid",
+                  payment_date: "2026-05-25"
+                },
+                {
+                  project_id: insertedProj.id,
+                  milestone_cn: "40% 出货中款 (未核销)",
+                  milestone_en: "40% Shipping Release (Pending)",
+                  amount: 8360,
+                  status: "Pending",
+                  payment_date: "Pending"
+                },
+                {
+                  project_id: insertedProj.id,
+                  milestone_cn: "10% 交付尾款 (未核销)",
+                  milestone_en: "10% Handover Balance (Pending)",
+                  amount: 2090,
+                  status: "Pending",
+                  payment_date: "Pending"
+                }
+              ]);
+              if (seedPaymentsErr) throw new Error("Auto-seeding Payments failed: " + seedPaymentsErr.message);
 
-        // Sync state variables from the database to React state
-        if (dbProject.selected_fabric) setSelectedFabric(dbProject.selected_fabric);
-        if (dbProject.selected_leg) setSelectedLeg(dbProject.selected_leg);
-        if (dbProject.fabric_compatibility_test !== undefined)
-          setFabricCompatibilityTest(dbProject.fabric_compatibility_test);
-        if (dbProject.is_crib5_blocked !== undefined) {
-          setIsCrib5Blocked(dbProject.is_crib5_blocked);
-          setConfiguratorCrib5Blocked(dbProject.is_crib5_blocked && dbProject.selected_fabric === "FAB-03");
-        }
-        if (dbProject.selected_supplier) setSelectedSupplier(dbProject.selected_supplier);
-        if (dbProject.split_delivery_active !== undefined) setSplitDeliveryActive(dbProject.split_delivery_active);
+              // 4. Insert initial human-AI audit logs
+              const { error: seedLogsErr } = await client.from("agent_logs").insert([
+                {
+                  project_id: insertedProj.id,
+                  operator: "Crafton System",
+                  action_desc_cn: "解析會員中心內置對話框需求及手稿，自動生成主訂單草稿",
+                  action_desc_en: "Parsed member portal message and sketch, auto-generated project master draft."
+                },
+                {
+                  project_id: insertedProj.id,
+                  operator: "Crafton System",
+                  action_desc_cn: "自動通過內置消息通道向客户追問補充椅子的金屬腿部塗裝工藝和公差",
+                  action_desc_en:
+                    "Automatically followed up via member portal to query metal legs coating and tolerance."
+                },
+                {
+                  project_id: insertedProj.id,
+                  operator: "Crafton System",
+                  action_desc_cn: "一鍵生成中英文對照規格書，尺寸標準定義：W: 650mm, D: 600mm, H: 850mm",
+                  action_desc_en:
+                    "Bilingual specifications generated. Dimensions defined: W: 650mm, D: 600mm, H: 850mm."
+                }
+              ]);
 
-        // Map project shape dynamically
-        const mappedOrder = {
-          id: dbProject.id,
-          orderId: dbProject.name || "CRAFT-202605-01",
-          clientName: dbProject.client_name || "Client Design Studio (UK)",
-          projectLocation: dbProject.client_contact || "St Albans, UK",
-          createdDate: dbProject.created_at ? dbProject.created_at.split("T")[0] : "2026-05-25",
-          currentStageId: currentStageId,
-          items:
-            itemsData && itemsData.length > 0
-              ? itemsData.map((item) => ({
-                  id: item.id,
-                  typeCn: item.item_type_cn,
-                  typeEn: item.item_type_en,
-                  qty: item.quantity,
-                  materialCn: item.material_cn,
-                  materialEn: item.material_en,
-                  originalUnitPrice: Number(item.original_unit_price || 0),
-                  unitPrice: Number(item.unit_price || 0),
-                  status: "Active",
-                  note: item.notes_cn || item.notes_en || ""
-                }))
-              : JSON.parse(JSON.stringify(mockData.initialOrder.items)),
-          payments:
-            paymentsData && paymentsData.length > 0
-              ? paymentsData.map((p) => ({
-                  id: p.id,
-                  milestone: lang === "Cn" ? p.milestone_cn : p.milestone_en,
-                  amount: Number(p.amount || 0),
-                  date: p.payment_date,
-                  status: p.status
-                }))
-              : JSON.parse(JSON.stringify(mockData.initialOrder.payments))
-        };
+              if (seedLogsErr) throw new Error("Auto-seeding Agent Logs failed: " + seedLogsErr.message);
 
-        setOrder(mappedOrder);
-        setDbConnected(true);
-
-        // Update local stage view to match Supabase's status
-        const stageIdx = stages.findIndex((s) => s.id === currentStageId);
-        if (stageIdx !== -1) {
-          setCurrentStageIndex(stageIdx);
-        }
-
-        if (logsData && logsData.length > 0) {
-          setLogs(
-            logsData.map((log) => {
-              const actionCn = log.action_desc_cn || log.action_desc_en;
-              let actionEn = log.action_desc_en || log.action_desc_cn;
-              if (!actionEn || actionEn === actionCn || /[\u4e00-\u9fa5]/.test(actionEn)) {
-                actionEn = getLogActionEn(actionCn) || actionEn;
+              // 5. Insert detailed technical agent thought trace logs (for all 17 stages)
+              const seedThoughtRows = [];
+              Object.entries(mockData.agentThoughtLogs).forEach(([stageId, logList]) => {
+                logList.forEach((line) => {
+                  seedThoughtRows.push({
+                    project_id: insertedProj.id,
+                    stage_id: stageId,
+                    role: line.role,
+                    log_text_cn: line.text,
+                    log_text_en: line.textEn || line.text
+                  });
+                });
+              });
+              if (seedThoughtRows.length > 0) {
+                const { error: seedThoughtsErr } = await client.from("agent_thought_logs").insert(seedThoughtRows);
+                if (seedThoughtsErr)
+                  throw new Error("Auto-seeding Agent Thought Logs failed: " + seedThoughtsErr.message);
               }
-              return {
-                time: log.created_at ? new Date(log.created_at).toLocaleString() : "2026-05-25 10:15:20",
-                user: log.operator || "Crafton System",
-                action: actionCn,
-                actionEn: actionEn
-              };
-            })
-          );
+
+              dbProject = insertedProj;
+            } else {
+              throw new Error("Failed to retrieve auto-seeded project.");
+            }
+          } else {
+            dbProject = projectsData[0];
+          }
+
+          // Load specs, payments, logs and thought logs
+          if (dbProject) {
+            const [items, payments, logs, thoughts] = await Promise.all([
+              client.from("specifications").select("*").eq("project_id", dbProject.id),
+              client
+                .from("payments")
+                .select("*")
+                .eq("project_id", dbProject.id)
+                .order("created_at", { ascending: true }),
+              client
+                .from("agent_logs")
+                .select("*")
+                .eq("project_id", dbProject.id)
+                .order("created_at", { ascending: false }),
+              client.from("agent_thought_logs").select("*").eq("project_id", dbProject.id)
+            ]);
+            if (portalEpochRef.current !== epoch) return;
+            for (const result of [items, payments, thoughts]) if (result.error) throw result.error;
+            const itemsData = items.data;
+            const paymentsData = payments.data;
+            const logsData = logs.data;
+            const dbThoughtLogs = thoughts.data;
+
+            // Apply dbThoughtLogs to in-memory mockData.agentThoughtLogs with English healing
+            if (dbThoughtLogs && dbThoughtLogs.length > 0) {
+              const newThoughtLogs = {};
+
+              // Sort or group by stage_id, and preserve insertion order
+              const sortedDbThoughtLogs = [...dbThoughtLogs].sort((a, b) => {
+                if (a.stage_id !== b.stage_id) return a.stage_id.localeCompare(b.stage_id);
+                return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+              });
+
+              sortedDbThoughtLogs.forEach((row) => {
+                if (!newThoughtLogs[row.stage_id]) {
+                  newThoughtLogs[row.stage_id] = [];
+                }
+
+                const currentIdx = newThoughtLogs[row.stage_id].length;
+                const localLines = mockData.agentThoughtLogs[row.stage_id];
+                const localLine = localLines ? localLines[currentIdx] : null;
+
+                let textEn = row.log_text_en || row.log_text_cn;
+                // If DB English text is missing or contains Chinese, but we have a clean local English text, use local
+                if (
+                  localLine &&
+                  localLine.textEn &&
+                  (!row.log_text_en || row.log_text_en === row.log_text_cn || /[\u4e00-\u9fa5]/.test(row.log_text_en))
+                ) {
+                  textEn = localLine.textEn;
+                }
+
+                newThoughtLogs[row.stage_id].push({
+                  role: row.role,
+                  text: row.log_text_cn || row.log_text_en,
+                  textEn: textEn
+                });
+              });
+
+              Object.assign(mockData.agentThoughtLogs, newThoughtLogs);
+            }
+
+            const stageNum = dbProject.current_stage || 1;
+            const currentStageId = "S" + String(stageNum).padStart(2, "0");
+
+            // Sync state variables from the database to React state
+            if (dbProject.selected_fabric) setSelectedFabric(dbProject.selected_fabric);
+            if (dbProject.selected_leg) setSelectedLeg(dbProject.selected_leg);
+            if (dbProject.fabric_compatibility_test !== undefined)
+              setFabricCompatibilityTest(dbProject.fabric_compatibility_test);
+            if (dbProject.is_crib5_blocked !== undefined) {
+              setIsCrib5Blocked(dbProject.is_crib5_blocked);
+              setConfiguratorCrib5Blocked(dbProject.is_crib5_blocked && dbProject.selected_fabric === "FAB-03");
+            }
+            if (dbProject.selected_supplier) setSelectedSupplier(dbProject.selected_supplier);
+            if (dbProject.split_delivery_active !== undefined) setSplitDeliveryActive(dbProject.split_delivery_active);
+
+            // Map project shape dynamically
+            const mappedOrder = {
+              id: dbProject.id,
+              orderId: dbProject.name || "CRAFT-202605-01",
+              clientName: dbProject.client_name || "Client Design Studio (UK)",
+              projectLocation: dbProject.client_contact || "St Albans, UK",
+              createdDate: dbProject.created_at ? dbProject.created_at.split("T")[0] : "2026-05-25",
+              currentStageId: currentStageId,
+              items:
+                itemsData && itemsData.length > 0
+                  ? itemsData.map((item) => ({
+                      id: item.id,
+                      typeCn: item.item_type_cn,
+                      typeEn: item.item_type_en,
+                      qty: item.quantity,
+                      materialCn: item.material_cn,
+                      materialEn: item.material_en,
+                      originalUnitPrice: Number(item.original_unit_price || 0),
+                      unitPrice: Number(item.unit_price || 0),
+                      status: "Active",
+                      note: item.notes_cn || item.notes_en || ""
+                    }))
+                  : JSON.parse(JSON.stringify(mockData.initialOrder.items)),
+              payments:
+                paymentsData && paymentsData.length > 0
+                  ? paymentsData.map((p) => ({
+                      id: p.id,
+                      milestone: lang === "Cn" ? p.milestone_cn : p.milestone_en,
+                      amount: Number(p.amount || 0),
+                      date: p.payment_date,
+                      status: p.status
+                    }))
+                  : JSON.parse(JSON.stringify(mockData.initialOrder.payments))
+            };
+
+            setOrder(mappedOrder);
+            setDbConnected(true);
+
+            // Update local stage view to match Supabase's status
+            const stageIdx = stages.findIndex((s) => s.id === currentStageId);
+            if (stageIdx !== -1) {
+              setCurrentStageIndex(stageIdx);
+            }
+
+            if (logsData && logsData.length > 0) {
+              setLogs(
+                logsData.map((log) => {
+                  const actionCn = log.action_desc_cn || log.action_desc_en;
+                  let actionEn = log.action_desc_en || log.action_desc_cn;
+                  if (!actionEn || actionEn === actionCn || /[\u4e00-\u9fa5]/.test(actionEn)) {
+                    actionEn = getLogActionEn(actionCn) || actionEn;
+                  }
+                  return {
+                    time: log.created_at ? new Date(log.created_at).toLocaleString() : "2026-05-25 10:15:20",
+                    user: log.operator || "Crafton System",
+                    action: actionCn,
+                    actionEn: actionEn
+                  };
+                })
+              );
+            }
+          }
+        } catch (err) {
+          console.error("Supabase load error:", err);
+          if (portalEpochRef.current !== epoch) return;
+          setDbError(err.message || "Failed to query. Please verify connection credentials.");
+          setDbConnected(false);
+          if (shouldThrow) throw err;
+        } finally {
+          if (portalEpochRef.current === epoch) setDbLoading(false);
         }
-      }
-    } catch (err) {
-      console.error("Supabase load error:", err);
-      setDbError(err.message || "Failed to query. Please verify connection credentials.");
-      setDbConnected(false);
-      if (shouldThrow) throw err;
-    } finally {
-      setDbLoading(false);
-    }
+      },
+      { invalidate: true }
+    );
   };
 
-  const loadLatestSubmittedTrackerProject = async () => {
-    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) return;
+  const loadLatestSubmittedTrackerProject = () => {
+    const epoch = portalEpochRef.current;
+    return portalRefreshRef.current.run(
+      `tracker:${epoch}`,
+      async () => {
+        if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) return;
 
-    const context = await getPortalSupabaseContext({ requireAuth: false });
-    if (!context?.supabaseUser) return;
+        const context = await getPortalSupabaseContext({ requireAuth: false });
+        if (!context?.supabaseUser || portalEpochRef.current !== epoch) return;
 
-    const { client, supabaseUser } = context;
-    const requestedOwnerId = String(supabaseUser.id);
-    const { data, error } = await client
-      .from("intake_jobs")
-      .select("*, intake_files(*)")
-      .or(buildPortalOwnershipFilter(requestedOwnerId))
-      .order("created_at", { ascending: false })
-      .limit(1);
+        const { client, supabaseUser } = context;
+        const requestedOwnerId = String(supabaseUser.id);
+        const { data, error } = await client
+          .from("intake_jobs")
+          .select("*, intake_files(*)")
+          .or(buildPortalOwnershipFilter(requestedOwnerId))
+          .order("created_at", { ascending: false })
+          .limit(1);
 
-    if (portalOwnerIdRef.current !== requestedOwnerId) return;
+        if (portalEpochRef.current !== epoch || portalOwnerIdRef.current !== requestedOwnerId) return;
 
-    if (error) {
-      console.warn("Latest submitted tracker project was not loaded:", error.message || error);
-      return;
-    }
-
-    const job = data?.[0];
-    if (!job) {
-      setLatestIntakeJob(null);
-      setSubmittedTrackerProject(null);
-      setTrackerPreviewUrl("");
-      return;
-    }
-
-    const file = Array.isArray(job.intake_files) ? job.intake_files[0] : job.intake_files;
-    let previewUrl = "";
-    if (file?.mime_type?.startsWith("image/") && file.storage_bucket && file.storage_path) {
-      const { data: signed } = await client.storage
-        .from(file.storage_bucket)
-        .createSignedUrl(file.storage_path, 60 * 60);
-      previewUrl = signed?.signedUrl || "";
-    }
-
-    if (portalOwnerIdRef.current !== requestedOwnerId) return;
-
-    const quantityText = job.quantity_text || "";
-    const trackerProject = {
-      projectName: job.project_name || "",
-      destination: job.destination || "",
-      quantityText,
-      file: null,
-      fileName: file?.original_name || "",
-      jobId: job.id,
-      intakeFileId: job.intake_file_id || file?.id || null,
-      quoteStatus: "pending_quote",
-      submittedAt: job.created_at || new Date().toISOString(),
-      previewUrl
-    };
-
-    setLatestIntakeJob(job);
-    setSubmittedTrackerProject(trackerProject);
-    setOrder((prev) => ({
-      ...prev,
-      orderId: job.project_name || prev.orderId,
-      projectLocation: job.destination || prev.projectLocation,
-      currentStageId: "S02",
-      quoteStatus: "pending_quote",
-      items: buildSubmittedOrderItems(quantityText),
-      payments: [
-        {
-          milestone: "Supplier quotation pending",
-          amount: 0,
-          date: "Pending",
-          status: "Pending Quote"
+        if (error) {
+          console.warn("Latest submitted tracker project was not loaded:", error.message || error);
+          return;
         }
-      ]
-    }));
-    setCurrentStageIndex(1);
+
+        const job = data?.[0];
+        if (!job) {
+          setLatestIntakeJob(null);
+          setSubmittedTrackerProject(null);
+          setTrackerPreviewUrl("");
+          return;
+        }
+
+        const file = Array.isArray(job.intake_files) ? job.intake_files[0] : job.intake_files;
+        let previewUrl = "";
+        if (file?.mime_type?.startsWith("image/") && file.storage_bucket && file.storage_path) {
+          previewUrl = await previewCacheRef.current.sign(client, file.storage_bucket, file.storage_path);
+        }
+
+        if (portalEpochRef.current !== epoch || portalOwnerIdRef.current !== requestedOwnerId) return;
+
+        const quantityText = job.quantity_text || "";
+        const trackerProject = {
+          projectName: job.project_name || "",
+          destination: job.destination || "",
+          quantityText,
+          file: null,
+          fileName: file?.original_name || "",
+          jobId: job.id,
+          intakeFileId: job.intake_file_id || file?.id || null,
+          quoteStatus: "pending_quote",
+          submittedAt: job.created_at || new Date().toISOString(),
+          previewUrl
+        };
+
+        setLatestIntakeJob(job);
+        setSubmittedTrackerProject(trackerProject);
+        setOrder((prev) => ({
+          ...prev,
+          orderId: job.project_name || prev.orderId,
+          projectLocation: job.destination || prev.projectLocation,
+          currentStageId: "S02",
+          quoteStatus: "pending_quote",
+          items: buildSubmittedOrderItems(quantityText),
+          payments: [
+            {
+              milestone: "Supplier quotation pending",
+              amount: 0,
+              date: "Pending",
+              status: "Pending Quote"
+            }
+          ]
+        }));
+        setCurrentStageIndex(1);
+      },
+      { invalidate: true }
+    );
   };
 
   const getLocalReviewJobs = () => {
@@ -5606,330 +5630,138 @@ function App() {
     }
   };
 
-  const loadAdminOperationalData = async () => {
-    if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
-      resetAdminOperationalData();
-      return;
-    }
-
-    const context = await getPortalSupabaseContext({ requireAuth: false });
-    if (!context?.client || !context?.supabaseUser) {
-      resetAdminOperationalData();
-      return;
-    }
-
-    const authenticatedUser = mapSupabaseUserToAppUser(context.supabaseUser);
-    if (!authenticatedUser.isStaff) {
-      resetAdminOperationalData();
-      return;
-    }
-
-    const tableSpecs = [
-      { key: "rfq_batches", setter: setAdminRfqBatches },
-      { key: "supplier_quotes", setter: setAdminSupplierQuotes, select: "*, suppliers(*)" },
-      { key: "approvals", setter: setAdminApprovals },
-      { key: "inspection_reports", setter: setAdminInspectionReports },
-      { key: "shipment_documents", setter: setAdminShipmentDocuments },
-      { key: "workflow_events", setter: setAdminWorkflowEvents },
-      { key: "project_files", setter: setAdminProjectFiles }
-    ];
-
-    const missingTables = [];
-    await Promise.all(
-      tableSpecs.map(async (spec) => {
-        let result = await queryOptionalAdminTable(context.client, spec.key, { select: spec.select || "*" });
-        if (result.error && spec.select && spec.select !== "*") {
-          result = await queryOptionalAdminTable(context.client, spec.key, { select: "*" });
-        }
-        spec.setter(result.rows);
-        if (result.missing) missingTables.push(spec.key);
-      })
-    );
-
-    setAdminDataStatus({ loaded: true, missingTables });
-  };
-
-  const addSignedIntakeItemImages = async (client, row) => {
-    const result = safeJsonObject(row?.result_json, {});
-    const items = Array.isArray(result.items) ? result.items : [];
-    const entries = items.flatMap((item, index) => {
-      const drawing = safeJsonObject(item.technical_drawing || item.technicalDrawing, {});
-      return [
-        {
-          key: `${index}:image`,
-          bucket: item.image_storage_bucket,
-          path: item.image_storage_path
-        },
-        {
-          key: `${index}:drawing`,
-          bucket: drawing.storage_bucket,
-          path: drawing.drawing_storage_path
-        },
-        {
-          key: `${index}:draft`,
-          bucket: drawing.storage_bucket,
-          path: drawing.draft_storage_path
-        },
-        {
-          key: `${index}:formal`,
-          bucket: drawing.storage_bucket,
-          path: drawing.formal_storage_path
-        }
-      ].filter((entry) => entry.bucket && entry.path);
-    });
-    if (!entries.length) return row;
-
-    const signedByKey = new Map();
-    const grouped = entries.reduce((groups, entry) => {
-      const current = groups.get(entry.bucket) || [];
-      current.push(entry);
-      groups.set(entry.bucket, current);
-      return groups;
-    }, new Map());
-
-    await Promise.all(
-      Array.from(grouped.entries()).map(async ([bucket, bucketEntries]) => {
-        try {
-          const { data, error } = await client.storage.from(bucket).createSignedUrls(
-            bucketEntries.map((entry) => entry.path),
-            60 * 60
-          );
-          if (error) throw error;
-          bucketEntries.forEach((entry, index) => {
-            const signedUrl = data?.[index]?.signedUrl || "";
-            if (signedUrl) signedByKey.set(entry.key, signedUrl);
-          });
-        } catch (error) {
-          console.warn("Extracted furniture image previews could not be signed:", error.message || error);
-        }
-      })
-    );
-
-    if (!signedByKey.size) return row;
-    return {
-      ...row,
-      result_json: {
-        ...result,
-        items: items.map((item, index) => {
-          const drawing = safeJsonObject(item.technical_drawing || item.technicalDrawing, {});
-          return {
-            ...item,
-            image_url: signedByKey.get(`${index}:image`) || item.image_url || "",
-            technical_drawing: Object.keys(drawing).length
-              ? {
-                  ...drawing,
-                  drawing_url: signedByKey.get(`${index}:drawing`) || drawing.drawing_url || "",
-                  draft_url: signedByKey.get(`${index}:draft`) || drawing.draft_url || "",
-                  formal_url: signedByKey.get(`${index}:formal`) || drawing.formal_url || ""
-                }
-              : drawing
-          };
-        })
-      }
-    };
-  };
-
-  const loadPrequoteWorkspace = (options = {}) => {
-    if (prequoteWorkspaceLoadRef.current) return prequoteWorkspaceLoadRef.current;
-
-    const shouldShowBlockingLoading = !prequoteWorkspaceLoadedRef.current && !options.background;
-    const requestedOwnerId = portalOwnerIdRef.current;
-    const loadPromise = (async () => {
-      if (shouldShowBlockingLoading) setClientProjectsLoading(true);
-      const localJobs = getLocalReviewJobs();
-
-      if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
-        setIntakeReviewJobs(localJobs);
-        setClientProjectJobs(localJobs);
-        setClientProjectsLoading(false);
-        return;
-      }
-
-      const context = await getPortalSupabaseContext({ requireAuth: false });
-      if (!context?.client) {
-        setIntakeReviewJobs(localJobs);
-        setClientProjectJobs(localJobs);
-        setClientProjectsLoading(false);
-        return;
-      }
-
-      try {
-        const { client, supabaseUser } = context;
-        const authenticatedUser = supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null;
-        const authenticatedOwnerId = String(supabaseUser?.id || "");
-
-        if (!supabaseUser) {
-          setAdminAccessStatus("unauthenticated");
-          setIntakeReviewJobs([]);
-          if (!user?.isDemo) setClientProjectJobs([]);
+  const loadAdminOperationalData = (options = {}) => {
+    const epoch = portalEpochRef.current;
+    const projectId = order?.id || "";
+    const current = () => portalEpochRef.current === epoch && operationalProjectRef.current === projectId;
+    return portalRefreshRef.current.run(
+      `operations:${epoch}:${projectId}`,
+      async () => {
+        if (!window.supabase || !getSupabaseUrl() || !getSupabaseKey()) {
+          resetAdminOperationalData();
           return;
         }
 
-        if (authenticatedUser?.isStaff) {
-          if (shouldShowBlockingLoading) setAdminAccessStatus("loading");
-          const { data: reviewData, error: reviewError } = await client
-            .from("intake_jobs")
-            .select("*, intake_files(*), projects(*)")
-            .in("status", ["queued", "processing", "needs_review", "completed"])
-            .order("created_at", { ascending: false })
-            .limit(200);
+        const context = await getPortalSupabaseContext({ requireAuth: false });
+        if (!current()) return;
+        if (!context?.client || !context?.supabaseUser) {
+          resetAdminOperationalData();
+          return;
+        }
 
-          if (reviewError) throw reviewError;
-          const reviewRows = reviewData || [];
-          const ownerIds = Array.from(new Set(reviewRows.map(getIntakeJobOwnerId).filter(Boolean)));
-          const ownerProfilesById = new Map();
-          if (ownerIds.length > 0) {
-            const { data: ownerProfiles, error: ownerProfilesError } = await client
-              .from("user_profiles")
-              .select("user_id,public_id,full_name,company")
-              .in("user_id", ownerIds);
-            if (ownerProfilesError) throw ownerProfilesError;
-            (ownerProfiles || []).forEach((profile) => ownerProfilesById.set(String(profile.user_id), profile));
-          }
-          const reviewRowsWithOwners = reviewRows.map((row) => ({
-            ...row,
-            owner_profile: ownerProfilesById.get(getIntakeJobOwnerId(row)) || null
-          }));
-          const reviewRowsWithPreviews = await Promise.all(
-            reviewRowsWithOwners.map((row) => addSignedIntakeItemImages(client, row))
-          );
-          if (portalOwnerIdRef.current !== authenticatedOwnerId) return;
-          setIntakeReviewJobs(reviewRowsWithPreviews.filter(activeProjectJob));
-          setAdminAccessStatus("ready");
-        } else {
+        const authenticatedUser = mapSupabaseUserToAppUser(context.supabaseUser);
+        if (!authenticatedUser.isStaff) {
+          resetAdminOperationalData();
+          return;
+        }
+
+        const tableSpecs = [
+          { key: "rfq_batches", setter: setAdminRfqBatches },
+          { key: "supplier_quotes", setter: setAdminSupplierQuotes, select: "*, suppliers(*)" },
+          { key: "approvals", setter: setAdminApprovals },
+          { key: "inspection_reports", setter: setAdminInspectionReports },
+          { key: "shipment_documents", setter: setAdminShipmentDocuments },
+          { key: "workflow_events", setter: setAdminWorkflowEvents },
+          { key: "project_files", setter: setAdminProjectFiles }
+        ];
+
+        const missingTables = [];
+        await Promise.all(
+          tableSpecs.map(async (spec) => {
+            let result = await queryOptionalAdminTable(context.client, spec.key, { select: spec.select || "*" });
+            if (result.error && spec.select && spec.select !== "*") {
+              result = await queryOptionalAdminTable(context.client, spec.key, { select: "*" });
+            }
+            if (current()) spec.setter(result.rows);
+            if (result.missing) missingTables.push(spec.key);
+          })
+        );
+
+        if (current()) setAdminDataStatus({ loaded: true, missingTables });
+      },
+      { invalidate: options.invalidate !== false }
+    );
+  };
+
+  const loadPrequoteWorkspace = (options = {}) => {
+    const epoch = portalEpochRef.current;
+    const current = () => portalEpochRef.current === epoch;
+    const promise = portalRefreshRef.current.run(
+      `workspace:${epoch}`,
+      async () => {
+        const blocking = !prequoteWorkspaceLoadedRef.current && !options.background;
+        if (blocking) setClientProjectsLoading(true);
+        const context = await getPortalSupabaseContext({ requireAuth: false });
+        if (!current()) return;
+        if (!context?.client) {
+          const localJobs = getLocalReviewJobs();
+          setIntakeReviewJobs(localJobs);
+          setClientProjectJobs(localJobs);
+          setClientProjectsLoading(false);
+          return;
+        }
+        if (!context.supabaseUser) {
+          setAdminAccessStatus("unauthenticated");
+          setIntakeReviewJobs([]);
+          if (!user?.isDemo) setClientProjectJobs([]);
+          setClientProjectsLoading(false);
+          return;
+        }
+        const { client, supabaseUser } = context;
+        const isStaff = mapSupabaseUserToAppUser(supabaseUser).isStaff;
+        if (isStaff && blocking) setAdminAccessStatus("loading");
+        if (!isStaff) {
           setAdminAccessStatus("forbidden");
           setIntakeReviewJobs([]);
         }
-
-        if (supabaseUser) {
-          const { data: clientData, error: clientError } = await client
-            .from("intake_jobs")
-            .select("*, intake_files(*), projects(*)")
-            .or(buildPortalOwnershipFilter(authenticatedOwnerId))
-            .order("created_at", { ascending: false })
-            .limit(1000);
-
-          if (clientError) throw clientError;
-          if (portalOwnerIdRef.current !== authenticatedOwnerId) return;
-          const clientRows = filterPortalJobsForOwner(clientData || [], authenticatedOwnerId);
-          const clientRowsWithPreviews = await Promise.all(
-            clientRows.map(async (row) => {
-              const rowWithItemImages = await addSignedIntakeItemImages(client, row);
-              const file = getIntakeFileFromJob(row);
-              if (!file?.mime_type?.startsWith("image/") || !file.storage_bucket || !file.storage_path) {
-                return rowWithItemImages;
-              }
-
-              try {
-                const { data: signed, error: signedError } = await client.storage
-                  .from(file.storage_bucket)
-                  .createSignedUrl(file.storage_path, 60 * 60);
-                if (signedError) throw signedError;
-                return { ...rowWithItemImages, client_preview_url: signed?.signedUrl || "" };
-              } catch (previewError) {
-                console.warn("Client furniture preview could not be created:", previewError.message || previewError);
-                return rowWithItemImages;
-              }
-            })
-          );
-          const projectIds = Array.from(
-            new Set(
-              clientRowsWithPreviews
-                .map((row) => row.project_id)
-                .filter(Boolean)
-                .map(String)
-            )
-          );
-          const progressTableSpecs = [
-            { table: "production_updates", key: "productionUpdates" },
-            { table: "inspection_reports", key: "inspections" },
-            { table: "shipments", key: "shipments" },
-            { table: "shipment_documents", key: "shipmentDocuments" },
-            { table: "project_files", key: "projectFiles" },
-            { table: "handover_reports", key: "handovers" },
-            { table: "workflow_events", key: "workflowEvents" }
-          ];
-          const progressRows = {};
-
-          if (projectIds.length) {
-            await Promise.all(
-              progressTableSpecs.map(async ({ table, key }) => {
-                try {
-                  const { data: rows, error: rowsError } = await client
-                    .from(table)
-                    .select("*")
-                    .in("project_id", projectIds)
-                    .order("created_at", { ascending: false });
-                  if (rowsError) {
-                    console.warn(`Client progress table ${table} was not loaded:`, rowsError.message || rowsError);
-                    progressRows[key] = [];
-                    return;
-                  }
-                  progressRows[key] = rows || [];
-                } catch (progressError) {
-                  console.warn(
-                    `Client progress table ${table} was not loaded:`,
-                    progressError.message || progressError
-                  );
-                  progressRows[key] = [];
-                }
-              })
-            );
-
-            try {
-              const signedRegisters = await Promise.all(
-                projectIds.map((projectId) =>
-                  callWorkflowAi(client, { action: "project_shop_drawings", projectId }).catch((fileError) => {
-                    console.warn("Client shop-drawing register could not be signed:", fileError.message || fileError);
-                    return { files: [] };
-                  })
-                )
-              );
-              const signedById = new Map(
-                signedRegisters.flatMap((register) => register.files || []).map((file) => [String(file.id), file])
-              );
-              progressRows.projectFiles = (progressRows.projectFiles || []).map(
-                (file) => signedById.get(String(file.id)) || file
-              );
-            } catch (fileError) {
-              console.warn("Client shop-drawing register could not be loaded:", fileError.message || fileError);
-            }
-          }
-
-          const clientRowsWithProgress = clientRowsWithPreviews.map((row) => ({
-            ...row,
-            client_progress: Object.fromEntries(
-              progressTableSpecs.map(({ key }) => [
-                key,
-                (progressRows[key] || []).filter(
-                  (progressRow) => String(progressRow.project_id) === String(row.project_id)
-                )
-              ])
-            )
-          }));
-          if (portalOwnerIdRef.current !== authenticatedOwnerId) return;
-          setClientProjectJobs(clientRowsWithProgress);
-        } else {
-          setClientProjectJobs([]);
+        try {
+          await readPortalWorkspace({
+            client,
+            ownerId: String(supabaseUser.id),
+            isStaff,
+            previews: previewCacheRef.current,
+            onClientRows: (rows) => {
+              if (!current()) return;
+              // Retain existing progress during a background refresh until its replacement arrives.
+              setClientProjectJobs((previous) => {
+                const byId = new Map(previous.map((row) => [row.id, row]));
+                return rows.map((row) => {
+                  const previousRow = byId.get(row.id);
+                  const previousProgress =
+                    previousRow?.project_id === row.project_id ? previousRow?.client_progress : {};
+                  return { ...row, client_progress: { ...previousProgress, ...row.client_progress } };
+                });
+              });
+              prequoteWorkspaceLoadedRef.current = true;
+              setClientProjectsLoading(false);
+            },
+            onReviewRows: (rows) => {
+              if (!current()) return;
+              setIntakeReviewJobs(rows);
+              setAdminAccessStatus("ready");
+            },
+            onReviewError: (error) => {
+              if (!current()) return;
+              setAdminAccessStatus("error");
+              console.warn("Review workspace could not be refreshed:", error.message || error);
+            },
+            onProgressError: (error) =>
+              console.warn("Project progress could not be refreshed:", error.message || error),
+            onTiming: (phase, milliseconds) => console.info(`[Crafton performance] ${phase}: ${milliseconds} ms`),
+            loadDrawings: (projectId) => callWorkflowAi(client, { action: "project_shop_drawings", projectId })
+          });
+        } catch (error) {
+          console.warn("Pre-quote workspace could not be loaded:", error.message || error);
+          if (current() && !prequoteWorkspaceLoadedRef.current) setClientProjectJobs([]);
+        } finally {
+          if (current()) setClientProjectsLoading(false);
         }
-      } catch (err) {
-        console.warn("Pre-quote workspace was not loaded from Supabase:", err.message || err);
-        if (!prequoteWorkspaceLoadedRef.current) {
-          setAdminAccessStatus("error");
-          setIntakeReviewJobs([]);
-          setClientProjectJobs([]);
-        }
-      } finally {
-        if (portalOwnerIdRef.current === requestedOwnerId) setClientProjectsLoading(false);
-      }
-    })();
-
-    prequoteWorkspaceLoadRef.current = loadPromise;
-    return loadPromise.finally(() => {
-      if (prequoteWorkspaceLoadRef.current === loadPromise) {
-        prequoteWorkspaceLoadedRef.current = true;
-        prequoteWorkspaceLoadRef.current = null;
-      }
+      },
+      { invalidate: options.invalidate !== false }
+    );
+    prequoteWorkspaceLoadRef.current = promise;
+    return promise.finally(() => {
+      if (prequoteWorkspaceLoadRef.current === promise) prequoteWorkspaceLoadRef.current = null;
     });
   };
 
@@ -6598,35 +6430,8 @@ function App() {
     let cancelled = false;
     setSupabaseAuthReady(false);
 
-    const hydrateAuthenticatedUser = async (supabaseUser) => {
-      if (cancelled) return;
-      const nextOwnerId = String(supabaseUser?.id || "");
-      if (portalOwnerIdRef.current !== nextOwnerId) {
-        resetClientPortalAccountData();
-        portalOwnerIdRef.current = nextOwnerId;
-      }
-      setSupabaseSessionUser(supabaseUser || null);
-      setSupabaseAuthReady(true);
-      const appUser = supabaseUser ? mapSupabaseUserToAppUser(supabaseUser) : null;
-      setUser(appUser);
-      if (supabaseUser) {
-        await syncAuthenticatedUserProfile(supabaseUser);
-        if (cancelled) return;
-        if (appUser?.isSupplier) {
-          setCurrentStageView("SupplierPortal");
-          return;
-        }
-        await fetchSupabaseData();
-        if (cancelled) return;
-        await loadLatestSubmittedTrackerProject();
-        if (cancelled) return;
-        await loadPrequoteWorkspace();
-        if (cancelled) return;
-        await loadAdminOperationalData();
-      }
-    };
-
     const { data } = client.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
       const supabaseUser = session?.user || null;
       setSupabaseSessionUser(supabaseUser);
       setSupabaseAuthReady(true);
@@ -6652,15 +6457,7 @@ function App() {
       setUser(appUser);
       if (appUser.isSupplier) setCurrentStageView("SupplierPortal");
 
-      if (!["INITIAL_SESSION", "SIGNED_IN", "USER_UPDATED"].includes(event)) {
-        return;
-      }
-
-      setTimeout(() => {
-        hydrateAuthenticatedUser(supabaseUser).catch((err) =>
-          console.warn("Authenticated user hydration failed:", err.message || err)
-        );
-      }, 0);
+      if (event === "USER_UPDATED") clearVerifiedBrowserUser(client);
     });
 
     return () => {
@@ -6692,229 +6489,107 @@ function App() {
     if (clientPortalTab === "Support") setClientPortalTab("Intake");
   }, [clientPortalTab]);
 
-  // Re-fetch after the browser has restored its own Supabase session.
+  // Identity changes are the single entry point; changing language does not reload data.
   useEffect(() => {
-    if (!supabaseAuthReady) return undefined;
+    if (!supabaseAuthReady || !supabaseSessionUser) return undefined;
+    const epoch = portalEpochRef.current;
     let cancelled = false;
-    (async () => {
+    syncAuthenticatedUserProfile(supabaseSessionUser).catch((error) => console.warn("Profile sync failed:", error));
+    if (mapSupabaseUserToAppUser(supabaseSessionUser).isSupplier) return undefined;
+    const tracker = async () => {
       await fetchSupabaseData();
-      if (!cancelled) await loadLatestSubmittedTrackerProject();
-      if (!cancelled) await loadPrequoteWorkspace();
-      if (!cancelled) await loadAdminOperationalData();
-    })();
+      if (!cancelled && portalEpochRef.current === epoch) await loadLatestSubmittedTrackerProject();
+    };
+    Promise.allSettled([
+      tracker(),
+      loadPrequoteWorkspace({ invalidate: false }),
+      loadAdminOperationalData({ invalidate: false })
+    ]).then((results) =>
+      results.forEach((result) => {
+        if (result.status === "rejected") console.warn("Portal initialization failed:", result.reason);
+      })
+    );
     return () => {
       cancelled = true;
     };
-  }, [lang, supabaseAuthReady, supabaseSessionUser?.id]);
+  }, [supabaseAuthReady, supabaseSessionUser?.id, dbUrl, dbKey]);
 
-  // Subscribe to real-time changes on Supabase when connected
+  // Use the latest render's loaders, but coalesce bursts into one refresh per area.
+  const realtimeLoadersRef = useRef(null);
+  realtimeLoadersRef.current = {
+    fetchSupabaseData,
+    loadLatestSubmittedTrackerProject,
+    loadPrequoteWorkspace,
+    loadAdminOperationalData
+  };
   useEffect(() => {
-    if (!dbConnected) return;
-
-    let channel = null;
-    let realtimeClient = null;
-    let intakeRefreshTimer = null;
-    const scheduleIntakeRefresh = () => {
-      if (intakeRefreshTimer) clearTimeout(intakeRefreshTimer);
-      intakeRefreshTimer = setTimeout(() => {
-        intakeRefreshTimer = null;
-        loadLatestSubmittedTrackerProject().catch((err) =>
-          console.warn("Latest submitted tracker refresh failed:", err.message || err)
+    if (!dbConnected || !supabaseSessionUser?.id) return undefined;
+    const client = getSupabaseBrowserClient();
+    if (!client) return undefined;
+    const epoch = portalEpochRef.current;
+    let timer = null;
+    const pending = new Set();
+    const schedule = (...areas) => {
+      areas.forEach((area) => pending.add(area));
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        if (portalEpochRef.current !== epoch) return;
+        const areas = [...pending];
+        pending.clear();
+        const loaders = realtimeLoadersRef.current;
+        const tasks = {
+          legacy: () => loaders.fetchSupabaseData(),
+          tracker: () => loaders.loadLatestSubmittedTrackerProject(),
+          workspace: () => loaders.loadPrequoteWorkspace({ background: true }),
+          operations: () => loaders.loadAdminOperationalData()
+        };
+        Promise.allSettled(areas.map((area) => tasks[area]())).then((results) =>
+          results.forEach((result) => {
+            if (result.status === "rejected") console.warn("Realtime refresh failed:", result.reason);
+          })
         );
-        loadPrequoteWorkspace({ background: true }).catch((err) =>
-          console.warn("Realtime intake workspace refresh failed:", err.message || err)
-        );
-      }, 200);
+      }, 350);
     };
-    try {
-      const url = getSupabaseUrl();
-      const key = getSupabaseKey();
-      if (url && key && window.supabase) {
-        realtimeClient = getSupabaseBrowserClient(url, key);
-
-        channel = realtimeClient
-          .channel("schema-db-changes")
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "projects"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'projects':", payload);
-              fetchSupabaseData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "specifications"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'specifications':", payload);
-              fetchSupabaseData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "payments"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'payments':", payload);
-              fetchSupabaseData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "agent_logs"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'agent_logs':", payload);
-              fetchSupabaseData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "agent_thought_logs"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'agent_thought_logs':", payload);
-              fetchSupabaseData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "intake_jobs"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'intake_jobs':", payload);
-              if (payload.new) setLatestIntakeJob(payload.new);
-              scheduleIntakeRefresh();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "workflow_events"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'workflow_events':", payload);
-              loadPrequoteWorkspace();
-              loadAdminOperationalData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "rfq_batches"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'rfq_batches':", payload);
-              loadPrequoteWorkspace();
-              loadAdminOperationalData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "supplier_quotes"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'supplier_quotes':", payload);
-              loadAdminOperationalData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "approvals"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'approvals':", payload);
-              loadAdminOperationalData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "inspection_reports"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'inspection_reports':", payload);
-              loadAdminOperationalData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "shipment_documents"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'shipment_documents':", payload);
-              loadAdminOperationalData();
-            }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "project_files"
-            },
-            (payload) => {
-              console.log("Realtime Change detected on 'project_files':", payload);
-              loadAdminOperationalData();
-            }
-          )
-          .subscribe((status) => {
-            console.log("Supabase Realtime subscription status:", status);
-          });
-      }
-    } catch (err) {
-      console.error("Realtime subscription setup failed:", err);
+    let channel = client.channel(`portal-changes:${supabaseSessionUser.id}`);
+    const tables = {
+      projects: ["legacy", "workspace"],
+      specifications: ["legacy"],
+      payments: ["legacy"],
+      agent_logs: ["legacy"],
+      agent_thought_logs: ["legacy"],
+      intake_jobs: ["tracker", "workspace"],
+      workflow_events: ["workspace", "operations"],
+      rfq_batches: ["workspace", "operations"],
+      supplier_quotes: ["operations"],
+      approvals: ["operations"],
+      production_updates: ["workspace"],
+      shipments: ["workspace"],
+      handover_reports: ["workspace"],
+      inspection_reports: ["workspace", "operations"],
+      shipment_documents: ["workspace", "operations"],
+      project_files: ["workspace", "operations"]
+    };
+    for (const [table, areas] of Object.entries(tables)) {
+      const projectScoped = ["specifications", "payments", "agent_logs", "agent_thought_logs"].includes(table);
+      if (projectScoped && !order?.id) continue;
+      channel = channel.on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table,
+          ...(projectScoped ? { filter: `project_id=eq.${order.id}` } : {})
+        },
+        () => schedule(...areas)
+      );
     }
-
+    channel.subscribe();
     return () => {
-      if (intakeRefreshTimer) clearTimeout(intakeRefreshTimer);
-      if (channel && realtimeClient) {
-        try {
-          realtimeClient
-            .removeChannel(channel)
-            .then(() => console.log("Supabase Realtime subscription unsubscribed successfully."))
-            .catch((err) => console.error("Failed to clean up realtime channel:", err));
-        } catch (err) {
-          console.error("Failed to clean up realtime channel:", err);
-        }
-      }
+      if (timer) clearTimeout(timer);
+      client.removeChannel(channel).catch((error) => console.warn("Realtime cleanup failed:", error));
     };
-  }, [dbConnected]);
+  }, [dbConnected, supabaseSessionUser?.id, dbUrl, dbKey, order?.id]);
 
   // Handle saving and testing Supabase configuration
   const handleSaveDbConfig = async (e) => {
@@ -6992,8 +6667,7 @@ function App() {
 
     try {
       const client = getSupabaseBrowserClient(url, key);
-      const authResult = await client.auth.getUser().catch(() => ({ data: { user: null } }));
-      const supabaseUser = authResult?.data?.user || null;
+      const supabaseUser = await getVerifiedBrowserUser(client);
       if (!supabaseUser) {
         setAuthError(
           lang === "Cn" ? "请先登录，才能重建你的项目数据。" : "Please sign in before re-seeding your project data."

@@ -1,4 +1,5 @@
 import { attachRenderedItemCrops } from "./lib/intakeProductImages.mjs";
+import { exclusiveTask } from "./lib/workerConcurrency.mjs";
 import { runRiskBasedReview } from "./lib/intakeRiskReview.mjs";
 import { createReviewSource } from "./lib/intakeReviewSource.mjs";
 
@@ -814,12 +815,13 @@ async function tick() {
   }
 }
 
+const runTick = exclusiveTask(tick);
 if (runOnce) {
-  await tick();
+  await runTick();
 } else {
   console.log(`Crafton Intake Worker running every ${intervalMs}ms`);
-  await tick();
+  await runTick();
   setInterval(() => {
-    tick().catch((err) => console.error("Worker tick failed:", err));
+    runTick().catch((err) => console.error("Worker tick failed:", err));
   }, intervalMs);
 }
