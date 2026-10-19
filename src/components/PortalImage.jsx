@@ -1,3 +1,4 @@
+import "./portalImage.css";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createThumbnailCache } from "../portalThumbnailCache.mjs";
 const Context = createContext(null);

@@ -69,16 +69,9 @@ test("admin list does not wait for Storage signatures", async () => {
   const row = {
     id: "job",
     user_id: ownerId,
-    result_json: {
-      items: [
-        {
-          id: "chair",
-          image_storage_bucket: "b",
-          image_storage_path: "p",
-          technical_drawing: { storage_bucket: "b", drawing_storage_path: "d" }
-        }
-      ]
-    }
+    updated_at: "2026-10-20T00:00:00Z",
+    intake_files: [{ mime_type: "image/png", storage_bucket: "b", storage_path: "source" }],
+    result_json: { items: [{ id: "chair", image_storage_bucket: "b", image_storage_path: "p" }] }
   };
   const client = database(({ table, filters }) => {
     if (table === "user_profiles") return { data: [{ user_id: ownerId, full_name: "QA" }] };
@@ -89,7 +82,6 @@ test("admin list does not wait for Storage signatures", async () => {
     client,
     ownerId,
     isStaff: true,
-    selection: { scope: "staff", jobId: "job" },
     previews: { sign: (_client, bucket) => (bucket ? image.promise : Promise.resolve("")) },
     onClientRows: () => {},
     onReviewRows: (rows, metadata) => reviews.push({ rows, metadata }),
@@ -101,10 +93,25 @@ test("admin list does not wait for Storage signatures", async () => {
   assert.equal(reviews.length, 1);
   assert.equal(reviews[0].metadata.previewsOnly, false);
   assert.equal(reviews[0].rows[0].owner_profile.full_name, "QA");
+  assert.deepEqual(reviews[0].rows[0].result_json.items[0].thumbnail_ref, {
+    jobId: "job",
+    index: 0,
+    version: row.updated_at
+  });
+  assert.deepEqual(reviews[0].rows[0].client_thumbnail_ref, {
+    jobId: "job",
+    index: -1,
+    version: row.updated_at
+  });
+  assert.equal(row.result_json.items[0].thumbnail_ref, undefined);
   image.resolve("signed");
   await pending;
   assert.equal(reviews[1].metadata.previewsOnly, true);
-  assert.equal(reviews[1].rows[0].result_json.items[0].technical_drawing.drawing_url, "signed");
+  assert.equal(reviews[1].rows[0].result_json.items[0].image_url, "signed");
+  assert.deepEqual(
+    reviews[1].rows[0].result_json.items[0].thumbnail_ref,
+    reviews[0].rows[0].result_json.items[0].thumbnail_ref
+  );
 });
 
 test("concurrent reads share one request, but a save during it triggers a fresh read", async () => {
@@ -238,7 +245,7 @@ function database(handler) {
     from(table) {
       const query = { table, filters: [] };
       const builder = {};
-      for (const method of ["select", "in", "or", "order", "limit", "eq", "range"])
+      for (const method of ["select", "in", "or", "order", "limit"])
         builder[method] = (...args) => {
           query.filters.push([method, ...args]);
           return builder;
@@ -267,15 +274,7 @@ test("client list renders while progress and image signing are still pending; fo
             id: "own",
             project_id: "project",
             user_id: ownerId,
-            result_json: {
-              items: [
-                {
-                  image_storage_bucket: "b",
-                  image_storage_path: "p",
-                  technical_drawing: { storage_bucket: "b", drawing_storage_path: "d" }
-                }
-              ]
-            }
+            result_json: { items: [{ image_storage_bucket: "b", image_storage_path: "p" }] }
           },
           { id: "foreign", project_id: "other-project", user_id: otherId }
         ]
@@ -286,7 +285,6 @@ test("client list renders while progress and image signing are still pending; fo
     client,
     ownerId,
     isStaff: false,
-    selection: { scope: "client", projectId: "project" },
     previews: { sign: (_client, bucket) => (bucket ? images.promise : Promise.resolve("")) },
     onClientRows: (rows) => observations.push(rows),
     onReviewRows: () => assert.fail("client read staff data"),
@@ -316,7 +314,7 @@ test("client list renders while progress and image signing are still pending; fo
   images.resolve("signed-image");
   progress.resolve({ data: [] });
   await pending;
-  assert.equal(observations.at(-1)[0].result_json.items[0].technical_drawing.drawing_url, "signed-image");
+  assert.equal(observations.at(-1)[0].result_json.items[0].image_url, "signed-image");
   assert.equal(drawingCalls, 0);
 });
 
@@ -343,8 +341,4 @@ test("only projects with supplier drawings request their register; partial table
   assert.equal(result.productionUpdates.length, 1);
   assert.equal("shipments" in result, false);
   assert.equal(errors.length, 1);
-});
-
-test("directory never requests complete jobs before selection", async () => {
-  await readPortalWorkspace({ client: { from: () => assert.fail("full data read") }, ownerId, isStaff: true });
 });

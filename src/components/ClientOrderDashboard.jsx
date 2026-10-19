@@ -147,6 +147,15 @@ const getProjectImage = (project) => {
   return "";
 };
 
+const getProjectThumbnail = (project) => {
+  for (const job of project.jobs || []) {
+    const item = (job.items || []).find((item) => item.imageUrl || item.thumbnailRef);
+    if (item) return item.thumbnailRef || null;
+    if (job.previewUrl || job.thumbnailRef) return job.thumbnailRef || null;
+  }
+  return null;
+};
+
 const getProjectStage = (project) => Math.max(...project.jobs.map(getOrderStage), 0);
 
 const getProjectStatus = (project, lang) => {
@@ -1930,8 +1939,6 @@ function ClientOrderDashboard({
   lang,
   clientName,
   projectGroups,
-  initialProjectKey = "",
-  onDirectoryBack,
   answerDrafts,
   answerStates,
   loading = false,
@@ -1945,10 +1952,7 @@ function ClientOrderDashboard({
   onProjectFileUpload,
   onReferenceImageUpload
 }) {
-  const [projectPageKey, setProjectPageKey] = useState(initialProjectKey);
-  useEffect(() => {
-    if (initialProjectKey) setProjectPageKey(initialProjectKey);
-  }, [initialProjectKey]);
+  const [projectPageKey, setProjectPageKey] = useState("");
   const [deepLinkTrackingId, setDeepLinkTrackingId] = useState("");
 
   useEffect(() => {
@@ -2045,7 +2049,6 @@ function ClientOrderDashboard({
         onAnswerInput={onAnswerInput}
         onSubmitAnswers={onSubmitAnswers}
         onBack={() => {
-          onDirectoryBack?.();
           setProjectPageKey("");
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
@@ -2246,7 +2249,12 @@ function ClientOrderDashboard({
                       aria-label={`${copy(lang, "打开项目", "Open project")} ${project.projectName}`}
                       key={project.key}
                     >
-                      <ProductImage src={image} alt={project.projectName} className="cho-client-project-image" />
+                      <ProductImage
+                        src={image}
+                        reference={getProjectThumbnail(project)}
+                        alt={project.projectName}
+                        className="cho-client-project-image"
+                      />
                       <span className="cho-client-project-number">{String(projectIndex + 1).padStart(2, "0")}</span>
                       <div className="cho-client-project-copy">
                         <div className="cho-client-project-title-row">
