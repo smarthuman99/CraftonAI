@@ -70,7 +70,7 @@ export default function PortalDirectory({
       .then(({ data: result, error: failure }) => {
         if (requestId.current !== id) return;
         if (failure) throw failure;
-        setData(result);
+        setData({ ...result, view });
         setBusy(false);
         console.info(
           `[Crafton directory] ${scope}/${view}: ${Math.round(window.performance.now() - started)} ms; ${new window.TextEncoder().encode(JSON.stringify(result)).length} bytes; ${result.rows.length} rows`
@@ -221,7 +221,7 @@ export default function PortalDirectory({
           </p>
         )}
         {opening && <p role="status">{copy(lang, "正在打开完整项目…", "Opening project details…")}</p>}
-        {busy ? (
+        {busy || data?.view !== view ? (
           <p role="status">{copy(lang, "正在加载…", "Loading…")}</p>
         ) : (
           <>

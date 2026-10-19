@@ -5728,7 +5728,7 @@ function App() {
     const epoch = portalEpochRef.current;
     const selection = portalSelectionRef.current;
     const current = () => portalEpochRef.current === epoch && portalSelectionRef.current === selection;
-    setPortalDirectoryRevision((value) => value + 1);
+    if (!selection) setPortalDirectoryRevision((value) => value + 1);
     const promise = portalRefreshRef.current.run(
       `workspace:${epoch}:${selection?.scope}:${selection?.projectId || selection?.jobId || "directory"}`,
       async () => {
