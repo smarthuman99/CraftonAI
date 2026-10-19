@@ -32,6 +32,7 @@ jobs:
           npm run test:project-editing
           npm run test:intake
           npm run test:performance
+          node --test src/intakeEvidenceView.test.mjs
           python3 server/configure-thumbnail-cache.test.py
           node --test src/customerServiceCopy.test.mjs server/lib/aiSupportAgent.test.mjs server/lib/technicalDrawing.test.mjs server/lib/projectLifecycle.test.mjs server/lib/rfqSourceData.test.mjs
 

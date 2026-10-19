@@ -8478,7 +8478,11 @@ function App() {
             </div>
           </section>
 
-          <IntakeEvidenceReview result={safeJsonObject(selectedJob?.result_json, {})} lang={lang} />
+          <IntakeEvidenceReview
+            key={selectedJob?.id}
+            result={safeJsonObject(selectedJob?.result_json, {})}
+            lang={lang}
+          />
 
           {hasClarificationAnalysis && (
             <section
