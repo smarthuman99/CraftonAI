@@ -13,6 +13,7 @@ import { reanalyzeIntakeClarifications } from "./lib/intakeClarificationReanalys
 import { attachIntakeItemReference } from "./lib/intakeItemReference.mjs";
 import { changeProjectLifecycle } from "./lib/projectLifecycle.mjs";
 import { clientProjectCommand } from "./lib/clientProjectEditing.mjs";
+import { portalThumbnail } from "./lib/portalThumbnail.mjs";
 import {
   analyzeProductionProject,
   approveSupplierProductionPlan,
@@ -63,7 +64,11 @@ const server = http.createServer(async (req, res) => {
     let result;
 
     if (req.url === "/api/ai-support-chat") {
-      if (body.action === "client_project_edit") {
+      if (body.action === "portal_thumbnail") {
+        res.setHeader("Cache-Control", "private, no-store");
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        result = await portalThumbnail({ supabase, user, body });
+      } else if (body.action === "client_project_edit") {
         const { supabase, user } = await requireAuthenticatedUser(req);
         result = await clientProjectCommand({ supabase, user, body });
       } else if (body.action === "generate_rfq") {

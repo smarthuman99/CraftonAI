@@ -1,3 +1,4 @@
+import PortalImage from "./PortalImage.jsx";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PaginationControls, usePaginatedRows } from "./ListPagination.jsx";
 import { createPortal } from "react-dom";
@@ -355,14 +356,14 @@ function DrawingTrackingPanel({ lang, preview, legacy = false }) {
   );
 }
 
-function ProductImage({ src, alt, className = "" }) {
-  if (src) return <img className={className} src={src} alt={alt} loading="lazy" />;
+function ProductImage({ src, reference, alt, className = "" }) {
+  if (src || reference) return <PortalImage className={className} reference={reference} src={src} alt={alt} />;
   return (
     <span className={`cho-client-image-placeholder ${className}`}>{copy("En", "图片待上传", "Reference pending")}</span>
   );
 }
 
-function ItemReferenceImageControl({ lang, src, alt, state = {}, disabled = false, onChoose, onCandidate }) {
+function ItemReferenceImageControl({ lang, src, reference, alt, state = {}, disabled = false, onChoose, onCandidate }) {
   const statusLabel =
     state.status === "uploading"
       ? copy(lang, "上传中", "Uploading")
@@ -400,7 +401,11 @@ function ItemReferenceImageControl({ lang, src, alt, state = {}, disabled = fals
       aria-label={actionLabel}
       title={state.message || actionLabel}
     >
-      {src ? <img src={src} alt={alt} loading="lazy" /> : <i className="fa-regular fa-image" aria-hidden="true"></i>}
+      {src || reference ? (
+        <PortalImage reference={reference} src={src} alt={alt} />
+      ) : (
+        <i className="fa-regular fa-image" aria-hidden="true"></i>
+      )}
       <span>{statusLabel}</span>
     </button>
   );
@@ -571,7 +576,11 @@ function ItemTrackingSheet({ lang, project, job, item, onOpenDrawing, onClose })
         </header>
 
         <div className="cho-project-action-sheet-identity cho-item-tracking-identity">
-          <ProductImage src={item.imageUrl || job.previewUrl} alt={itemName} />
+          <ProductImage
+            reference={item.thumbnailRef || job.thumbnailRef}
+            src={item.imageUrl || job.previewUrl}
+            alt={itemName}
+          />
           <div>
             <h2 id="cho-item-tracking-title">{itemName}</h2>
             <p>{sku}</p>
@@ -1475,6 +1484,7 @@ function ClientProjectDetail({
                   <div className="cho-project-item" role="cell" data-label={copy(lang, "产品", "Item")}>
                     <ItemReferenceImageControl
                       lang={lang}
+                      reference={item.thumbnailRef || job.thumbnailRef}
                       src={item.imageUrl || job.previewUrl}
                       alt={itemName}
                       state={referenceState(itemKey)}
@@ -1572,7 +1582,12 @@ function ClientProjectDetail({
                         }}
                         title={copy(lang, "打开家具三视图", "Open furniture three-view")}
                       >
-                        <img src={drawingUrl} alt="" aria-hidden="true" loading="lazy" decoding="async" />
+                        <PortalImage
+                          reference={item.technicalDrawing?.thumbnailRef}
+                          src={drawingUrl}
+                          alt=""
+                          aria-hidden="true"
+                        />
                         <span>
                           {drawingIsFormal ? copy(lang, "正式图纸", "Formal") : copy(lang, "概念参考", "Concept")}
                         </span>
@@ -1915,6 +1930,8 @@ function ClientOrderDashboard({
   lang,
   clientName,
   projectGroups,
+  initialProjectKey = "",
+  onDirectoryBack,
   answerDrafts,
   answerStates,
   loading = false,
@@ -1928,7 +1945,10 @@ function ClientOrderDashboard({
   onProjectFileUpload,
   onReferenceImageUpload
 }) {
-  const [projectPageKey, setProjectPageKey] = useState("");
+  const [projectPageKey, setProjectPageKey] = useState(initialProjectKey);
+  useEffect(() => {
+    if (initialProjectKey) setProjectPageKey(initialProjectKey);
+  }, [initialProjectKey]);
   const [deepLinkTrackingId, setDeepLinkTrackingId] = useState("");
 
   useEffect(() => {
@@ -2025,6 +2045,7 @@ function ClientOrderDashboard({
         onAnswerInput={onAnswerInput}
         onSubmitAnswers={onSubmitAnswers}
         onBack={() => {
+          onDirectoryBack?.();
           setProjectPageKey("");
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
@@ -2301,7 +2322,11 @@ function ClientOrderDashboard({
                         key={`${job.id}-${item.id}`}
                       >
                         <span className="cho-client-tracker-product" role="cell">
-                          <ProductImage src={item.imageUrl || job.previewUrl} alt={itemName} />
+                          <ProductImage
+                            reference={item.thumbnailRef || job.thumbnailRef}
+                            src={item.imageUrl || job.previewUrl}
+                            alt={itemName}
+                          />
                           <strong>{itemName}</strong>
                         </span>
                         <span role="cell" data-label={copy(lang, "项目", "Project")}>

@@ -21,7 +21,7 @@ const progressTables = [
   ["workflow_events", "workflowEvents"]
 ];
 
-export async function signIntakeRows(client, rows, previews) {
+export async function signIntakeRows(client, rows, previews, { thumbnails = false } = {}) {
   return Promise.all(
     rows.map(async (row) => {
       const result = object(row.result_json);
@@ -29,7 +29,9 @@ export async function signIntakeRows(client, rows, previews) {
         (Array.isArray(result.items) ? result.items : []).map(async (item) => {
           const drawing = object(item.technical_drawing || item.technicalDrawing);
           const [image, main, draft, formal] = await Promise.all([
-            previews.sign(client, item.image_storage_bucket, item.image_storage_path),
+            thumbnails
+              ? Promise.resolve("")
+              : previews.sign(client, item.image_storage_bucket, item.image_storage_path),
             previews.sign(client, drawing.storage_bucket, drawing.drawing_storage_path),
             previews.sign(client, drawing.storage_bucket, drawing.draft_storage_path),
             previews.sign(client, drawing.storage_bucket, drawing.formal_storage_path)
@@ -49,9 +51,10 @@ export async function signIntakeRows(client, rows, previews) {
         })
       );
       const file = Array.isArray(row.intake_files) ? row.intake_files[0] : row.intake_files;
-      const source = file?.mime_type?.startsWith("image/")
-        ? previews.sign(client, file.storage_bucket, file.storage_path)
-        : Promise.resolve("");
+      const source =
+        !thumbnails && file?.mime_type?.startsWith("image/")
+          ? previews.sign(client, file.storage_bucket, file.storage_path)
+          : Promise.resolve("");
       const [items, preview] = await Promise.all([itemsPromise, source]);
       return { ...row, client_preview_url: preview || row.client_preview_url || "", result_json: { ...result, items } };
     })
@@ -97,6 +100,7 @@ export async function readPortalWorkspace({
   client,
   ownerId,
   isStaff,
+  selection,
   previews,
   onClientRows,
   onReviewRows,
@@ -105,19 +109,66 @@ export async function readPortalWorkspace({
   loadDrawings,
   onTiming = () => {}
 }) {
+  // Directories use the compact RPC. Full source records only enter an opened project.
+  if (!selection) return;
+  const staff = selection.scope === "staff";
+  if (staff && !isStaff) throw new Error("Staff access required.");
+  if (!selection.projectId && !selection.jobId) throw new Error("Select a project first.");
   const started = performance.now();
-  const timing = (phase) => onTiming(phase, Math.round(performance.now() - started));
-  // Keep complete source records for existing evidence review and edit/approval writes.
-  // List pagination must use a separate summary contract before these can be pruned.
-  const clientRead = async () => {
-    const { data, error } = await client
+  let rows = [];
+  for (let offset = 0; ; offset += 500) {
+    let query = client
       .from("intake_jobs")
       .select("*, intake_files(*), projects(*)")
-      .or(buildPortalOwnershipFilter(ownerId))
+      .eq(selection.projectId ? "project_id" : "id", selection.projectId || selection.jobId)
       .order("created_at", { ascending: false })
-      .limit(1000);
+      .order("id", { ascending: false })
+      .range(offset, offset + 499);
+    if (!staff) query = query.or(buildPortalOwnershipFilter(ownerId));
+    const { data, error } = await query;
     if (error) throw error;
-    let rows = filterPortalJobsForOwner(data || [], ownerId);
+    rows.push(...(data || []));
+    if ((data || []).length < 500) break;
+  }
+  if (!staff) rows = filterPortalJobsForOwner(rows, ownerId);
+  if (!rows.length) throw new Error("Project not found or access denied.");
+  rows = rows.map((row) => {
+    const result = object(row.result_json),
+      file = Array.isArray(row.intake_files) ? row.intake_files[0] : row.intake_files;
+    return {
+      ...row,
+      client_thumbnail_ref: file?.mime_type?.startsWith("image/")
+        ? { jobId: row.id, index: -1, version: row.updated_at }
+        : null,
+      result_json: {
+        ...result,
+        items: (result.items || []).map((item, index) => ({
+          ...item,
+          thumbnail_ref: item.image_storage_path ? { jobId: row.id, index, version: row.updated_at } : null,
+          drawing_thumbnail_ref: item.technical_drawing?.storage_bucket
+            ? { jobId: row.id, index, version: row.updated_at, kind: "drawing" }
+            : null
+        }))
+      }
+    };
+  });
+  if (staff) {
+    const ids = [...new Set(rows.map(getPortalJobOwnerId).filter(Boolean))];
+    const { data, error } = ids.length
+      ? await client.from("user_profiles").select("user_id,public_id,full_name,company").in("user_id", ids)
+      : { data: [] };
+    if (error) {
+      onReviewError(error);
+      throw error;
+    }
+    const profiles = new Map((data || []).map((profile) => [profile.user_id, profile]));
+    rows = rows
+      .filter(activeProjectJob)
+      .map((row) => ({ ...row, owner_profile: profiles.get(getPortalJobOwnerId(row)) || null }));
+    onReviewRows(rows, { previewsOnly: false });
+    onTiming("admin-project-data", Math.round(performance.now() - started));
+    onReviewRows(await signIntakeRows(client, rows, previews), { previewsOnly: true });
+  } else {
     let progress = null;
     const publish = () =>
       onClientRows(
@@ -135,56 +186,17 @@ export async function readPortalWorkspace({
             : row
         )
       );
-    publish(); // Show the list before Storage signatures, progress or drawing requests.
-    timing("client-list-data");
+    publish();
+    onTiming("client-project-data", Math.round(performance.now() - started));
     await Promise.all([
       signIntakeRows(client, rows, previews).then((signed) => {
         rows = signed;
         publish();
       }),
-      readClientProgress(client, rows, loadDrawings, onProgressError)
-        .then((value) => {
-          progress = value;
-          publish();
-        })
-        .catch(onProgressError)
+      readClientProgress(client, rows, loadDrawings, onProgressError).then((value) => {
+        progress = value;
+        publish();
+      })
     ]);
-    timing("client-enrichment");
-  };
-  const staffRead = async () => {
-    if (!isStaff) return;
-    try {
-      const { data, error } = await client
-        .from("intake_jobs")
-        .select("*, intake_files(*), projects(*)")
-        .in("status", ["queued", "processing", "needs_review", "completed"])
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (error) throw error;
-      const rows = data || [];
-      const ids = [...new Set(rows.map(getPortalJobOwnerId).filter(Boolean))];
-      const signing = signIntakeRows(client, rows, previews).catch((error) => {
-        onProgressError(error);
-        return rows;
-      });
-      const profiles = await (ids.length
-        ? client.from("user_profiles").select("user_id,public_id,full_name,company").in("user_id", ids)
-        : { data: [] });
-      if (profiles.error) throw profiles.error;
-      const byId = new Map((profiles.data || []).map((profile) => [String(profile.user_id), profile]));
-      const withOwners = (records) =>
-        records
-          .filter(activeProjectJob)
-          .map((row) => ({ ...row, owner_profile: byId.get(getPortalJobOwnerId(row)) || null }));
-      onReviewRows(withOwners(rows), { previewsOnly: false });
-      timing("admin-list-data");
-      onReviewRows(withOwners(await signing), { previewsOnly: true });
-      timing("admin-previews");
-    } catch (error) {
-      onReviewError(error);
-    }
-  };
-  const results = await Promise.allSettled([clientRead(), staffRead()]);
-  const failed = results.find((result) => result.status === "rejected");
-  if (failed) throw failed.reason;
+  }
 }

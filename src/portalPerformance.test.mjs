@@ -69,7 +69,16 @@ test("admin list does not wait for Storage signatures", async () => {
   const row = {
     id: "job",
     user_id: ownerId,
-    result_json: { items: [{ id: "chair", image_storage_bucket: "b", image_storage_path: "p" }] }
+    result_json: {
+      items: [
+        {
+          id: "chair",
+          image_storage_bucket: "b",
+          image_storage_path: "p",
+          technical_drawing: { storage_bucket: "b", drawing_storage_path: "d" }
+        }
+      ]
+    }
   };
   const client = database(({ table, filters }) => {
     if (table === "user_profiles") return { data: [{ user_id: ownerId, full_name: "QA" }] };
@@ -80,6 +89,7 @@ test("admin list does not wait for Storage signatures", async () => {
     client,
     ownerId,
     isStaff: true,
+    selection: { scope: "staff", jobId: "job" },
     previews: { sign: (_client, bucket) => (bucket ? image.promise : Promise.resolve("")) },
     onClientRows: () => {},
     onReviewRows: (rows, metadata) => reviews.push({ rows, metadata }),
@@ -94,7 +104,7 @@ test("admin list does not wait for Storage signatures", async () => {
   image.resolve("signed");
   await pending;
   assert.equal(reviews[1].metadata.previewsOnly, true);
-  assert.equal(reviews[1].rows[0].result_json.items[0].image_url, "signed");
+  assert.equal(reviews[1].rows[0].result_json.items[0].technical_drawing.drawing_url, "signed");
 });
 
 test("concurrent reads share one request, but a save during it triggers a fresh read", async () => {
@@ -228,7 +238,7 @@ function database(handler) {
     from(table) {
       const query = { table, filters: [] };
       const builder = {};
-      for (const method of ["select", "in", "or", "order", "limit"])
+      for (const method of ["select", "in", "or", "order", "limit", "eq", "range"])
         builder[method] = (...args) => {
           query.filters.push([method, ...args]);
           return builder;
@@ -257,7 +267,15 @@ test("client list renders while progress and image signing are still pending; fo
             id: "own",
             project_id: "project",
             user_id: ownerId,
-            result_json: { items: [{ image_storage_bucket: "b", image_storage_path: "p" }] }
+            result_json: {
+              items: [
+                {
+                  image_storage_bucket: "b",
+                  image_storage_path: "p",
+                  technical_drawing: { storage_bucket: "b", drawing_storage_path: "d" }
+                }
+              ]
+            }
           },
           { id: "foreign", project_id: "other-project", user_id: otherId }
         ]
@@ -268,6 +286,7 @@ test("client list renders while progress and image signing are still pending; fo
     client,
     ownerId,
     isStaff: false,
+    selection: { scope: "client", projectId: "project" },
     previews: { sign: (_client, bucket) => (bucket ? images.promise : Promise.resolve("")) },
     onClientRows: (rows) => observations.push(rows),
     onReviewRows: () => assert.fail("client read staff data"),
@@ -297,7 +316,7 @@ test("client list renders while progress and image signing are still pending; fo
   images.resolve("signed-image");
   progress.resolve({ data: [] });
   await pending;
-  assert.equal(observations.at(-1)[0].result_json.items[0].image_url, "signed-image");
+  assert.equal(observations.at(-1)[0].result_json.items[0].technical_drawing.drawing_url, "signed-image");
   assert.equal(drawingCalls, 0);
 });
 
@@ -324,4 +343,8 @@ test("only projects with supplier drawings request their register; partial table
   assert.equal(result.productionUpdates.length, 1);
   assert.equal("shipments" in result, false);
   assert.equal(errors.length, 1);
+});
+
+test("directory never requests complete jobs before selection", async () => {
+  await readPortalWorkspace({ client: { from: () => assert.fail("full data read") }, ownerId, isStaff: true });
 });

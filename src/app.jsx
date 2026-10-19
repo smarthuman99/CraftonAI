@@ -22,6 +22,8 @@ import ProjectDetailModal from "./components/ProjectDetailModal";
 import Footer from "./components/Footer";
 import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
 import { readPortalWorkspace } from "./portalWorkspace.mjs";
+import PortalImage, { PortalImageProvider } from "./components/PortalImage.jsx";
+const PortalDirectory = deferredWorkspace(() => import("./components/PortalDirectory.jsx"));
 import { deferredWorkspace } from "./components/DeferredWorkspace.jsx";
 import {
   clearVerifiedBrowserUser,
@@ -513,6 +515,7 @@ const normalizeTechnicalDrawing = (item = {}) => {
     reviewStatus: drawing.review_status || drawing.reviewStatus || "pending_admin",
     currentRevision: drawing.current_revision || drawing.currentRevision || "R00",
     revisions: Array.isArray(drawing.revisions) ? drawing.revisions : [],
+    thumbnailRef: item.drawing_thumbnail_ref || null,
     url: drawing.drawing_url || drawing.url || "",
     draftUrl: drawing.draft_url || drawing.draftUrl || "",
     formalUrl: drawing.formal_url || drawing.formalUrl || "",
@@ -635,6 +638,7 @@ const normalizeReviewJob = (job = {}) => {
     projectLifecycleUpdatedAt: linkedProject.lifecycle_updated_at || projectLifecycle.updated_at || "",
     clientProgress: safeJsonObject(job.client_progress, {}),
     fileName: intakeFile?.original_name || job.fileName || "",
+    thumbnailRef: job.client_thumbnail_ref || null,
     previewUrl: job.client_preview_url || job.previewUrl || result.preview_url || "",
     dimensions: dimensionsText,
     tolerance: result.tolerance || firstItem.tolerance || "",
@@ -680,6 +684,7 @@ const normalizeReviewJob = (job = {}) => {
       quantityReconciliation: item.quantity_reconciliation || item.quantityReconciliation || null,
       variantOptions: item.variant_options || item.variantOptions || [],
       imageUrl: item.image_url || item.imageUrl || item.preview_url || "",
+      thumbnailRef: item.thumbnail_ref || null,
       technicalDrawing: normalizeTechnicalDrawing(item)
     })),
     payments: payments.map((payment, idx) => ({
@@ -1246,6 +1251,9 @@ function App() {
     message: ""
   });
   const [clientProjectJobs, setClientProjectJobs] = useState([]);
+  const portalSelectionRef = useRef(null);
+  const [portalDirectoryRevision, setPortalDirectoryRevision] = useState(0);
+  const [clientDetailKey, setClientDetailKey] = useState("");
   const [clientProjectsLoading, setClientProjectsLoading] = useState(true);
   const [clientAnswerDrafts, setClientAnswerDrafts] = useState({});
   const [clientAnswerSubmitState, setClientAnswerSubmitState] = useState({});
@@ -1697,6 +1705,9 @@ function App() {
 
   const resetClientPortalAccountData = () => {
     portalEpochRef.current += 1;
+    portalSelectionRef.current = null;
+    setClientDetailKey("");
+    setPortalDirectoryRevision(0);
     portalRefreshRef.current = createRefreshQueue();
     previewCacheRef.current = createSignedPreviewCache();
     reviewDataVersionRef.current += 1;
@@ -5655,8 +5666,12 @@ function App() {
 
   const loadAdminOperationalData = (options = {}) => {
     const epoch = portalEpochRef.current;
-    const projectId = order?.id || "";
-    const current = () => portalEpochRef.current === epoch && operationalProjectRef.current === projectId;
+    const projectId = portalSelectionRef.current?.projectId || "";
+    if (!projectId) {
+      resetAdminOperationalData();
+      return Promise.resolve();
+    }
+    const current = () => portalEpochRef.current === epoch && portalSelectionRef.current?.projectId === projectId;
     return portalRefreshRef.current.run(
       `operations:${epoch}:${projectId}`,
       async () => {
@@ -5691,9 +5706,12 @@ function App() {
         const missingTables = [];
         await Promise.all(
           tableSpecs.map(async (spec) => {
-            let result = await queryOptionalAdminTable(context.client, spec.key, { select: spec.select || "*" });
+            let result = await queryOptionalAdminTable(context.client, spec.key, {
+              select: spec.select || "*",
+              projectId
+            });
             if (result.error && spec.select && spec.select !== "*") {
-              result = await queryOptionalAdminTable(context.client, spec.key, { select: "*" });
+              result = await queryOptionalAdminTable(context.client, spec.key, { select: "*", projectId });
             }
             if (current()) spec.setter(result.rows);
             if (result.missing) missingTables.push(spec.key);
@@ -5708,15 +5726,18 @@ function App() {
 
   const loadPrequoteWorkspace = (options = {}) => {
     const epoch = portalEpochRef.current;
-    const current = () => portalEpochRef.current === epoch;
+    const selection = portalSelectionRef.current;
+    const current = () => portalEpochRef.current === epoch && portalSelectionRef.current === selection;
+    setPortalDirectoryRevision((value) => value + 1);
     const promise = portalRefreshRef.current.run(
-      `workspace:${epoch}`,
+      `workspace:${epoch}:${selection?.scope}:${selection?.projectId || selection?.jobId || "directory"}`,
       async () => {
         const blocking = !prequoteWorkspaceLoadedRef.current && !options.background;
         if (blocking) setClientProjectsLoading(true);
         const context = await getPortalSupabaseContext({ requireAuth: false });
         if (!current()) return;
         if (!context?.client) {
+          if (selection) throw new Error("Database connection unavailable. Please retry.");
           const localJobs = getLocalReviewJobs();
           setIntakeReviewJobs(localJobs);
           setClientProjectJobs(localJobs);
@@ -5728,6 +5749,7 @@ function App() {
           setIntakeReviewJobs([]);
           if (!user?.isDemo) setClientProjectJobs([]);
           setClientProjectsLoading(false);
+          if (selection) throw new Error("Please sign in again to open this project.");
           return;
         }
         const { client, supabaseUser } = context;
@@ -5737,10 +5759,17 @@ function App() {
           setAdminAccessStatus("forbidden");
           setIntakeReviewJobs([]);
         }
+        if (!selection) {
+          setClientProjectsLoading(false);
+          setAdminAccessStatus(isStaff ? "ready" : "forbidden");
+          prequoteWorkspaceLoadedRef.current = true;
+          return;
+        }
         let publishedReviewRows = null;
         try {
           await readPortalWorkspace({
             client,
+            selection,
             ownerId: String(supabaseUser.id),
             isStaff,
             previews: previewCacheRef.current,
@@ -5785,6 +5814,7 @@ function App() {
         } catch (error) {
           console.warn("Pre-quote workspace could not be loaded:", error.message || error);
           if (current() && !prequoteWorkspaceLoadedRef.current) setClientProjectJobs([]);
+          if (selection) throw error;
         } finally {
           if (current()) setClientProjectsLoading(false);
         }
@@ -6524,16 +6554,9 @@ function App() {
   // Identity changes are the single entry point; changing language does not reload data.
   useEffect(() => {
     if (!supabaseAuthReady || !supabaseSessionUser) return undefined;
-    const epoch = portalEpochRef.current;
-    let cancelled = false;
     syncAuthenticatedUserProfile(supabaseSessionUser).catch((error) => console.warn("Profile sync failed:", error));
     if (mapSupabaseUserToAppUser(supabaseSessionUser).isSupplier) return undefined;
-    const tracker = async () => {
-      await fetchSupabaseData();
-      if (!cancelled && portalEpochRef.current === epoch) await loadLatestSubmittedTrackerProject();
-    };
     Promise.allSettled([
-      tracker(),
       loadPrequoteWorkspace({ invalidate: false }),
       loadAdminOperationalData({ invalidate: false })
     ]).then((results) =>
@@ -6541,9 +6564,6 @@ function App() {
         if (result.status === "rejected") console.warn("Portal initialization failed:", result.reason);
       })
     );
-    return () => {
-      cancelled = true;
-    };
   }, [supabaseAuthReady, supabaseSessionUser?.id, dbUrl, dbKey]);
 
   // Use the latest render's loaders, but coalesce bursts into one refresh per area.
@@ -6571,8 +6591,8 @@ function App() {
         pending.clear();
         const loaders = realtimeLoadersRef.current;
         const tasks = {
-          legacy: () => loaders.fetchSupabaseData(),
-          tracker: () => loaders.loadLatestSubmittedTrackerProject(),
+          legacy: () => loaders.loadPrequoteWorkspace({ background: true }),
+          tracker: () => Promise.resolve(),
           workspace: () => loaders.loadPrequoteWorkspace({ background: true }),
           operations: () => loaders.loadAdminOperationalData()
         };
@@ -7510,7 +7530,45 @@ function App() {
     return result;
   };
 
+  const openPortalProject = async (summary, scope = "client") => {
+    const selection = { projectId: summary.project_id || null, jobId: summary.job_id, scope };
+    portalSelectionRef.current = selection;
+    setClientProjectJobs([]);
+    setIntakeReviewJobs([]);
+    setReviewDraft(null);
+    setSelectedReviewJobId(summary.job_id);
+    await loadPrequoteWorkspace();
+    if (portalSelectionRef.current !== selection) return;
+    if (scope === "staff") {
+      const stage = Math.max(1, Math.min(17, Number(summary.stage) || 1));
+      setActiveAdminFlow(getAdminPortfolioFlow(stage));
+      setCurrentStageIndex(stage - 1);
+      setAdminWorkspaceMode("project");
+      loadAdminOperationalData();
+    } else setClientDetailKey(summary.project_id || summary.job_id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const renderPortalDirectory = (scope) => (
+    <PortalDirectory
+      key={`${supabaseSessionUser.id}:${scope}`}
+      client={getSupabaseBrowserClient()}
+      scope={scope}
+      lang={lang}
+      clientName={user?.name || user?.company || ""}
+      revision={portalDirectoryRevision}
+      onOpen={(summary) => openPortalProject(summary, scope)}
+      onNewOrder={() => setClientPortalTab("Intake")}
+      onBrowseFurniture={() => {
+        setMarketingTab("SetFurniture");
+        setCurrentStageView("Marketing");
+      }}
+    />
+  );
+
   const renderClientOrderDashboard = () => {
+    if (supabaseSessionUser && (!clientDetailKey || portalSelectionRef.current?.scope !== "client"))
+      return renderPortalDirectory("client");
     const forceEmptyDashboard =
       import.meta.env.DEV && new window.URLSearchParams(window.location.search).has("empty-dashboard");
     const dashboardJobs = getOwnedClientProjectJobs();
@@ -7528,6 +7586,16 @@ function App() {
       <ClientOrderDashboard
         lang={lang}
         clientName={user?.name || user?.company || ""}
+        initialProjectKey={supabaseSessionUser && clientDetailKey ? projectGroups[0]?.key || clientDetailKey : ""}
+        onDirectoryBack={
+          supabaseSessionUser
+            ? () => {
+                portalSelectionRef.current = null;
+                setClientDetailKey("");
+                setClientProjectJobs([]);
+              }
+            : undefined
+        }
         projectGroups={projectGroups}
         answerDrafts={clientAnswerDrafts}
         answerStates={clientAnswerSubmitState}
@@ -8587,10 +8655,10 @@ function App() {
                     <article className={`intake-next-item-row ${actionCount ? "needs-action" : ""}`} key={record.key}>
                       <div className="intake-next-item-identity">
                         <div className="intake-next-item-thumb">
-                          {itemImageUrl ? (
-                            <img src={itemImageUrl} alt="" />
+                          {itemImageUrl || item.thumbnailRef ? (
+                            <PortalImage src={itemImageUrl} reference={item.thumbnailRef} alt="" />
                           ) : drawingUrl ? (
-                            <img src={drawingUrl} alt="" />
+                            <PortalImage src={drawingUrl} reference={item.technicalDrawing?.thumbnailRef} alt="" />
                           ) : (
                             <span>{String(index + 1).padStart(2, "0")}</span>
                           )}
@@ -8610,7 +8678,11 @@ function App() {
                       <div className="intake-next-item-drawing" data-label="Drawing">
                         {drawingUrl ? (
                           <a href={drawingUrl} target="_blank" rel="noreferrer" title={`Open ${itemName} drawing`}>
-                            <img src={drawingUrl} alt={`${itemName} drawing`} />
+                            <PortalImage
+                              src={drawingUrl}
+                              reference={item.technicalDrawing?.thumbnailRef}
+                              alt={`${itemName} drawing`}
+                            />
                           </a>
                         ) : (
                           <span className="intake-next-drawing-placeholder">
@@ -8722,7 +8794,11 @@ function App() {
                     <button type="button" key={record.key} onClick={() => setIntakeDetailKey(record.key)}>
                       <span>
                         {record.drawingUrl ? (
-                          <img src={record.drawingUrl} alt="" />
+                          <PortalImage
+                            src={record.drawingUrl}
+                            reference={record.item.technicalDrawing?.thumbnailRef}
+                            alt=""
+                          />
                         ) : (
                           <i className="fa-regular fa-image" aria-hidden="true"></i>
                         )}
@@ -9361,8 +9437,9 @@ function App() {
                               key={item.id || `${item.typeEn}-${index}`}
                             >
                               <div className="intake-catalogue-preview-image">
-                                {itemImageUrl ? (
-                                  <img
+                                {itemImageUrl || item.thumbnailRef ? (
+                                  <PortalImage
+                                    reference={item.thumbnailRef}
                                     src={itemImageUrl}
                                     alt={item.typeEn || item.typeCn || "Set Furniture catalogue product"}
                                   />
@@ -9384,7 +9461,11 @@ function App() {
                     ) : (
                       <div className="intake-spec-thumb">
                         {orderPreviewUrl ? (
-                          <img src={orderPreviewUrl} alt="Generated specification thumbnail" />
+                          <PortalImage
+                            src={orderPreviewUrl}
+                            reference={draft?.thumbnailRef}
+                            alt="Generated specification thumbnail"
+                          />
                         ) : (
                           renderChairSVG(selectedFabric, selectedLeg)
                         )}
@@ -9440,7 +9521,11 @@ function App() {
                           <div className="intake-drawing-review-preview">
                             {drawingUrl ? (
                               <a href={drawingUrl} target="_blank" rel="noreferrer" title="Open full-size drawing">
-                                <img src={drawingUrl} alt={`${item.typeEn || item.typeCn || "Furniture"} three-view`} />
+                                <PortalImage
+                                  src={drawingUrl}
+                                  reference={drawing.thumbnailRef}
+                                  alt={`${item.typeEn || item.typeCn || "Furniture"} three-view`}
+                                />
                               </a>
                             ) : (
                               <div>
@@ -9969,6 +10054,12 @@ function App() {
   };
 
   const openBackofficeOverview = () => {
+    if (supabaseSessionUser) {
+      portalSelectionRef.current = null;
+      setClientDetailKey("");
+      setIntakeReviewJobs([]);
+      setReviewDraft(null);
+    }
     setAdminWorkspaceMode("overview");
     setAdminPortfolioClientKey("");
     setCurrentStageView("Backoffice");
@@ -10170,6 +10261,7 @@ function App() {
   };
 
   const renderAdminPortfolioOverview = () => {
+    if (supabaseSessionUser) return renderPortalDirectory("staff");
     const jobs = getAdminWorkspaceJobs();
     const clientGroups = buildClientGroupsFromJobs(jobs);
     const stageLabels = [
@@ -12001,7 +12093,7 @@ function App() {
   };
 
   console.log("=== APP RENDER STATEMENT REACHED ===");
-  return (
+  const appContent = (
     <div
       className={`crafton-app view-${currentView.toLowerCase()}`}
       data-view={currentView}
@@ -12022,7 +12114,12 @@ function App() {
         >
           <div style={{ maxWidth: "800px", margin: "0 auto" }}>
             <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "1.5rem"
+              }}
             >
               <h3 style={{ fontFamily: "var(--font-tech)", color: "var(--text-primary)", margin: 0 }}>
                 🔌 Supabase 實時數據庫連接 (Live Database Sync)
@@ -12042,7 +12139,12 @@ function App() {
             </div>
 
             <p
-              style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.5rem", lineHeight: "1.6" }}
+              style={{
+                fontSize: "0.85rem",
+                color: "var(--text-secondary)",
+                marginBottom: "1.5rem",
+                lineHeight: "1.6"
+              }}
             >
               {lang === "Cn"
                 ? "連接到您的 Supabase 實時雲數據庫。系統將直接從 projects, specifications 和 agent_logs 數據表中讀取和實時寫入數據。如果斷開，將優雅降級到本地模擬數據。"
@@ -15556,7 +15658,11 @@ function App() {
 
                 {/* Block 2: AI Computer Vision QA Diagnostics */}
                 <div
-                  style={{ borderTop: "1px solid rgba(124, 114, 103, 0.15)", paddingTop: "5rem", marginBottom: "5rem" }}
+                  style={{
+                    borderTop: "1px solid rgba(124, 114, 103, 0.15)",
+                    paddingTop: "5rem",
+                    marginBottom: "5rem"
+                  }}
                 >
                   <CVQASimulator lang={lang} selectedFabric={selectedFabric} selectedLeg={selectedLeg} />
                 </div>
@@ -17446,7 +17552,12 @@ function App() {
                           <div className="panel-header">
                             <div className="panel-title" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                               <svg
-                                style={{ width: "16px", height: "16px", flexShrink: 0, color: "var(--accent-primary)" }}
+                                style={{
+                                  width: "16px",
+                                  height: "16px",
+                                  flexShrink: 0,
+                                  color: "var(--accent-primary)"
+                                }}
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -18123,6 +18234,14 @@ function App() {
       {/* Premium Auth Gate Overlay */}
       {showAuthGate && renderAuthGate()}
     </div>
+  );
+  return (
+    <PortalImageProvider
+      key={supabaseSessionUser?.id || "demo"}
+      request={(body) => callWorkflowAi(getSupabaseBrowserClient(), body)}
+    >
+      {appContent}
+    </PortalImageProvider>
   );
 }
 
