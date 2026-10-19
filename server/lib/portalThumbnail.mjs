@@ -40,9 +40,16 @@ export function createThumbnailService({
   async function prune() {
     const names = (await fs.readdir(cacheDir)).filter((n) => /^[a-f0-9]{64}\.webp$/.test(n));
     if (names.length <= 512) return;
-    const files = await Promise.all(
-      names.map(async (name) => ({ name, at: (await fs.stat(path.join(cacheDir, name))).mtimeMs }))
-    );
+    const files = (
+      await Promise.all(
+        names.map(async (name) =>
+          fs
+            .stat(path.join(cacheDir, name))
+            .then((stat) => ({ name, at: stat.mtimeMs }))
+            .catch(() => null)
+        )
+      )
+    ).filter(Boolean);
     files.sort((a, b) => a.at - b.at);
     await Promise.all(
       files.slice(0, files.length - 480).map((f) => fs.unlink(path.join(cacheDir, f.name)).catch(() => {}))
@@ -86,7 +93,9 @@ export function createThumbnailService({
             if (!blob || blob.size > 20 * 1024 * 1024) throw error("Image exceeds preview limit.", 413);
             const image = await resize(Buffer.from(await blob.arrayBuffer()));
             await fs.mkdir(cacheDir, { recursive: true, mode: 0o700 });
-            await fs.writeFile(file, image, { mode: 0o600 });
+            const temporary = `${file}.${process.pid}.tmp`;
+            await fs.writeFile(temporary, image, { mode: 0o600 });
+            await fs.rename(temporary, file);
             await prune();
             return image;
           }).finally(() => pending.delete(key))

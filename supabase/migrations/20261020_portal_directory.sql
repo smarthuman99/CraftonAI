@@ -52,7 +52,9 @@ BEGIN
     'tracking',coalesce(item->>'tracking_id',item->>'trackingId',item->>'qr_tracking_id',item->>'qrTrackingId',item#>>'{technical_drawing,tracking_id}',item#>>'{technicalDrawing,trackingId}',''),
     'bucket',item->>'image_storage_bucket','path',item->>'image_storage_path',
     'drawing',jsonb_build_object('bucket',item#>>'{technical_drawing,storage_bucket}',
-      'path',coalesce(item#>>'{technical_drawing,formal_storage_path}',item#>>'{technical_drawing,drawing_storage_path}',item#>>'{technical_drawing,draft_storage_path}')));
+      'path',CASE WHEN item#>>'{technical_drawing,status}' IN ('formal','approved_for_manufacture')
+        THEN coalesce(nullif(item#>>'{technical_drawing,formal_storage_path}',''),nullif(item#>>'{technical_drawing,drawing_storage_path}',''))
+        ELSE coalesce(nullif(item#>>'{technical_drawing,draft_storage_path}',''),nullif(item#>>'{technical_drawing,drawing_storage_path}','')) END));
    s.items:=s.items||jsonb_build_array(small); s.pieces:=s.pieces+coalesce(n::numeric,0);
    IF s.cover IS NULL AND nullif(item->>'image_storage_path','') IS NOT NULL THEN s.cover:=jsonb_build_object('jobId',j.id,'index',idx,'version',j.updated_at); END IF;
    idx:=idx+1;

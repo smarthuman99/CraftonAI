@@ -120,6 +120,28 @@ test("directory migration: isolated Postgres, owner isolation, cursor traversal,
   });
   await t.test("write-through projection updates count, lifecycle, ownership and deletion", async () => {
     await db.exec("RESET ROLE");
+    for (const [status, expected] of [
+      ["draft", "current-draft.png"],
+      ["approved_for_manufacture", "approved.png"]
+    ]) {
+      await db.query(
+        `UPDATE intake_jobs SET result_json=jsonb_set(result_json,'{items,0,technical_drawing}',$2) WHERE id=$1`,
+        [
+          uuid(27),
+          JSON.stringify({
+            status,
+            storage_bucket: "private",
+            draft_storage_path: "current-draft.png",
+            formal_storage_path: "approved.png"
+          })
+        ]
+      );
+      assert.equal(
+        (await db.query("SELECT items#>>'{0,drawing,path}' path FROM portal_job_summaries WHERE job_id=$1", [uuid(27)]))
+          .rows[0].path,
+        expected
+      );
+    }
     await db.query(
       `UPDATE intake_jobs SET result_json=jsonb_set(result_json,'{items,0,quantity}','7'),review_status='revision_requested' WHERE id=$1`,
       [uuid(27)]
