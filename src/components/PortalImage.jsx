@@ -1,55 +1,123 @@
 import "./portalImage.css";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createThumbnailCache } from "../portalThumbnailCache.mjs";
+import { thumbnailReferenceKey } from "../../shared/portalThumbnailIdentity.mjs";
 const Context = createContext(null);
 export function PortalImageProvider({ request, children }) {
   const latest = useRef(request);
   latest.current = request;
-  const read = useMemo(() => createThumbnailCache((body) => latest.current(body)), []);
+  const read = useMemo(
+    () =>
+      createThumbnailCache((body, options) => latest.current(body, options), {
+        onTiming: (event) => console.info("[Crafton thumbnails]", JSON.stringify(event))
+      }),
+    []
+  );
   return <Context.Provider value={read}>{children}</Context.Provider>;
 }
 export default function PortalImage({ reference, src, alt = "", className = "", ...props }) {
   const read = useContext(Context),
-    node = useRef(null);
-  const [visible, setVisible] = useState(false),
-    [result, setResult] = useState(null);
-  const key = reference ? JSON.stringify(reference) : "";
+    started = useRef({ key: "", time: 0 }),
+    retries = useRef({ key: "", count: 0 });
+  const [node, setNode] = useState(null),
+    [result, setResult] = useState(null),
+    [priority, setPriority] = useState(1),
+    [retry, setRetry] = useState(0);
+  const key = reference ? thumbnailReferenceKey(reference) : "";
+  const serialized = reference ? JSON.stringify(reference) : "";
   useEffect(() => {
-    const target = node.current;
-    if (!target || !key || !read) return;
-    const observer = new window.IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "100px" }
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [key, read]);
-  useEffect(() => {
-    let cancelled = false;
-    if (visible && key && read)
-      read(JSON.parse(key))
+    if (!node || !key || !read) return;
+    let root = node.parentElement;
+    while (
+      root &&
+      root !== document.body &&
+      !(/auto|scroll/.test(window.getComputedStyle(root).overflowY) && root.scrollHeight > root.clientHeight)
+    )
+      root = root.parentElement;
+    if (root === document.body) root = null;
+    const height = root?.clientHeight || window.innerHeight;
+    let cancelled = false,
+      subscription;
+    const start = (visible) => {
+      if (visible) {
+        setPriority(0);
+        subscription?.prioritize();
+      }
+      if (subscription) return;
+      if (started.current.key !== key) started.current = { key, time: window.performance.now() };
+      subscription = read.subscribe(JSON.parse(serialized), visible ? 0 : 1);
+      subscription.promise
         .then((image) => {
-          if (!cancelled) setResult({ key, image });
+          if (!cancelled)
+            setResult((previous) => (previous?.key === key && previous.image === image ? previous : { key, image }));
         })
-        .catch(() => {
-          if (!cancelled) setResult({ key, image: "" });
+        .catch((error) => {
+          if (!cancelled && error.name !== "AbortError") setResult({ key, image: "" });
         });
+    };
+    const visible = new window.IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) start(true);
+      },
+      { root }
+    );
+    const nearby = new window.IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) start(false);
+      },
+      { root, rootMargin: `${height}px 0px` }
+    );
+    visible.observe(node);
+    nearby.observe(node);
     return () => {
       cancelled = true;
+      visible.disconnect();
+      nearby.disconnect();
+      subscription?.cancel();
     };
-  }, [key, read, visible]);
+  }, [key, serialized, read, node, retry]);
   // A failed thumbnail never falls back to downloading the original full-size image.
   const image = key && read ? (result?.key === key ? result.image : "") : src;
   return image ? (
-    <img {...props} ref={node} className={className} src={image} alt={alt} loading="lazy" decoding="async" />
+    <img
+      {...props}
+      ref={setNode}
+      className={className}
+      src={image}
+      alt={alt}
+      loading={key ? "eager" : "lazy"}
+      fetchpriority={priority === 0 ? "high" : "low"}
+      decoding="async"
+      onLoad={(event) => {
+        const element = event.currentTarget;
+        const resource = window.performance.getEntriesByName(element.currentSrc).at(-1);
+        if (key && started.current.key === key)
+          console.info(
+            "[Crafton thumbnails]",
+            JSON.stringify({
+              phase: "image",
+              kind: reference.kind || "image",
+              ms: Math.round(window.performance.now() - started.current.time),
+              downloadMs: resource ? Math.round(resource.duration) : null,
+              transferBytes: resource?.transferSize ?? null,
+              webpBytes: resource?.decodedBodySize ?? null,
+              width: element.naturalWidth,
+              height: element.naturalHeight
+            })
+          );
+      }}
+      onError={() => {
+        if (retries.current.key !== key) retries.current = { key, count: 0 };
+        if (key && read && retries.current.count++ < 1) {
+          read.invalidate(reference);
+          setResult(null);
+          setRetry((n) => n + 1);
+        }
+      }}
+    />
   ) : (
     <span
-      ref={node}
+      ref={setNode}
       className={`portal-image-placeholder ${className}`}
       role="img"
       aria-label={alt || "Reference pending"}

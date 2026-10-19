@@ -8,6 +8,7 @@ import {
   mergeReviewPreviewUrls
 } from "./portalPerformance.mjs";
 import { readPortalWorkspace, readClientProgress, signIntakeRows } from "./portalWorkspace.mjs";
+import { thumbnailSourceVersion } from "../shared/portalThumbnailIdentity.mjs";
 
 const deferred = () => {
   let resolve, reject;
@@ -95,13 +96,15 @@ test("admin list does not wait for Storage signatures", async () => {
   assert.equal(reviews[0].rows[0].owner_profile.full_name, "QA");
   assert.deepEqual(reviews[0].rows[0].result_json.items[0].thumbnail_ref, {
     jobId: "job",
+    projectId: null,
     index: 0,
-    version: row.updated_at
+    version: thumbnailSourceVersion({ bucket: "b", path: "p" }, "")
   });
   assert.deepEqual(reviews[0].rows[0].client_thumbnail_ref, {
     jobId: "job",
+    projectId: null,
     index: -1,
-    version: row.updated_at
+    version: thumbnailSourceVersion({ bucket: "b", path: "source" }, "")
   });
   assert.equal(row.result_json.items[0].thumbnail_ref, undefined);
   image.resolve("signed");

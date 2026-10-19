@@ -18148,7 +18148,7 @@ function App() {
   return (
     <PortalImageProvider
       key={supabaseSessionUser?.id || "demo"}
-      request={(body) => callWorkflowAi(getSupabaseBrowserClient(), body)}
+      request={(body, options) => callWorkflowAi(getSupabaseBrowserClient(), body, options)}
     >
       {appContent}
     </PortalImageProvider>

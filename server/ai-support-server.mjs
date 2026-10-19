@@ -14,6 +14,7 @@ import { attachIntakeItemReference } from "./lib/intakeItemReference.mjs";
 import { changeProjectLifecycle } from "./lib/projectLifecycle.mjs";
 import { clientProjectCommand } from "./lib/clientProjectEditing.mjs";
 import { portalThumbnail } from "./lib/portalThumbnail.mjs";
+import { portalThumbnailAssets } from "./lib/portalThumbnailAssets.mjs";
 import {
   analyzeProductionProject,
   approveSupplierProductionPlan,
@@ -52,6 +53,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url?.startsWith("/api/ai-support-chat?")) {
+    try {
+      const result = await portalThumbnailAssets.imageResponse(
+        new URL(req.url, "http://localhost"),
+        req.headers["if-none-match"]
+      );
+      res.writeHead(result.status, result.headers);
+      res.end(result.bytes);
+    } catch (error) {
+      res.setHeader("Cache-Control", "no-store");
+      sendJson(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Preview unavailable." });
+    }
+    return;
+  }
+
   if (req.method !== "POST") {
     sendJson(res, 404, { error: "Not found" });
     return;
@@ -64,7 +80,17 @@ const server = http.createServer(async (req, res) => {
     let result;
 
     if (req.url === "/api/ai-support-chat") {
-      if (body.action === "portal_thumbnail") {
+      if (body.action === "portal_thumbnail_batch") {
+        res.setHeader("Cache-Control", "private, no-store");
+        const started = performance.now();
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        const authorized = performance.now();
+        result = await portalThumbnailAssets.authorizeBatch({ supabase, user, body });
+        res.setHeader(
+          "Server-Timing",
+          `auth;dur=${Math.round(authorized - started)},previews;dur=${Math.round(performance.now() - authorized)}`
+        );
+      } else if (body.action === "portal_thumbnail") {
         res.setHeader("Cache-Control", "private, no-store");
         const { supabase, user } = await requireAuthenticatedUser(req);
         result = await portalThumbnail({ supabase, user, body });

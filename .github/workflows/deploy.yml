@@ -73,13 +73,14 @@ jobs:
           scp release.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
           scp server-release.tar.gz scripts/check-project-edit-schema.mjs ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
           
-      - name: Pause intake and drawing workers
+      - name: Pause background workers
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} 'bash -s' <<'REMOTE'
           set -euo pipefail
           test "$(id -u)" = "0"
           systemctl stop crafton-intake-worker.service crafton-technical-drawing-worker.service
-          if pgrep -f "^.*node .*server/(intake-worker|technical-drawing-worker)[.]mjs" >/dev/null; then
+          if systemctl cat crafton-thumbnail-worker.service >/dev/null 2>&1; then systemctl stop crafton-thumbnail-worker.service; fi
+          if pgrep -f "^.*node .*server/(intake-worker|technical-drawing-worker|portal-thumbnail-worker)[.]mjs" >/dev/null; then
             echo "An unmanaged worker is still running; aborting before migration."
             exit 1
           fi
@@ -183,11 +184,12 @@ jobs:
             if ! node --env-file="$old_env" "${{ secrets.VPS_TARGET_DIR }}/check-project-edit-schema.mjs" --wait; then
               # No runtime or frontend changes have been made yet.
               systemctl start crafton-intake-worker.service crafton-technical-drawing-worker.service
+              if systemctl cat crafton-thumbnail-worker.service >/dev/null 2>&1; then systemctl start crafton-thumbnail-worker.service; fi
               exit 1
             fi
             backup="/var/backups/crafton/${{ github.sha }}"
             install -d -m 700 "$backup"
-            tar --exclude=server/logs --exclude=node_modules -czf "$backup/runtime-before.tar.gz" -C "$runtime" server package.json package-lock.json
+            tar --exclude=server/logs --exclude=server/.cache --exclude=node_modules -czf "$backup/runtime-before.tar.gz" -C "$runtime" server package.json package-lock.json
             if [ -d "$runtime/shared" ]; then tar -czf "$backup/shared-before.tar.gz" -C "$runtime" shared; fi
 
             echo "Deploying Crafton AI runtime to: $runtime"
@@ -253,7 +255,7 @@ jobs:
 
             if [ "$(id -u)" = "0" ] && [ -f server/systemd/crafton-technical-drawing-worker.service ] && [ -f server/systemd/crafton-intake-worker.service ]; then
               node_binary="$(command -v node)"
-              for worker in crafton-intake-worker crafton-technical-drawing-worker; do
+              for worker in crafton-intake-worker crafton-technical-drawing-worker crafton-thumbnail-worker; do
                 sed \
                   -e "s|^WorkingDirectory=.*|WorkingDirectory=$runtime|" \
                   -e "s|^ExecStart=/usr/bin/node |ExecStart=$node_binary |" \
@@ -261,12 +263,16 @@ jobs:
                   > "/etc/systemd/system/$worker.service"
               done
               systemctl daemon-reload
+              # Generate existing private previews before publishing the new image client.
+              node --env-file=server/.env server/portal-thumbnail-worker.mjs --once --strict
               systemctl enable --now crafton-intake-worker.service crafton-technical-drawing-worker.service
-              systemctl restart crafton-intake-worker.service crafton-technical-drawing-worker.service
+              systemctl enable --now crafton-thumbnail-worker.service
+              systemctl restart crafton-intake-worker.service crafton-technical-drawing-worker.service crafton-thumbnail-worker.service
               sleep 5
-              systemctl is-active --quiet crafton-intake-worker.service crafton-technical-drawing-worker.service
+              systemctl is-active --quiet crafton-intake-worker.service crafton-technical-drawing-worker.service crafton-thumbnail-worker.service
               systemctl --no-pager --full status crafton-intake-worker.service | head -n 12
               systemctl --no-pager --full status crafton-technical-drawing-worker.service | head -n 12
+              systemctl --no-pager --full status crafton-thumbnail-worker.service | head -n 12
             else
               old_intake_pid="$(ps -eo pid=,args= | awk "/[i]ntake-worker[.]mjs/ { print \$1; exit }" || true)"
               if [ -n "$old_intake_pid" ]; then kill "$old_intake_pid" 2>/dev/null || true; fi
@@ -275,6 +281,8 @@ jobs:
               mkdir -p server/logs
               nohup node --env-file-if-exists=server/.env server/intake-worker.mjs > server/logs/intake-worker.log 2>&1 < /dev/null &
               nohup node --env-file-if-exists=server/.env server/technical-drawing-worker.mjs > server/logs/technical-drawing-worker.log 2>&1 < /dev/null &
+              node --env-file=server/.env server/portal-thumbnail-worker.mjs --once --strict
+              nohup node --env-file-if-exists=server/.env server/portal-thumbnail-worker.mjs > server/logs/thumbnail-worker.log 2>&1 < /dev/null &
             fi
           '
 
@@ -308,5 +316,14 @@ jobs:
           done
           rm -f "$release" "${{ secrets.VPS_TARGET_DIR }}/check-project-edit-schema.mjs"
           curl --fail --silent --show-error http://127.0.0.1:8787/health
-          systemctl is-active crafton-intake-worker.service crafton-technical-drawing-worker.service
+          systemctl is-active crafton-intake-worker.service crafton-technical-drawing-worker.service crafton-thumbnail-worker.service
+          REMOTE
+
+      - name: Restore background workers after a failed deployment
+        if: failure()
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} 'bash -s' <<'REMOTE'
+          for worker in crafton-intake-worker crafton-technical-drawing-worker crafton-thumbnail-worker; do
+            if systemctl cat "$worker.service" >/dev/null 2>&1; then systemctl start "$worker.service"; fi
+          done
           REMOTE

@@ -1,5 +1,6 @@
 import { buildPortalOwnershipFilter, filterPortalJobsForOwner, getPortalJobOwnerId } from "./portalOwnership.js";
 import { activeProjectJob } from "../shared/clientProjectEditing.mjs";
+import { drawingSource, thumbnailSourceVersion } from "../shared/portalThumbnailIdentity.mjs";
 
 const object = (value) => {
   if (typeof value === "string") {
@@ -28,15 +29,39 @@ function withPortalThumbnailRefs(rows) {
     return {
       ...row,
       client_thumbnail_ref: file?.mime_type?.startsWith("image/")
-        ? { jobId: row.id, index: -1, version: row.updated_at }
+        ? {
+            jobId: row.id,
+            projectId: row.project_id || null,
+            index: -1,
+            version: thumbnailSourceVersion({ bucket: file.storage_bucket, path: file.storage_path }, file.sha256 || "")
+          }
         : null,
       result_json: {
         ...result,
         items: (Array.isArray(result.items) ? result.items : []).map((item, index) => ({
           ...item,
-          thumbnail_ref: item.image_storage_path ? { jobId: row.id, index, version: row.updated_at } : null,
+          thumbnail_ref: item.image_storage_path
+            ? {
+                jobId: row.id,
+                projectId: row.project_id || null,
+                index,
+                version: thumbnailSourceVersion(
+                  { bucket: item.image_storage_bucket, path: item.image_storage_path },
+                  item.image_sha256 || item.image_uploaded_at || item.image_storage_paths?.[0]?.sha256 || ""
+                )
+              }
+            : null,
           drawing_thumbnail_ref: item.technical_drawing?.storage_bucket
-            ? { jobId: row.id, index, version: row.updated_at, kind: "drawing" }
+            ? {
+                jobId: row.id,
+                projectId: row.project_id || null,
+                index,
+                version: thumbnailSourceVersion(
+                  drawingSource(item.technical_drawing),
+                  item.technical_drawing.generated_at || item.technical_drawing.updated_at || ""
+                ),
+                kind: "drawing"
+              }
             : null
         }))
       }

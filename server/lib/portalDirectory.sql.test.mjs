@@ -25,6 +25,12 @@ test("directory migration: isolated Postgres, owner isolation, cursor traversal,
   );
   await db.exec(sql);
   await db.exec(sql);
+  const thumbnailSql = await fs.readFile(
+    new URL("../../supabase/migrations/20261020_portal_thumbnail_revisions.sql", import.meta.url),
+    "utf8"
+  );
+  await db.exec(thumbnailSql);
+  await db.exec(thumbnailSql);
   await db.query("INSERT INTO user_profiles VALUES($1,'Owner A',null),($2,'Owner B',null)", [owner, other]);
   for (let n = 1; n <= 27; n++) {
     const user = n === 27 ? other : owner;
@@ -65,6 +71,22 @@ test("directory migration: isolated Postgres, owner isolation, cursor traversal,
         args.view || "projects"
       ])
     ).rows[0].d;
+  await t.test("thumbnail versions follow source changes, never notes or job timestamps", async () => {
+    const get = async () =>
+      (await db.query("SELECT items,cover FROM portal_job_summaries WHERE job_id=$1", [uuid(1)])).rows[0];
+    const before = await get();
+    await db.query(
+      "UPDATE intake_jobs SET updated_at=now(),result_json=jsonb_set(result_json,'{notes}','\"Changed notes\"') WHERE id=$1",
+      [uuid(1)]
+    );
+    assert.deepEqual(await get(), before);
+    await db.query(
+      "UPDATE intake_jobs SET result_json=jsonb_set(result_json,'{items,0,image_sha256}','\"new-image\"') WHERE id=$1",
+      [uuid(1)]
+    );
+    assert.equal((await get()).items[0].revision, "new-image");
+    assert.notDeepEqual((await get()).cover, before.cover);
+  });
   await t.test("anonymous blocked and client cannot ask for staff scope or inspect the projection table", async () => {
     await db.exec("SET ROLE authenticated");
     await assert.rejects(rpc(), /Login required/);
