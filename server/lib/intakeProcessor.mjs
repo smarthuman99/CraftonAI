@@ -116,7 +116,7 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
       ? "Search all showcase/specification/option pages for the largest clearly labelled isolated product image, rather than defaulting to a summary-table thumbnail. IMG TBC, IMAGE TBC, NO IMAGE, NO ARMCHAIR and other placeholder/omission boxes are not product photos. Keep Collection/scheme alternatives separate; do not mix their materials or shapes. A printed Crib 5 requirement is not evidence that a product is certified. Preserve partial printed dimensions without guessing missing height, depth or mattress thickness."
       : "",
     officeDocument
-      ? "The readable source text preserves worksheet rows and EMBEDDED IMAGE N markers. Put that N in image_ref only when the marker belongs to the same furniture row; otherwise use image_ref=0."
+      ? "The readable source text preserves worksheet rows and EMBEDDED IMAGE N markers. Put that N in image_ref only when the marker belongs to the same furniture row; otherwise use image_ref=0. Copy the exact SOURCE ROW ID to source_row_id and the printed furniture code to item_ref. source_page is the worksheet index, never an image ID. Preserve repeated product names in different source rows."
       : "",
     structuredDocument
       ? "Before extracting, determine each page's reading orientation. Preserve printed item names, quantities, dimensions, location, materials, finishes, model references, and notes exactly."
@@ -344,7 +344,7 @@ async function parseWithDeepSeek({ job, file, sourceText }) {
     "Use conservative assumptions. Do not invent production-critical dimensions, materials, prices, standards, or delivery dates.",
     "Preserve every stated Width, Depth, and Height exactly. Combine them into dimensions_text as W x D x H with the source unit.",
     "When the extracted PDF text contains page markers, keep source_page so each furniture row can be linked to its page image.",
-    "When spreadsheet text contains an EMBEDDED IMAGE N marker beside a furniture row, set source_page=N for that item so the product image can be linked. Use source_page=0 when no image marker belongs to the item.",
+    "For spreadsheets, copy the SOURCE ROW ID to source_row_id and the printed furniture code to item_ref. source_page is the 1-based worksheet index, never an image ID. Put EMBEDDED IMAGE N in image_ref only when it belongs to the same row; otherwise image_ref=0. Preserve every furniture row, including repeated product names in different rooms.",
     "If information is missing, leave the field as 'To confirm' and add a focused missing question.",
     "The response must be a JSON object that matches this JSON schema:",
     JSON.stringify(schema)
@@ -613,6 +613,7 @@ function normalizeItem(item, idx) {
     page_type: normalizePageType(item.page_type || item.pageType),
     evidence_text: cleanField(item.evidence_text) || cleanField(item.evidenceText),
     image_ref: Math.max(0, Math.trunc(Number(item.image_ref || item.imageRef || 0))),
+    source_row_id: cleanField(item.source_row_id),
     field_evidence: (Array.isArray(item.field_evidence) ? item.field_evidence : [])
       .filter((e) => e && typeof e === "object")
       .map((e) => ({
@@ -911,6 +912,7 @@ function getSourceMediaParts(sourceMedia) {
       .filter((part) => part?.dataBase64)
       .map((part) => ({
         pageNumber: Number(part.pageNumber || 0),
+        sourceLabel: part.sourceLabel || "",
         mimeType: part.mimeType || sourceMedia.mimeType || "image/png",
         dataBase64: part.dataBase64
       }));
@@ -937,7 +939,7 @@ function buildGeminiGenerateContentParts(parts, { renderedPdf = false } = {}) {
   return parts.flatMap((part) => {
     const image = { inlineData: { mimeType: part.mimeType, data: part.dataBase64 } };
     if (!renderedPdf || !part.pageNumber) return [image];
-    return [{ text: `PDF SOURCE PAGE ${part.pageNumber}` }, image];
+    return [{ text: part.sourceLabel || `PDF SOURCE PAGE ${part.pageNumber}` }, image];
   });
 }
 
@@ -1216,6 +1218,9 @@ function intakeResultSchema({ includeVision = false } = {}) {
     "dimensions_text",
     "usage_location",
     "source_page",
+    "source_row_id",
+    "image_ref",
+    "item_ref",
     "notes_cn",
     "notes_en",
     "field_evidence"
@@ -1231,6 +1236,9 @@ function intakeResultSchema({ includeVision = false } = {}) {
     dimensions_text: { type: "string", description: "Exact stated W x D x H and unit, otherwise To confirm." },
     usage_location: { type: "string" },
     source_page: { type: "integer", minimum: 0 },
+    source_row_id: { type: "string", description: "Exact SOURCE ROW ID for spreadsheets; empty for other sources." },
+    image_ref: { type: "integer", minimum: 0 },
+    item_ref: { type: "string" },
     notes_cn: { type: "string" },
     notes_en: { type: "string" }
   };
@@ -1261,11 +1269,9 @@ function intakeResultSchema({ includeVision = false } = {}) {
 
   if (includeVision) {
     itemRequired.push(
-      "item_ref",
       "source_pages",
       "page_type",
       "evidence_text",
-      "image_ref",
       "photo_page",
       "photo_bbox",
       "style_cn",

@@ -2,6 +2,8 @@ import { attachRenderedItemCrops } from "./lib/intakeProductImages.mjs";
 import { exclusiveTask } from "./lib/workerConcurrency.mjs";
 import { runRiskBasedReview } from "./lib/intakeRiskReview.mjs";
 import { createReviewSource } from "./lib/intakeReviewSource.mjs";
+import { attachSpreadsheetImages } from "./lib/intakeNativeImages.mjs";
+import { reconcileSpreadsheetRows, applySpreadsheetCompleteness } from "./lib/intakeSpreadsheetCompleteness.mjs";
 
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { parseIntakeBrief } from "./lib/intakeProcessor.mjs";
@@ -110,7 +112,21 @@ async function processJob(job) {
   } else {
     const source = await readUploadedSource(file);
     result = await parseIntakeBrief({ job, file, ...source });
-    result = await attachExtractedProductImages({ job, result, images: source.extractedImages, userId });
+    const manifest = source.sourceMetadata?.spreadsheetManifest;
+    const attachNative = (parsed) =>
+      attachSpreadsheetImages({
+        result: parsed,
+        manifest,
+        images: source.extractedImages,
+        storage: supabase.storage,
+        job,
+        userId,
+        onProgress: () => updateReviewProgress(job.id)
+      });
+    if (manifest) {
+      result = reconcileSpreadsheetRows(result, manifest);
+      result = await attachNative(result);
+    } else result = await attachExtractedProductImages({ job, result, images: source.extractedImages, userId });
     if (source.sourceKind === "image" && source.sourceMedia?.dataBase64 && result.items?.length === 1) {
       result.items[0] = {
         ...result.items[0],
@@ -126,19 +142,22 @@ async function processJob(job) {
         context: reviewSource.context,
         readReviewUnits: reviewSource.readReviewUnits,
         onProgress: () => updateReviewProgress(job.id),
-        attachImages: (parsed) =>
-          attachRenderedItemCrops({
-            storage: supabase.storage,
-            job,
-            result: parsed,
-            userId,
-            getRenderedPage: reviewSource.getRenderedPage,
-            onProgress: () => updateReviewProgress(job.id)
-          })
+        attachImages: manifest
+          ? attachNative
+          : (parsed) =>
+              attachRenderedItemCrops({
+                storage: supabase.storage,
+                job,
+                result: parsed,
+                userId,
+                getRenderedPage: reviewSource.getRenderedPage,
+                onProgress: () => updateReviewProgress(job.id)
+              })
       });
     } finally {
       await reviewSource.destroy();
     }
+    if (manifest) result = applySpreadsheetCompleteness(result, manifest, source.sourceMetadata);
   }
   result = await bindResultToOwnerProfile(result, userId);
   const completedAt = new Date().toISOString();
@@ -151,10 +170,18 @@ async function processJob(job) {
   if (job.client_import_state === "processing") {
     // Additions are parsed in isolation. No project, BOM, payments or drawings
     // are changed until the client reviews and confirms this file.
-    const { error } = await supabase.from("intake_jobs").update({
-      status: "needs_review", step: "client_import_preview", client_import_state: "preview",
-      review_status: "pending", result_json: result, completed_at: completedAt
-    }).eq("id", job.id).eq("client_import_state", "processing");
+    const { error } = await supabase
+      .from("intake_jobs")
+      .update({
+        status: "needs_review",
+        step: "client_import_preview",
+        client_import_state: "preview",
+        review_status: "pending",
+        result_json: result,
+        completed_at: completedAt
+      })
+      .eq("id", job.id)
+      .eq("client_import_state", "processing");
     if (error) throw error;
     return;
   }
@@ -544,7 +571,10 @@ async function upsertProject(job, result) {
       const { data: updated, error: updateError } = await supabase
         .from("projects")
         .update({
-          name: projectById[0].client_edit_revision > 0 || isGeneratedIntakeProjectName(projectName) ? projectById[0].name : projectName,
+          name:
+            projectById[0].client_edit_revision > 0 || isGeneratedIntakeProjectName(projectName)
+              ? projectById[0].name
+              : projectName,
           client_name: result.project.client_name || projectById[0].client_name,
           client_contact: result.project.destination || projectById[0].client_contact
         })
@@ -668,7 +698,8 @@ async function readUploadedSource(file) {
       maxTextChars: maxReadableFileChars,
       maxVisionBytes: maxVisionFileBytes,
       maxDocumentBytes: maxDocumentFileBytes,
-      includeOfficeVisual: Boolean(process.env.GEMINI_API_KEY)
+      includeOfficeVisual:
+        Boolean(process.env.GEMINI_API_KEY) && !["spreadsheet", "legacy_spreadsheet"].includes(sourceKind)
     });
     return { ...extracted, sourceBuffer: buffer };
   } catch (err) {

@@ -139,12 +139,12 @@ export function prepareInitialClientCompletion({ result = {}, jobId = "job", cre
           ? "Intake check complete. The structured project draft is ready for Cho approval."
           : clientItems.length
             ? `Intake check complete. ${clientItems.length} client detail(s) need confirmation before approval.`
-            : "Intake check complete. An exception needs Cho review before approval.",
+            : "Your files have been read. Some details are still being checked before approval.",
         summary_cn: readyForApproval
           ? "已完成资料检查，结构化项目草稿可交由 Cho 审批。"
           : clientItems.length
             ? `已完成资料检查，客户仍需确认 ${clientItems.length} 项资料。`
-            : "已完成资料检查，但有异常需要 Cho 审核。"
+            : "文件已读取，部分资料仍在核对中，核对完成后再交由 Cho 审批。"
       }
     },
     clientItems,

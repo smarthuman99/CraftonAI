@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { requestGeminiDocumentReview } from "./intakeProcessor.mjs";
 import { validPhotoBox, isPlaceholder, rankProductPhotos } from "./intakeDocumentReview.mjs";
+import {
+  evaluateSpreadsheetCompleteness,
+  nativeEvidenceSupported,
+  nativeImageSupported
+} from "./intakeSpreadsheetCompleteness.mjs";
 
 const list = (v) => (Array.isArray(v) ? v : []);
 const clean = (v) =>
@@ -46,6 +51,8 @@ export function createEvidenceUnits({ sourceText = "", sourceMedia = null, sourc
 
 export function evidenceSupported(evidence, expected, context) {
   if (!evidence || uncertain(expected)) return false;
+  if (evidence.verification === "native_source_cell")
+    return nativeEvidenceSupported(evidence, expected, context.sourceMetadata?.spreadsheetManifest);
   const unit = context.units.find((u) => u.id === Number(evidence.source_page));
   if (!unit) return false;
   const quote = clean(evidence.quote || evidence.evidence_text);
@@ -71,18 +78,27 @@ export function evaluateEvidenceGate({ result, context, afterReview = false }) {
     if (!risks.some((r) => r.code === code && r.item_index === itemIndex && r.field === field))
       risks.push({ code, severity, item_index: itemIndex, field, source_units: pages });
   };
+  const sourceManifest = context.sourceMetadata?.spreadsheetManifest;
+  const completeness = sourceManifest
+    ? evaluateSpreadsheetCompleteness(result, sourceManifest, context.sourceMetadata)
+    : null;
+  for (const issue of completeness?.issues || [])
+    add(`spreadsheet_${issue.code}`, issue.item_index ?? null, issue.field || "", [], "high");
+  const nativeComplete = completeness?.status === "passed";
   if (!items.length) add("no_products", null, "", [], "high");
   if (context.mediaIssue) add("source_read_failure", null, "", [], "high");
   if (context.sourceMetadata?.textTruncated) add("source_text_truncated", null, "", [], "high");
   if (
-    context.sourceMetadata?.mergedCellCount > 0 ||
-    context.sourceMetadata?.worksheetCount > 1 ||
-    context.sourceMetadata?.formulaCount > 0
+    !nativeComplete &&
+    (context.sourceMetadata?.mergedCellCount > 0 ||
+      context.sourceMetadata?.worksheetCount > 1 ||
+      context.sourceMetadata?.formulaCount > 0)
   )
     add("complex_table");
   if (marker.test(text)) add("options_or_unknown_source_values");
-  if (items.length > 1) add("multiple_products");
-  if (/per apartment|flat.schedule|summary|grand total|总计|合计/i.test(text)) add("quantity_rollup");
+  if (items.length > 1 && !nativeComplete) add("multiple_products");
+  if (/per apartment|flat.schedule|summary|grand total|总计|合计/i.test(text) && !nativeComplete)
+    add("quantity_rollup");
   if (items.some((item) => new Set(list(item.source_pages)).size > 1)) add("cross_source_context");
   if (result.quality_gate?.unclassified_pages?.length)
     add("unclassified_pages", null, "", result.quality_gate.unclassified_pages, "high");
@@ -99,16 +115,25 @@ export function evaluateEvidenceGate({ result, context, afterReview = false }) {
     const fieldValues = values(item),
       records = [];
     const scope = `${norm(item.item_type_en)}:${norm(item.dimensions_text)}`;
-    if (seen.has(scope) || (item.item_ref && items.some((other, j) => j < index && other.item_ref === item.item_ref)))
+    if (
+      !nativeComplete &&
+      (seen.has(scope) || (item.item_ref && items.some((other, j) => j < index && other.item_ref === item.item_ref)))
+    )
       add("duplicate_product", index, "product", pages, "high");
     seen.set(scope, index);
     const imageKey =
       item.image_sha256 ||
       item.image_storage_path ||
       (item.photo_bbox && `${item.photo_page}:${JSON.stringify(item.photo_bbox)}`);
-    if (imageKey && images.has(imageKey)) add("shared_image_mapping", index, "image", pages, "high");
+    if (
+      imageKey &&
+      images.has(imageKey) &&
+      !(nativeImageSupported(item, sourceManifest) && nativeImageSupported(items[images.get(imageKey)], sourceManifest))
+    )
+      add("shared_image_mapping", index, "image", pages, "high");
     if (imageKey) images.set(imageKey, index);
-    if (Number.isFinite(item.confidence) && item.confidence < 0.8) add("low_model_confidence", index, "", pages);
+    if (!nativeComplete && Number.isFinite(item.confidence) && item.confidence < 0.8)
+      add("low_model_confidence", index, "", pages);
     if (!Number.isInteger(item.quantity) || item.quantity <= 0 || item.quantity > 1000000)
       add("invalid_quantity", index, "quantity", pages, "high");
     if (
@@ -165,7 +190,7 @@ export function evaluateEvidenceGate({ result, context, afterReview = false }) {
         if (
           field === "optional" &&
           !marker.test(text) &&
-          items.length === 1 &&
+          (items.length === 1 || nativeComplete) &&
           !context.mediaIssue &&
           context.units.every((u) => u.text) &&
           !context.sourceMetadata?.textTruncated
@@ -335,7 +360,12 @@ export async function runRiskBasedReview({
       const ids = plan.source_units.slice(offset, offset + 3);
       try {
         await onProgress({ state: "risk_evidence_review", pages: ids });
-        const source = await readReviewUnits(ids);
+        const batchIndices = context.nativeSpreadsheet
+          ? plan.item_indices.filter((i) => ids.includes(result.items[i].source_page) || !result.items[i].source_row_id)
+          : plan.item_indices;
+        if (context.nativeSpreadsheet && !batchIndices.length && !plan.targets.some((t) => t.item_index === null))
+          continue;
+        const source = await readReviewUnits(ids, { itemIndices: batchIndices, result });
         if (!source || !ids.every((id) => list(source.units).some((u) => u.id === id)))
           throw new Error("Review source coverage is incomplete.");
         const prompt = [
@@ -347,7 +377,10 @@ export async function runRiskBasedReview({
           "For partial_dimensions, search for the missing axes or mattress thickness. If the complete dimensions are not in a supplied unit, return dimensions=not_in_source with an explanation of known dimensions and missing components; never discard the known partial dimensions or fabricate the missing height.",
           "optional uses values required, optional, mixed_required_optional or not_stated. Keep scheme labels separate. Find isolated labelled high-resolution product images and scheme alternatives, exclude whole-room scenes, IMG TBC/NO IMAGE/NO ARMCHAIR placeholders and similar-product substitutions. Photo coordinates reference a supplied visual source unit only. An empty response for irrelevant pages is valid, but do not claim all risks resolved merely from high confidence.",
           `Risks to investigate: ${JSON.stringify(plan.targets)}`,
-          `Existing manifest: ${JSON.stringify(manifest)}`,
+          context.nativeSpreadsheet
+            ? "This is a native Excel review. Worksheet units and standalone product photos are labelled by source row. Existing native image mappings and raw cell evidence are authoritative. Do not produce PDF crop coordinates for standalone photos. Investigate only unresolved fields, source contradictions and ambiguous rows."
+            : "",
+          `Existing manifest: ${JSON.stringify(context.nativeSpreadsheet ? manifest.filter((m) => batchIndices.some((i) => m.item_ref === `REVIEW-ITEM-${i + 1}`)) : manifest)}`,
           `SOURCE UNITS: ${JSON.stringify(source.units.map((u) => ({ source_unit: u.id, label: u.label, text: u.text })))}`,
           "Return JSON matching the supplied contract."
         ].join("\n");
@@ -449,9 +482,9 @@ export function mergeRiskReviewReplies(result, { context, plan, replies, failure
           continue;
         }
         const unit = source.units.find((u) => u.id === record.source_page);
-        const visible = list(source.sourceMedia?.pages).some(
-          (p) => p.pageNumber === record.source_page && p.dataBase64
-        );
+        const visible =
+          source.sourceMedia?.sourceKind !== "spreadsheet_images" &&
+          list(source.sourceMedia?.pages).some((p) => p.pageNumber === record.source_page && p.dataBase64);
         const verified = {
           ...record,
           verification: record.source_kind === "visual" ? "second_pass_visual" : "source_text_match",
@@ -463,13 +496,14 @@ export function mergeRiskReviewReplies(result, { context, plan, replies, failure
         }
         bucket.evidence.push(verified);
       }
-      bucket.photos.push(
-        ...rankProductPhotos(list(patch.photos)).filter(
-          (p) =>
-            ids.includes(p.source_page) &&
-            list(source.sourceMedia?.pages).some((m) => m.pageNumber === p.source_page && m.dataBase64)
-        )
-      );
+      if (source.sourceMedia?.sourceKind !== "spreadsheet_images")
+        bucket.photos.push(
+          ...rankProductPhotos(list(patch.photos)).filter(
+            (p) =>
+              ids.includes(p.source_page) &&
+              list(source.sourceMedia?.pages).some((m) => m.pageNumber === p.source_page && m.dataBase64)
+          )
+        );
       for (const row of list(patch.quantity_rows)) {
         if (
           row &&
@@ -558,10 +592,14 @@ export function mergeRiskReviewReplies(result, { context, plan, replies, failure
         next.requirement_status = detail.every((r) => r.optional) ? "optional" : "mixed_required_optional";
     }
     const candidates = rankProductPhotos(bucket.photos);
+    const protectedOriginal =
+      nativeImageSupported(item, context.sourceMetadata?.spreadsheetManifest) ||
+      item.image_mapping_status === "manual_reference";
     next.image_review_verified =
+      protectedOriginal ||
       candidates.length > 0 ||
       bucket.evidence.some((e) => e.field === "image" && e.source_kind === "visual" && e.review_unit_verified);
-    if (candidates.length) {
+    if (candidates.length && !protectedOriginal) {
       next.photo_candidates = candidates;
       next.photo_page = candidates[0].source_page;
       next.photo_bbox = candidates[0].bbox;

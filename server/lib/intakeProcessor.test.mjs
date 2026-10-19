@@ -64,6 +64,78 @@ test("detail review never treats a truncated response as completed", async () =>
   await assert.rejects(requestGeminiDocumentReview({ prompt: "Review", sourceMedia: null, schema: {} }), /MAX_TOKENS/);
 });
 
+test("spreadsheet fallback keeps image IDs separate from worksheet units and retains stable row identity", async () => {
+  process.env.GEMINI_API_KEY = "";
+  process.env.DEEPSEEK_API_KEY = "test-key";
+  let prompt;
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    prompt = body.messages[0].content;
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                project: { name: "Example" },
+                items: [
+                  {
+                    item_type_en: "Chair",
+                    quantity: 2,
+                    dimensions_text: "Height 800mm",
+                    material_en: "Oak",
+                    source_page: 2,
+                    image_ref: 51,
+                    source_row_id: "file:2:6",
+                    item_ref: "CH-01"
+                  }
+                ],
+                questions: []
+              })
+            }
+          }
+        ]
+      })
+    );
+  };
+  const result = await parseIntakeBrief({
+    job: {},
+    file: { original_name: "source.xlsx" },
+    sourceText: "WORKSHEET: Room\nROW 6: CH-01 | Chair | 2\nEMBEDDED IMAGE 51\nSOURCE ROW IDENTITIES: file:2:6"
+  });
+  assert.equal(result.items[0].source_page, 2);
+  assert.equal(result.items[0].image_ref, 51);
+  assert.equal(result.items[0].source_row_id, "file:2:6");
+  assert.match(prompt, /source_page is the 1-based worksheet index, never an image ID/);
+  const schema = JSON.parse(prompt.slice(prompt.indexOf('{"type":"object"')));
+  assert.ok(schema.properties.items.items.required.includes("image_ref"));
+  assert.ok(schema.properties.items.items.required.includes("source_row_id"));
+});
+
+test("native review labels do not describe standalone product photos as PDF pages", async () => {
+  process.env.GEMINI_API_KEY = "test-key";
+  let contents;
+  globalThis.fetch = async (_url, options) => {
+    contents = JSON.parse(options.body).contents;
+    return new Response(
+      JSON.stringify({
+        candidates: [
+          { finishReason: "STOP", content: { parts: [{ text: '{"reviewed_pages":[2],"items":[],"issues":[]}' }] } }
+        ]
+      })
+    );
+  };
+  await requestGeminiDocumentReview({
+    prompt: "Check",
+    schema: {},
+    sourceMedia: {
+      sourceKind: "spreadsheet_images",
+      pages: [{ pageNumber: 2, sourceLabel: "NATIVE PHOTO 51 at Room B6", mimeType: "image/png", dataBase64: "cGlj" }]
+    }
+  });
+  assert.equal(contents[0].parts[1].text, "NATIVE PHOTO 51 at Room B6");
+});
+
 test("deterministic parser turns quantity text into itemized requirements", async () => {
   process.env.DEEPSEEK_API_KEY = "";
   process.env.GEMINI_API_KEY = "";

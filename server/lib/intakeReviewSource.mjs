@@ -1,8 +1,53 @@
 import { createHash } from "node:crypto";
 import { convertOfficeDocumentToPdf, openPdfBatchReader } from "./intakeSourceReader.mjs";
 import { createEvidenceUnits } from "./intakeRiskReview.mjs";
+import sharp from "sharp";
 
 export async function createReviewSource({ source, file, job = {}, reader: suppliedReader = null }) {
+  const manifest = source.sourceMetadata?.spreadsheetManifest;
+  if (manifest && ["spreadsheet", "legacy_spreadsheet"].includes(source.sourceKind)) {
+    const context = {
+      ...createEvidenceUnits(source),
+      nativeSpreadsheet: true,
+      mediaIssue: source.mediaIssue,
+      extractedImages: source.extractedImages || [],
+      fingerprint: manifest.file_sha256
+    };
+    return {
+      context,
+      async readReviewUnits(ids, { itemIndices, result } = {}) {
+        const units = context.units.filter((u) => ids.includes(u.id));
+        const rowIds = itemIndices?.map((i) => result?.items?.[i]?.source_row_id).filter(Boolean);
+        const selected = manifest.rows.filter(
+          (r) => ids.includes(r.sheet_index) && (!rowIds?.length || rowIds.includes(r.id))
+        );
+        const imageIds = new Set(selected.flatMap((r) => r.image_refs));
+        const pages = [];
+        let bytes = 0;
+        for (const image of context.extractedImages.filter((i) => imageIds.has(i.page))) {
+          const row = selected.find((r) => r.image_refs.includes(image.page));
+          const data = await sharp(image.data)
+            .resize({ width: 1000, height: 1000, fit: "inside", withoutEnlargement: true })
+            .jpeg({ quality: 85 })
+            .toBuffer();
+          bytes += data.length;
+          if (bytes > 20 * 1024 * 1024)
+            throw new Error("Native image review exceeds the batch limit; internal review required.");
+          pages.push({
+            pageNumber: row.sheet_index,
+            mimeType: "image/jpeg",
+            dataBase64: data.toString("base64"),
+            sourceLabel: `NATIVE PRODUCT PHOTO ${image.page}: SOURCE UNIT ${row.sheet_index}, worksheet ${row.sheet}, row ${row.row}, code ${row.code}. Standalone photo, NOT a PDF page; never return page crop coordinates for it.`
+          });
+        }
+        return { units, sourceMedia: { sourceKind: "spreadsheet_images", pages } };
+      },
+      async getRenderedPage() {
+        return null;
+      },
+      async destroy() {}
+    };
+  }
   let reader = suppliedReader;
   let text = source.sourceText || "";
   let visualUnavailable = false;

@@ -30,6 +30,7 @@ jobs:
       - name: Verify project editing and service copy
         run: |
           npm run test:project-editing
+          npm run test:intake
           npm run test:performance
           python3 server/configure-thumbnail-cache.test.py
           node --test src/customerServiceCopy.test.mjs server/lib/aiSupportAgent.test.mjs server/lib/technicalDrawing.test.mjs server/lib/projectLifecycle.test.mjs server/lib/rfqSourceData.test.mjs
@@ -268,6 +269,7 @@ jobs:
               systemctl daemon-reload
               # Generate existing private previews before publishing the new image client.
               node --env-file=server/.env server/portal-thumbnail-worker.mjs --once --strict
+              node --env-file=server/.env server/verify-native-image-previews.mjs
               systemctl enable --now crafton-intake-worker.service crafton-technical-drawing-worker.service
               systemctl enable --now crafton-thumbnail-worker.service
               systemctl restart crafton-intake-worker.service crafton-technical-drawing-worker.service crafton-thumbnail-worker.service
@@ -285,6 +287,7 @@ jobs:
               nohup node --env-file-if-exists=server/.env server/intake-worker.mjs > server/logs/intake-worker.log 2>&1 < /dev/null &
               nohup node --env-file-if-exists=server/.env server/technical-drawing-worker.mjs > server/logs/technical-drawing-worker.log 2>&1 < /dev/null &
               node --env-file=server/.env server/portal-thumbnail-worker.mjs --once --strict
+              node --env-file=server/.env server/verify-native-image-previews.mjs
               nohup node --env-file-if-exists=server/.env server/portal-thumbnail-worker.mjs > server/logs/thumbnail-worker.log 2>&1 < /dev/null &
             fi
           '

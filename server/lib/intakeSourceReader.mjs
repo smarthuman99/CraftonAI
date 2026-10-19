@@ -1,3 +1,5 @@
+import { readSpreadsheetCellImages, buildSpreadsheetManifest, sourceHash } from "./intakeSpreadsheetSource.mjs";
+
 const DEFAULT_MAX_TEXT_CHARS = 60000;
 const DEFAULT_MAX_VISION_BYTES = 12 * 1024 * 1024;
 const DEFAULT_MAX_DOCUMENT_BYTES = 250 * 1024 * 1024;
@@ -118,15 +120,41 @@ async function extractSpreadsheetSource(buffer) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
 
+  let cellImages;
+  try {
+    cellImages = await readSpreadsheetCellImages(buffer);
+  } catch (error) {
+    cellImages = { images: [], issues: [{ code: "cell_image_reader_failed", reason: error.message }] };
+  }
+  const fileHash = sourceHash(buffer),
+    sheets = [];
+
   const output = [];
   const extractedImages = [];
   let mergedCellCount = 0,
-    formulaCount = 0;
+    formulaCount = 0,
+    duplicateImageAnchorsRemoved = 0;
   for (const worksheet of workbook.worksheets) {
     mergedCellCount += worksheet.model.merges?.length || 0;
     output.push(`WORKSHEET: ${worksheet.name}`);
-    const worksheetImages = collectWorksheetImages({ workbook, worksheet, startIndex: extractedImages.length });
+    const rawImages = [
+      ...collectWorksheetImages({ workbook, worksheet, startIndex: 0 }),
+      ...cellImages.images.filter((i) => i.worksheet === worksheet.name)
+    ];
+    const unique = new Map();
+    for (const image of rawImages) {
+      const sha256 = sourceHash(image.data);
+      const key = `${image.sourceRow}:${sha256}`;
+      if (!unique.has(key)) unique.set(key, { ...image, sha256 });
+    }
+    const worksheetImages = [...unique.values()].map((image, index) => ({
+      ...image,
+      page: extractedImages.length + index + 1,
+      name: `${worksheet.name}-row-${image.sourceRow}-image-${extractedImages.length + index + 1}`
+    }));
+    duplicateImageAnchorsRemoved += rawImages.length - worksheetImages.length;
     extractedImages.push(...worksheetImages);
+    const sourceRows = [];
     const imagesByRow = new Map();
     for (const image of worksheetImages) {
       const rowImages = imagesByRow.get(image.sourceRow) || [];
@@ -135,16 +163,36 @@ async function extractSpreadsheetSource(buffer) {
     }
 
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      const cells = [];
       row.eachCell((cell) => {
+        cells.push({
+          ref: cell.address,
+          column: cell.col,
+          value: normalizeSpreadsheetCell(cell.value),
+          formula: cell.value?.formula || cell.value?.sharedFormula || ""
+        });
         if (cell.value && typeof cell.value === "object" && (cell.value.formula || cell.value.sharedFormula))
           formulaCount++;
       });
+      sourceRows.push({ row: rowNumber, cells, hidden: Boolean(row.hidden) });
       const values = row.values
         .slice(1)
-        .map(normalizeSpreadsheetCell)
+        .map((value, index) =>
+          worksheetImages.some(
+            (i) => i.nativeKind === "in_cell" && i.sourceRow === rowNumber && i.sourceColumn === index + 1
+          )
+            ? "[embedded photo]"
+            : normalizeSpreadsheetCell(value)
+        )
         .map((value) => value.trim());
       if (values.some(Boolean)) output.push(`ROW ${rowNumber}: ${values.join(" | ")}`);
       for (const image of imagesByRow.get(rowNumber) || []) output.push(formatSpreadsheetImageMarker(image));
+    });
+    sheets.push({
+      name: worksheet.name,
+      rows: sourceRows,
+      merges: worksheet.model.merges || [],
+      hidden: worksheet.state !== "visible"
     });
 
     for (const image of worksheetImages) {
@@ -152,10 +200,20 @@ async function extractSpreadsheetSource(buffer) {
       output.push(formatSpreadsheetImageMarker(image));
     }
   }
+  const manifest = buildSpreadsheetManifest({ sheets, images: extractedImages, issues: cellImages.issues, fileHash });
+  output.push("SOURCE ROW IDENTITIES (use source_row_id and preserve every row):");
+  for (const row of manifest.rows)
+    output.push(`${row.id} | sheet=${row.sheet} | row=${row.row} | code=${row.code} | product=${row.name}`);
   return {
     text: output.join("\n"),
     images: extractedImages,
-    metadata: { worksheetCount: workbook.worksheets.length, mergedCellCount, formulaCount }
+    metadata: {
+      worksheetCount: workbook.worksheets.length,
+      mergedCellCount,
+      formulaCount,
+      duplicateImageAnchorsRemoved,
+      spreadsheetManifest: manifest
+    }
   };
 }
 
@@ -234,23 +292,38 @@ function collectWorksheetImages({ workbook, worksheet, startIndex }) {
     const media = workbook.getImage(image.imageId);
     const data = media?.buffer ? Buffer.from(media.buffer) : media?.base64 ? Buffer.from(media.base64, "base64") : null;
     const mimeType = spreadsheetImageMimeType(media?.extension);
-    if (!data?.length || !mimeType) continue;
+    if (!data?.length) continue;
 
     const dimensions = readRasterDimensions(data, media.extension);
-    if (dimensions.width && dimensions.height && (dimensions.width < 80 || dimensions.height < 80)) continue;
     const sourceRow = Math.max(1, Number(image.range?.tl?.nativeRow ?? 0) + 1);
     const sourceColumn = Math.max(1, Number(image.range?.tl?.nativeCol ?? 0) + 1);
+    const rowCoverage = [];
+    if (image.range?.br) {
+      const lastRow = Number(image.range.br.nativeRow) + 1;
+      for (let row = sourceRow; row <= Math.min(lastRow, sourceRow + 1000); row++) {
+        const height = worksheet.getRow(row).height || worksheet.properties.defaultRowHeight || 15;
+        const top = row === sourceRow ? Number(image.range.tl.nativeRowOff || 0) / 12700 : 0;
+        const bottom = row === lastRow ? Number(image.range.br.nativeRowOff || 0) / 12700 : height;
+        rowCoverage.push({ row, points: Math.max(0, Math.min(height, bottom) - top) });
+      }
+    }
     const imageNumber = startIndex + collected.length + 1;
     collected.push({
       page: imageNumber,
       name: `${worksheet.name}-row-${sourceRow}-image-${imageNumber}`,
-      mimeType,
+      mimeType: mimeType || "application/octet-stream",
       width: dimensions.width,
       height: dimensions.height,
       data,
       worksheet: worksheet.name,
       sourceRow,
-      sourceColumn
+      sourceColumn,
+      sourceCell: `${worksheet.getColumn(sourceColumn).letter}${sourceRow}`,
+      sourceEndRow: image.range?.br
+        ? Math.max(sourceRow, Number(image.range.br.nativeRow) + (Number(image.range.br.nativeRowOff) > 0 ? 1 : 0))
+        : sourceRow,
+      nativeKind: "floating",
+      rowCoverage
     });
   }
   return collected;
@@ -651,7 +724,10 @@ function normalizeSpreadsheetCell(value) {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   if (typeof value !== "object") return String(value);
   if (Array.isArray(value.richText)) return value.richText.map((part) => part.text || "").join("");
+  if (value.error != null) return String(value.error);
   if (value.result != null) return normalizeSpreadsheetCell(value.result);
+  if (value.formula || value.sharedFormula)
+    return `[Formula without cached value: ${value.formula || value.sharedFormula}]`;
   if (value.text != null) return String(value.text);
   if (value.hyperlink) return [value.text, value.hyperlink].filter(Boolean).join(" ");
   return String(value);
