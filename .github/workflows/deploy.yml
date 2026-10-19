@@ -31,6 +31,7 @@ jobs:
         run: |
           npm run test:project-editing
           npm run test:performance
+          python3 server/configure-thumbnail-cache.test.py
           node --test src/customerServiceCopy.test.mjs server/lib/aiSupportAgent.test.mjs server/lib/technicalDrawing.test.mjs server/lib/projectLifecycle.test.mjs server/lib/rfqSourceData.test.mjs
 
       - name: Build project
@@ -252,6 +253,8 @@ jobs:
               echo "Project editing API version probe failed with HTTP $probe_code"
               exit 1
             fi
+
+            python3 server/configure-thumbnail-cache.py
 
             if [ "$(id -u)" = "0" ] && [ -f server/systemd/crafton-technical-drawing-worker.service ] && [ -f server/systemd/crafton-intake-worker.service ]; then
               node_binary="$(command -v node)"
