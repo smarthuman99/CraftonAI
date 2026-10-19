@@ -37,7 +37,7 @@ BEGIN
  s.job_id:=j.id; s.project_id:=j.project_id; s.owner_id:=coalesce(j.user_id,j.requested_by,f.user_id,f.uploaded_by);
  s.created_at:=j.created_at; s.updated_at:=j.updated_at;
  s.project_name:=coalesce(j.project_name,j.result_json#>>'{project,name}','Untitled project');
- s.destination:=coalesce(j.destination,j.result_json#>>'{project,destination}','');
+ s.destination:=coalesce(nullif(j.destination,''),nullif(j.result_json#>>'{project,destination}',''),'');
  s.status:=j.status; s.review_status:=coalesce(j.review_status,CASE WHEN j.status='completed' THEN 'approved' ELSE 'pending' END);
  s.rfq_status:=j.rfq_status; s.active:=j.client_import_state IS NULL OR j.client_import_state='merged';
  s.is_addition:=j.client_import_state IS NOT NULL; s.items:='[]'; s.pieces:=0;
@@ -81,7 +81,7 @@ REVOKE ALL ON FUNCTION public.portal_sync_job_summary() FROM PUBLIC, anon, authe
 DROP TRIGGER IF EXISTS portal_job_summary ON public.intake_jobs;
 CREATE TRIGGER portal_job_summary AFTER INSERT OR UPDATE ON public.intake_jobs FOR EACH ROW EXECUTE FUNCTION public.portal_sync_job_summary();
 INSERT INTO public.portal_job_summaries SELECT (public.portal_summarize_job(j)).* FROM public.intake_jobs j
-ON CONFLICT(job_id) DO UPDATE SET items=excluded.items,cover=excluded.cover,source=excluded.source;
+ON CONFLICT(job_id) DO UPDATE SET items=excluded.items,cover=excluded.cover,source=excluded.source,destination=excluded.destination;
 
 CREATE OR REPLACE FUNCTION public.portal_directory(p_scope text DEFAULT 'client',p_search text DEFAULT '',p_filter text DEFAULT 'all',
  p_cursor jsonb DEFAULT NULL,p_limit integer DEFAULT 12,p_view text DEFAULT 'projects')
@@ -95,6 +95,7 @@ BEGIN
  p_filter NOT IN ('all','action','intake','sourcing','production','shipping','archived') THEN RAISE EXCEPTION 'Invalid directory request'; END IF;
  WITH owned AS MATERIALIZED (
    SELECT s.*,coalesce(p.name,s.project_name) name,coalesce(nullif(u.full_name,''),nullif(u.company,''),p.client_name,'Client') client_name,
+    coalesce(nullif(s.destination,''),p.client_contact,'') display_destination,
     coalesce(p.lifecycle_status,s.lifecycle,'active') lifecycle_status,
     greatest(coalesce(p.current_stage,1),CASE WHEN s.review_status IN ('approved','rfq_ready') OR s.rfq_status IN ('draft','sent') THEN 6
      WHEN s.review_status='revision_requested' THEN 2 WHEN jsonb_array_length(s.items)>0 THEN 3 ELSE 1 END,
@@ -103,8 +104,9 @@ BEGIN
    FROM public.portal_job_summaries s LEFT JOIN public.projects p ON p.id=s.project_id
    LEFT JOIN public.user_profiles u ON u.user_id=s.owner_id
    WHERE s.active AND (p_scope='staff' OR s.owner_id=auth.uid())
+    AND (p_scope<>'staff' OR s.status IN ('queued','processing','needs_review','completed'))
  ), grouped AS MATERIALIZED (
-   SELECT key, max(name) name,max(destination) destination,max(client_name) client_name,max(owner_id::text) owner_id,
+   SELECT key, max(name) name,max(display_destination) destination,max(client_name) client_name,max(owner_id::text) owner_id,
     max(project_id::text) project_id,(array_agg(job_id ORDER BY created_at DESC,job_id DESC))[1] job_id,
     max(created_at) created_at,max(updated_at) updated_at,max(stage) stage,
     max(lifecycle_status) lifecycle_status,sum(pieces) pieces,sum(jsonb_array_length(items)) item_count,

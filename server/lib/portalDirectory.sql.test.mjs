@@ -11,7 +11,7 @@ test("directory migration: isolated Postgres, owner isolation, cursor traversal,
   await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE SCHEMA auth;
  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('test.uid',true),'')::uuid$$;
  CREATE FUNCTION public.is_crafton_staff() RETURNS boolean LANGUAGE sql AS $$SELECT coalesce(current_setting('test.staff',true),'false')='true'$$;
- CREATE TABLE projects(id uuid PRIMARY KEY,user_id uuid,name text,client_name text,current_stage integer,lifecycle_status text DEFAULT 'active');
+ CREATE TABLE projects(id uuid PRIMARY KEY,user_id uuid,name text,client_name text,client_contact text,current_stage integer,lifecycle_status text DEFAULT 'active');
  CREATE TABLE user_profiles(user_id uuid PRIMARY KEY,full_name text,company text);
  CREATE TABLE intake_files(id uuid PRIMARY KEY,user_id uuid,uploaded_by uuid,storage_bucket text,storage_path text,mime_type text);
  CREATE TABLE intake_jobs(id uuid PRIMARY KEY,project_id uuid REFERENCES projects(id),user_id uuid,requested_by uuid,intake_file_id uuid,
@@ -156,5 +156,17 @@ test("directory migration: isolated Postgres, owner isolation, cursor traversal,
     await db.query("DELETE FROM intake_jobs WHERE id=$1", [uuid(27)]);
     await db.exec("SET ROLE authenticated");
     assert.equal((await rpc({ filter: "archived" })).total, 0);
+  });
+  await t.test("staff directory retains existing status filter and destination fallback", async () => {
+    await db.exec("RESET ROLE");
+    await db.query("INSERT INTO intake_jobs(id,user_id,status) VALUES($1,$2,'failed')", [uuid(28), other]);
+    await db.query("UPDATE projects SET client_contact='Fallback destination' WHERE id=$1", [uuid(1)]);
+    await db.exec("SET ROLE authenticated; SET test.staff='true'");
+    assert.equal((await rpc({ scope: "staff" })).total, 26);
+    assert.equal(
+      (await rpc({ scope: "staff", search: "Project 1" })).rows.find((r) => r.name === "Project 1").destination,
+      "Fallback destination"
+    );
+    assert.equal((await rpc()).total, 1);
   });
 });
