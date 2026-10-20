@@ -201,6 +201,7 @@ export default function AdminWorkflowWorkspace({
   };
   const [showSupplierDirectory, setShowSupplierDirectory] = useState(false);
   const sourcingProjectRef = React.useRef("");
+  const sourcingFilesProjectRef = useRef("");
 
   const [supplierForm, setSupplierForm] = useState(EMPTY_SUPPLIER_FORM);
   const [editingSupplierId, setEditingSupplierId] = useState("");
@@ -1403,10 +1404,15 @@ export default function AdminWorkflowWorkspace({
     if (flow !== "sourcing" || !projectId) return;
     if (sourcingProjectRef.current !== projectId) {
       sourcingProjectRef.current = projectId;
-      setSourcingView(sourcingSuggestedView);
+      if (sourcingFilesProjectRef.current !== projectId) {
+        sourcingFilesProjectRef.current = "";
+        setSourcingView(sourcingSuggestedView);
+      }
       setShowSupplierDirectory(false);
       return;
     }
+    // Loading the saved batch must not override an explicit request to reopen files.
+    if (sourcingFilesProjectRef.current === projectId) return;
     const rank = { prepare: 0, collect: 1, decide: 2 };
     setSourcingView((current) => (rank[sourcingSuggestedView] > rank[current] ? sourcingSuggestedView : current));
   }, [flow, projectId, sourcingSuggestedView]);
@@ -1517,6 +1523,7 @@ export default function AdminWorkflowWorkspace({
               <button
                 type="button"
                 onClick={() => {
+                  sourcingFilesProjectRef.current = projectId;
                   setSourcingView("prepare");
                   window.requestAnimationFrame(() => {
                     document
