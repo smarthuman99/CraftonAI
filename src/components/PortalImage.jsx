@@ -1,6 +1,6 @@
 import "./portalImage.css";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { createThumbnailCache } from "../portalThumbnailCache.mjs";
+import { createThumbnailCache, preloadThumbnailImage } from "../portalThumbnailCache.mjs";
 import { thumbnailReferenceKey } from "../../shared/portalThumbnailIdentity.mjs";
 const Context = createContext(null);
 export function PortalImageProvider({ request, children }) {
@@ -9,6 +9,7 @@ export function PortalImageProvider({ request, children }) {
   const read = useMemo(
     () =>
       createThumbnailCache((body, options) => latest.current(body, options), {
+        loadImage: preloadThumbnailImage,
         onTiming: (event) => console.info("[Crafton thumbnails]", JSON.stringify(event))
       }),
     []
@@ -38,14 +39,12 @@ export default function PortalImage({ reference, src, alt = "", className = "", 
     const height = root?.clientHeight || window.innerHeight;
     let cancelled = false,
       subscription;
-    const start = (visible) => {
-      if (visible) {
-        setPriority(0);
-        subscription?.prioritize();
-      }
+    const start = (level) => {
+      setPriority((current) => Math.min(current, level));
+      subscription?.prioritize(level);
       if (subscription) return;
       if (started.current.key !== key) started.current = { key, time: window.performance.now() };
-      subscription = read.subscribe(JSON.parse(serialized), visible ? 0 : 1);
+      subscription = read.subscribe(JSON.parse(serialized), level);
       subscription.promise
         .then((image) => {
           if (!cancelled)
@@ -57,20 +56,24 @@ export default function PortalImage({ reference, src, alt = "", className = "", 
     };
     const visible = new window.IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) start(true);
+        if (entries.some((e) => e.isIntersecting)) start(0);
       },
       { root }
     );
     const nearby = new window.IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) start(false);
+        if (entries.some((e) => e.isIntersecting)) start(1);
       },
       { root, rootMargin: `${height}px 0px` }
     );
     visible.observe(node);
     nearby.observe(node);
+    // Let the initial view render first, then warm the rest of this mounted page.
+    // Intersection observers promote queued work if the user scrolls sooner.
+    const background = setTimeout(() => start(2), 400);
     return () => {
       cancelled = true;
+      clearTimeout(background);
       visible.disconnect();
       nearby.disconnect();
       subscription?.cancel();

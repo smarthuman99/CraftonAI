@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createThumbnailCache } from "./portalThumbnailCache.mjs";
+import { createThumbnailCache, preloadThumbnailImage } from "./portalThumbnailCache.mjs";
 import { thumbnailReferenceKey, thumbnailSourceVersion } from "../shared/portalThumbnailIdentity.mjs";
 const pause = (ms = 15) => new Promise((r) => setTimeout(r, ms));
 const response = (body, time = Date.now()) => ({
@@ -119,4 +119,131 @@ test("pending generation retries without fetching a full original", async () => 
   );
   assert.equal(await cache.subscribe({ jobId: "pending", index: 0 }).promise, "https://private/pending/0");
   assert.equal(calls, 2);
+});
+
+test("background downloads finish without scrolling, reserve foreground capacity and reuse loaded images", async () => {
+  const loads = [],
+    calls = [];
+  const cache = createThumbnailCache(
+    async (body) => {
+      calls.push(body);
+      return response(body);
+    },
+    {
+      batchDelay: 1,
+      loadImage: (url, options) => new Promise((resolve) => loads.push({ url, ...options, resolve }))
+    }
+  );
+  const references = Array.from({ length: 8 }, (_, index) => ({ jobId: "project", index }));
+  const background = references.map((ref) => cache.subscribe(ref, 2));
+  await pause();
+  assert.equal(calls.length, 1);
+  assert.equal(loads.length, 3, "background leaves a connection free");
+  let displayed = false;
+  background[0].promise.then(() => {
+    displayed = true;
+  });
+  await pause();
+  assert.equal(displayed, false, "a URL alone is not a completed image download");
+  background[7].prioritize();
+  assert.equal(loads.length, 3);
+  await pause();
+  assert.equal(loads.length, 4);
+  assert.equal(loads[3].url, "https://private/project/7");
+  assert.equal(loads[3].priority, 0);
+  // Complete each wave: the rest must start automatically with no scroll event.
+  let completed = 0;
+  while (completed < references.length) {
+    const wave = loads.slice(completed);
+    assert.ok(wave.length);
+    wave.forEach((load) => load.resolve());
+    completed += wave.length;
+    await pause();
+  }
+  await Promise.all(background.map((item) => item.promise));
+  assert.equal(loads.length, 8);
+  assert.equal(await cache.subscribe(references[0], 0).promise, "https://private/project/0");
+  assert.equal(calls.length, 1);
+  assert.equal(loads.length, 8);
+  background.forEach((item) => item.cancel());
+});
+
+test("leaving a project cancels background image downloads and prevents queued downloads", async () => {
+  const loads = [];
+  const cache = createThumbnailCache(async (body) => response(body), {
+    batchDelay: 1,
+    loadImage: (url, { signal }) =>
+      new Promise((_resolve, reject) => {
+        loads.push({ url, signal });
+        signal.addEventListener("abort", () => reject(Object.assign(new Error(), { name: "AbortError" })));
+      })
+  });
+  const items = Array.from({ length: 12 }, (_, index) => cache.subscribe({ jobId: "old", index }, 2));
+  const failures = items.map((item) => assert.rejects(item.promise, { name: "AbortError" }));
+  await pause();
+  assert.equal(loads.length, 3);
+  items.forEach((item) => item.cancel());
+  await Promise.all(failures);
+  await pause();
+  assert.equal(loads.length, 3);
+  assert.ok(loads.every((load) => load.signal.aborted));
+});
+
+test("a transient image failure refreshes authorization and retries only the thumbnail", async () => {
+  let calls = 0,
+    loads = 0;
+  const cache = createThumbnailCache(
+    async (body) => {
+      calls++;
+      return response(body);
+    },
+    {
+      batchDelay: 1,
+      loadImage: async (url) => {
+        assert.equal(url, "https://private/retry/0");
+        if (++loads === 1) throw new Error("temporary network error");
+      }
+    }
+  );
+  assert.equal(await cache.subscribe({ jobId: "retry", index: 0 }, 2).promise, "https://private/retry/0");
+  assert.equal(calls, 2);
+  assert.equal(loads, 2);
+});
+
+test("browser preload waits for decoding and releases abandoned or stalled image requests", async () => {
+  const image = {
+    removeAttribute(name) {
+      assert.equal(name, "src");
+      this.src = null;
+    }
+  };
+  let decoded;
+  image.decode = () =>
+    new Promise((resolve) => {
+      decoded = resolve;
+    });
+  const controller = new AbortController();
+  const options = { signal: controller.signal, priority: 0, createImage: () => image };
+  let complete = false;
+  const promise = preloadThumbnailImage("/private.webp", options).then(() => {
+    complete = true;
+  });
+  assert.equal(image.src, "/private.webp");
+  assert.equal(image.fetchPriority, "high");
+  image.onload();
+  await pause();
+  assert.equal(complete, false);
+  decoded();
+  await promise;
+  const cancelled = preloadThumbnailImage("/next.webp", options);
+  const failure = assert.rejects(cancelled, { name: "AbortError" });
+  controller.abort();
+  await failure;
+  assert.equal(image.src, null);
+  assert.equal(image.onload, null);
+  await assert.rejects(
+    preloadThumbnailImage("/stalled.webp", { ...options, signal: new AbortController().signal, timeout: 1 }),
+    /timed out/
+  );
+  assert.equal(image.src, null);
 });
