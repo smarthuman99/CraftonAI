@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { callWorkflowAi } from "./workflowAiClient";
+import { WorkflowDisclosure } from "./WorkflowOverview";
 
 const formatDate = (value, zh) =>
   value ? new Date(value).toLocaleString(zh ? "zh-CN" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -491,535 +492,582 @@ export default function ProductionControlTower({
 
   return (
     <div className="production-control-tower">
-      <div className="production-controller-command">
-        <div>
-          <span>CRAFTON · PRODUCTION CONTROLLER</span>
-          <h4>
-            {t(
-              "Crafton coordinates routine follow-up; Cho handles exceptions and release gates",
-              "负责日常跟单；Cho 只处理异常和放行审核"
-            )}
-          </h4>
-          <p>
-            {t(
-              "The controller checks supplier evidence, missing proof, duplicate files, update gaps and overdue work packages.",
-              "控制器持续检查供应商证据、缺失资料、重复文件、长期未上报和逾期工序。"
-            )}
-          </p>
-        </div>
-        <button type="button" disabled={Boolean(busy) || !dashboard.tasks.length} onClick={runController}>
-          {busy === "analyze"
-            ? t("We are checking...", "正在检查……")
-            : t("Run controller now", "立即运行生产控制器")}
-        </button>
-      </div>
-
-      {message && <div className="production-controller-message">{message}</div>}
-
-      <div className="production-controller-metrics">
-        <article>
-          <span>{t("Supplier-reported progress", "供应商上报进度")}</span>
-          <strong>{dashboard.progress}%</strong>
-          <small>{t("Not a Crafton release approval", "不等于 Crafton 放行")}</small>
-        </article>
-        <article>
-          <span>{t("Evidence coverage", "生产证据完整度")}</span>
-          <strong>{dashboard.evidenceCoverage}%</strong>
-          <small>
-            {dashboard.readyForReview} {t("ready for Cho review", "项等待 Cho 审核")}
-          </small>
-        </article>
-        <article className={dashboard.highRisks ? "danger" : dashboard.mediumRisks ? "warning" : "success"}>
-          <span>{t("Exception queue", "异常队列")}</span>
-          <strong>{dashboard.highRisks + dashboard.mediumRisks}</strong>
-          <small>
-            {dashboard.highRisks} {t("high", "高风险")} · {dashboard.mediumRisks} {t("medium", "中风险")}
-          </small>
-        </article>
-        <article>
-          <span>{t("Last factory evidence", "工厂最近上报")}</span>
-          <strong className="date-value">{formatDate(dashboard.latestReport, zh)}</strong>
-          <small>{t("Private, audit-hashed files", "私有文件并记录审计哈希")}</small>
-        </article>
-      </div>
-
-      <section className="supplier-access-control">
-        <div>
-          <span>{t("SUPPLIER ACCESS", "供应商网站账号")}</span>
-          <h4>{selectedSupplier?.name || t("No supplier approved in S08", "S08 尚未批准供应商")}</h4>
-          <p>
-            {selectedSupplier
-              ? `${selectedSupplier.email || selectedSupplier.contact_email || t("Missing contact email", "缺少联系人邮箱")} · ${t(
-                  "This account only receives this factory's approved orders and production tasks.",
-                  "该账号只会收到属于这家工厂的已批准订单和生产任务。"
-                )}`
-              : t(
-                  "Approve the winning supplier in menu 02 before releasing production access.",
-                  "请先在菜单 02 批准中选供应商，之后才能开通生产工作台。"
-                )}
-          </p>
-        </div>
-        <button type="button" disabled={Boolean(busy) || !selectedSupplier} onClick={createAccess}>
-          {busy === "account"
-            ? t("Creating access...", "正在开通……")
-            : t("Create / reset supplier login", "创建 / 重置供应商账号")}
-        </button>
-      </section>
-
-      {credentials && (
-        <div className="supplier-credentials-once">
-          <div>
-            <span>{t("SHOW ONCE — STORE SECURELY", "仅本次显示 — 请安全保存")}</span>
-            <strong>{credentials.email}</strong>
-            <code>{credentials.temporaryPassword}</code>
-          </div>
-          <button
-            type="button"
-            onClick={() =>
-              copyText(`${credentials.email}\n${credentials.temporaryPassword}`)
-                .then(() => setMessage(t("Credentials copied.", "登录资料已复制。")))
-                .catch((error) => setMessage(error.message))
-            }
-          >
-            {t("Copy login details", "复制登录资料")}
-          </button>
+      {message && (
+        <div className="production-controller-message" role="status">
+          {message}
         </div>
       )}
-
-      <section className={`production-drawing-gate ${drawingGate.approved ? "approved" : "blocked"}`}>
-        <header>
+      <WorkflowDisclosure
+        title={t("Evidence & factory follow-up", "生产凭证与工厂跟进")}
+        detail={
+          dashboard.tasks.length
+            ? t(
+                `${dashboard.evidenceCoverage}% evidence coverage · ${dashboard.readyForReview} ready for review`,
+                `凭证完整度 ${dashboard.evidenceCoverage}% · ${dashboard.readyForReview} 项待审核`
+              )
+            : t("Available when production work packages are released", "生产工序下达后可查看")
+        }
+        defaultOpen={dashboard.tasks.length > 0}
+      >
+        <div className="production-controller-command">
           <div>
-            <span>{t("SUPPLIER SHOP-DRAWING GATE", "供应商施工图闸口")}</span>
+            <span>CRAFTON · PRODUCTION CONTROLLER</span>
             <h4>
-              {drawingGate.approved
-                ? t("All current revisions are approved for manufacture", "全部最新版本已批准用于生产")
-                : t("Manufacturing release is locked", "生产放行仍被锁定")}
+              {t(
+                "Crafton coordinates routine follow-up; Cho handles exceptions and release gates",
+                "负责日常跟单；Cho 只处理异常和放行审核"
+              )}
             </h4>
             <p>
               {t(
-                "Concept views are never approved as production geometry. Review the appointed supplier's latest CAD/shop-drawing revision for every item.",
-                "概念视图永远不会被批准为生产几何。请逐项审核中选供应商最新的 CAD／施工图版本。"
+                "The controller checks supplier evidence, missing proof, duplicate files, update gaps and overdue work packages.",
+                "控制器持续检查供应商证据、缺失资料、重复文件、长期未上报和逾期工序。"
               )}
             </p>
           </div>
-          <strong>
-            {drawingGate.approvedCount}/{drawingGate.rows.length || "—"}
-            <small>{t("items approved", "项已批准")}</small>
-          </strong>
-        </header>
-        {!drawingGate.rows.length ? (
-          <div className="production-drawing-empty">
-            {t(
-              "Create the RFQ item package before opening the drawing gate.",
-              "请先建立 RFQ item 资料包，再开启施工图闸口。"
-            )}
-          </div>
-        ) : (
-          <div className="production-drawing-list">
-            {drawingGate.rows.map((row) => (
-              <article className={`status-${row.status}`} key={`admin-drawing-${row.code}`}>
-                <div>
-                  <code>{row.code}</code>
-                  <strong>{row.name}</strong>
-                  <small>
-                    {row.file
-                      ? `${row.file.payload?.revision || "R00"} · ${row.file.file_name}`
-                      : t("Awaiting supplier upload", "等待供应商上传")}
-                  </small>
-                  {row.file?.payload?.review_note && <p>{row.file.payload.review_note}</p>}
-                </div>
-                <span>{productionDrawingStatus(row.status, zh)}</span>
-                <div>
-                  {row.file && drawingUrls[row.file.id] && (
-                    <a href={drawingUrls[row.file.id]} target="_blank" rel="noreferrer">
-                      {t("Open revision", "查看版本")}
-                    </a>
-                  )}
-                  {row.file && row.status !== "approved" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDrawingReviewId(row.file.id);
-                        setDrawingReviewNote(row.file.payload?.review_note || "");
-                        setMessage("");
-                      }}
-                    >
-                      {t("Technical review", "技术审核")}
-                    </button>
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-        {drawingReviewId && (
-          <div className="production-drawing-review">
-            <label>
-              <span>{t("Technical review note / correction instruction", "技术审核备注／修正指示")}</span>
-              <textarea
-                value={drawingReviewNote}
-                onChange={(event) => setDrawingReviewNote(event.target.value)}
-                placeholder={t(
-                  "Check geometry, dimensions, construction, tolerances and revision scope.",
-                  "检查几何、尺寸、结构、公差及本次版本范围。"
-                )}
-              />
-            </label>
-            <div>
-              <button type="button" disabled={Boolean(busy)} onClick={() => reviewShopDrawing("changes_required")}>
-                {t("Return for revision", "退回修订")}
-              </button>
-              <button
-                className="approve"
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={() => reviewShopDrawing("approved")}
-              >
-                {busy === `drawing-${drawingReviewId}`
-                  ? t("Saving review...", "正在保存审核……")
-                  : t("Approve for manufacture", "批准用于生产")}
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className={`production-schedule-approval schedule-${dashboard.schedule.status}`}>
-        <header>
-          <div>
-            <span>{t("FACTORY PRODUCTION SCHEDULE", "供应商真实生产排期")}</span>
-            <h4>{label(dashboard.schedule.status, zh)}</h4>
-            <p>
-              {t(
-                "Crafton validates the supplier's dates, capacity, process sequence, quoted lead time and shipping buffer. Only Cho approval activates a new baseline.",
-                "会校验供应商日期、产能、工序顺序、报价交期和运输缓冲期；只有 Cho 批准后，新版本才会成为正式基准。"
-              )}
-            </p>
-          </div>
-          <div className="production-schedule-version">
-            <span>{t("Supplier version", "供应商版本")}</span>
-            <strong>V{dashboard.schedule.version || "—"}</strong>
-            <small>
-              {t("Approved baseline", "已批准基准")} V{dashboard.schedule.approvedVersion || "—"}
-            </small>
-          </div>
-        </header>
-        <div className="production-schedule-dates">
-          <div>
-            <span>{t("Supplier proposed completion", "供应商建议完工")}</span>
-            <strong>{formatDate(dashboard.schedule.proposedCompletion, zh)}</strong>
-          </div>
-          <div>
-            <span>{t("Active approved completion", "当前批准完工")}</span>
-            <strong>{formatDate(dashboard.schedule.approvedCompletion, zh)}</strong>
-          </div>
-        </div>
-        {dashboard.schedule.issues.length > 0 && (
-          <div className="production-schedule-issues">
-            {dashboard.schedule.issues.map((issue, index) => (
-              <div className={issue.severity === "high" ? "high" : "warning"} key={`${issue.code}-${index}`}>
-                <strong>{issue.severity === "high" ? t("Must fix", "必须修正") : t("Warning", "提醒")}</strong>
-                <span>
-                  {issue.taskName ? `${issue.taskName}: ` : ""}
-                  {zh ? issue.messageCn || issue.message : issue.message}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        <footer>
-          <p>
-            {dashboard.schedule.status === "revision_pending_cho"
-              ? t(
-                  "The previous approved schedule remains active until this revision is approved.",
-                  "在本次改期获批之前，原已批准排产仍然是有效跟单基准。"
-                )
-              : t(
-                  "Production overdue alerts stay disabled until the first supplier schedule is approved.",
-                  "首版供应商排产获批之前，系统不会按预测日期产生逾期警报。"
-                )}
-          </p>
-          <button
-            type="button"
-            disabled={Boolean(busy) || !dashboard.schedule.canApprove || !drawingGate.approved}
-            onClick={approveSchedule}
-            title={
-              !drawingGate.approved ? t("Approve every supplier shop drawing first.", "请先批准全部供应商施工图。") : ""
-            }
-          >
-            {busy === "schedule"
-              ? t("Approving baseline...", "正在批准基准……")
-              : t("Cho approves production baseline", "Cho 批准为正式生产基准")}
+          <button type="button" disabled={Boolean(busy) || !dashboard.tasks.length} onClick={runController}>
+            {busy === "analyze" ? t("We are checking...", "正在检查……") : t("Run controller now", "立即运行生产控制器")}
           </button>
-        </footer>
-      </section>
-
-      {!dashboard.tasks.length ? (
-        <div className="production-controller-empty">
-          <strong>{t("No released production work packages yet.", "目前尚未下达生产工序。")}</strong>
-          <p>
-            {t(
-              "Generate and release the work-package framework below after S08 supplier approval.",
-              "请在 S08 批准供应商后，于下方生成并下达生产工序框架。"
-            )}
-          </p>
         </div>
-      ) : (
-        <>
-          <section className={`production-completion-gate ${dashboard.allCompletionApproved ? "released" : ""}`}>
+
+        <div className="production-controller-metrics">
+          <article>
+            <span>{t("Supplier-reported progress", "供应商上报进度")}</span>
+            <strong>{dashboard.progress}%</strong>
+            <small>{t("Not a Crafton release approval", "不等于 Crafton 放行")}</small>
+          </article>
+          <article>
+            <span>{t("Evidence coverage", "生产证据完整度")}</span>
+            <strong>{dashboard.evidenceCoverage}%</strong>
+            <small>
+              {dashboard.readyForReview} {t("ready for Cho review", "项等待 Cho 审核")}
+            </small>
+          </article>
+          <article className={dashboard.highRisks ? "danger" : dashboard.mediumRisks ? "warning" : "success"}>
+            <span>{t("Exception queue", "异常队列")}</span>
+            <strong>{dashboard.highRisks + dashboard.mediumRisks}</strong>
+            <small>
+              {dashboard.highRisks} {t("high", "高风险")} · {dashboard.mediumRisks} {t("medium", "中风险")}
+            </small>
+          </article>
+          <article>
+            <span>{t("Last factory evidence", "工厂最近上报")}</span>
+            <strong className="date-value">{formatDate(dashboard.latestReport, zh)}</strong>
+            <small>{t("Latest supplier submission", "供应商最新提交")}</small>
+          </article>
+        </div>
+      </WorkflowDisclosure>
+      <WorkflowDisclosure
+        title={t("Supplier access", "供应商权限")}
+        detail={selectedSupplier?.name || t("Awaiting supplier selection in menu 02", "等待在菜单 02 确认供应商")}
+      >
+        <section className="supplier-access-control">
+          <div>
+            <span>{t("SUPPLIER ACCESS", "供应商网站账号")}</span>
+            <h4>{selectedSupplier?.name || t("No supplier approved in S08", "S08 尚未批准供应商")}</h4>
+            <p>
+              {selectedSupplier
+                ? `${selectedSupplier.email || selectedSupplier.contact_email || t("Missing contact email", "缺少联系人邮箱")} · ${t(
+                    "This account only receives this factory's approved orders and production tasks.",
+                    "该账号只会收到属于这家工厂的已批准订单和生产任务。"
+                  )}`
+                : t(
+                    "Approve the winning supplier in menu 02 before releasing production access.",
+                    "请先在菜单 02 批准中选供应商，之后才能开通生产工作台。"
+                  )}
+            </p>
+          </div>
+          <button type="button" disabled={Boolean(busy) || !selectedSupplier} onClick={createAccess}>
+            {busy === "account"
+              ? t("Creating access...", "正在开通……")
+              : t("Create / reset supplier login", "创建 / 重置供应商账号")}
+          </button>
+        </section>
+
+        {credentials && (
+          <div className="supplier-credentials-once">
             <div>
-              <span>{t("S09 COMPLETION REVIEW GATE", "S09 完工审核闸口")}</span>
+              <span>{t("SHOW ONCE — STORE SECURELY", "仅本次显示 — 请安全保存")}</span>
+              <strong>{credentials.email}</strong>
+              <code>{credentials.temporaryPassword}</code>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                copyText(`${credentials.email}\n${credentials.temporaryPassword}`)
+                  .then(() => setMessage(t("Credentials copied.", "登录资料已复制。")))
+                  .catch((error) => setMessage(error.message))
+              }
+            >
+              {t("Copy login details", "复制登录资料")}
+            </button>
+          </div>
+        )}
+      </WorkflowDisclosure>
+      <WorkflowDisclosure
+        title={t("Shop drawings & manufacturing release", "施工图与生产放行")}
+        detail={t(
+          `${drawingGate.approvedCount} of ${drawingGate.rows.length} items approved`,
+          `${drawingGate.approvedCount}/${drawingGate.rows.length} 项已批准`
+        )}
+        defaultOpen={Boolean(selectedSupplier) && !drawingGate.approved}
+      >
+        <section className={`production-drawing-gate ${drawingGate.approved ? "approved" : "blocked"}`}>
+          <header>
+            <div>
+              <span>{t("SUPPLIER SHOP-DRAWING GATE", "供应商施工图闸口")}</span>
               <h4>
-                {dashboard.allCompletionApproved
-                  ? t("Released to S11 visual quality inspection", "已放行进入 S11 视觉品质检验")
-                  : t("Cho approval required for every work package", "每个生产工序都必须经过 Cho 审核")}
+                {drawingGate.approved
+                  ? t("All current revisions are approved for manufacture", "全部最新版本已批准用于生产")
+                  : t("Manufacturing release is locked", "生产放行仍被锁定")}
               </h4>
               <p>
                 {t(
-                  "Review the supplier's files below. The final approval automatically releases the project to S11; returned evidence is tracked in S10.",
-                  "请逐项检查供应商上传的文件。最后一项批准后项目会自动进入 S11；被退回的证据会进入 S10 跟进。"
+                  "Concept views are never approved as production geometry. Review the appointed supplier's latest CAD/shop-drawing revision for every item.",
+                  "概念视图永远不会被批准为生产几何。请逐项审核中选供应商最新的 CAD／施工图版本。"
                 )}
               </p>
             </div>
-            <div className="production-completion-count">
-              <strong>
-                {dashboard.approvedCompletion}/{dashboard.tasks.length}
-              </strong>
-              <span>{t("work packages approved", "个工序已批准")}</span>
-              {dashboard.changesRequired > 0 && (
-                <small>
-                  {dashboard.changesRequired} {t("returned", "项已退回")}
-                </small>
+            <strong>
+              {drawingGate.approvedCount}/{drawingGate.rows.length || "—"}
+              <small>{t("items approved", "项已批准")}</small>
+            </strong>
+          </header>
+          {!drawingGate.rows.length ? (
+            <div className="production-drawing-empty">
+              {t(
+                "Create the RFQ item package before opening the drawing gate.",
+                "请先建立 RFQ item 资料包，再开启施工图闸口。"
               )}
             </div>
-          </section>
-
-          <div className="production-work-package-grid">
-            {dashboard.tasks.map((task, index) => (
-              <article className={`risk-${task.activeRiskLevel}`} key={task.id}>
-                <header>
-                  <span>{String(index + 1).padStart(2, "0")}</span>
+          ) : (
+            <div className="production-drawing-list">
+              {drawingGate.rows.map((row) => (
+                <article className={`status-${row.status}`} key={`admin-drawing-${row.code}`}>
                   <div>
-                    <small>{task.item_name || t("Production package", "生产工序")}</small>
-                    <h5>{task.process_name}</h5>
+                    <code>{row.code}</code>
+                    <strong>{row.name}</strong>
+                    <small>
+                      {row.file
+                        ? `${row.file.payload?.revision || "R00"} · ${row.file.file_name}`
+                        : t("Awaiting supplier upload", "等待供应商上传")}
+                    </small>
+                    {row.file?.payload?.review_note && <p>{row.file.payload.review_note}</p>}
                   </div>
-                  <b>{label(task.activeRiskLevel, zh)}</b>
-                </header>
-                <div className="production-package-progress">
+                  <span>{productionDrawingStatus(row.status, zh)}</span>
                   <div>
-                    <span style={{ width: `${task.progress_percent || 0}%` }} />
+                    {row.file && drawingUrls[row.file.id] && (
+                      <a href={drawingUrls[row.file.id]} target="_blank" rel="noreferrer">
+                        {t("Open revision", "查看版本")}
+                      </a>
+                    )}
+                    {row.file && row.status !== "approved" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDrawingReviewId(row.file.id);
+                          setDrawingReviewNote(row.file.payload?.review_note || "");
+                          setMessage("");
+                        }}
+                      >
+                        {t("Technical review", "技术审核")}
+                      </button>
+                    )}
                   </div>
-                  <strong>{task.progress_percent || 0}%</strong>
-                </div>
-                <dl>
-                  <div>
-                    <dt>
-                      {task.hasApprovedBaseline
-                        ? t("Approved due", "已批准截止")
-                        : t("Supplier proposed", "供应商建议")}
-                    </dt>
-                    <dd>
-                      {formatDate(
-                        task.hasApprovedBaseline ? task.expected_at : latestEntry(task, "supplier_plan")?.expected_at,
-                        zh
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{t("Evidence", "证据")}</dt>
-                    <dd>
-                      {task.evidenceSummary.coverage}% · {task.evidenceSummary.uploads.length} {t("files", "份文件")}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{t("Cho gate", "Cho 审核")}</dt>
-                    <dd>
-                      {task.completionReview.status === "approved"
-                        ? t("Approved", "已批准")
-                        : task.completionReview.status === "changes_required"
-                          ? t("Returned", "已退回")
-                          : Number(task.progress_percent || 0) >= 100 && task.evidenceSummary.missing.length === 0
-                            ? t("Ready", "可审核")
-                            : t("Not ready", "未就绪")}
-                    </dd>
-                  </div>
-                </dl>
-                <div className="production-package-checks">
-                  {task.evidenceSummary.required.map((item) => (
-                    <span className={task.evidenceSummary.missing.includes(item) ? "missing" : "done"} key={item}>
-                      {task.evidenceSummary.missing.includes(item) ? "○" : "✓"} {item}
-                    </span>
-                  ))}
-                </div>
-                {task.completionReview.review?.note && (
-                  <p className={`completion-review-note ${task.completionReview.status}`}>
-                    {task.completionReview.review.note}
-                  </p>
-                )}
-                {task.notes && <p>{task.notes}</p>}
-                <button
-                  type="button"
-                  className="production-package-review-button"
-                  disabled={!task.completionReview.uploads.length}
-                  onClick={() => openCompletionReview(task)}
-                >
-                  {task.completionReview.status === "approved"
-                    ? t("View approved evidence", "查看已批准证据")
-                    : t("Review supplier evidence", "审核供应商证据")}
-                </button>
-              </article>
-            ))}
-          </div>
-
-          {reviewTask && (
-            <section className="production-evidence-review-panel">
-              <header>
-                <div>
-                  <span>{t("CHO COMPLETION REVIEW", "CHO 完工证据审核")}</span>
-                  <h4>{reviewTask.process_name}</h4>
-                  <p>
-                    {reviewTask.item_name} · {reviewTask.progress_percent || 0}% · {reviewTask.evidenceSummary.coverage}
-                    % {t("evidence coverage", "证据完整度")}
-                  </p>
-                </div>
-                <button type="button" onClick={() => setReviewTaskId("")}>
-                  {t("Close", "关闭")}
-                </button>
-              </header>
-
-              <div className="production-evidence-files">
-                {reviewTask.completionReview.uploads.map((entry, index) => {
-                  const url = evidenceUrls[`${entry.bucket}:${entry.path}`];
-                  const isImage = String(entry.mime_type || "").startsWith("image/");
-                  return (
-                    <a
-                      href={url || undefined}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={isImage ? "image" : "document"}
-                      key={`${entry.sha256 || entry.path}-${index}`}
-                    >
-                      {isImage && url ? <img src={url} alt={entry.requirement || entry.file_name} /> : <b>FILE</b>}
-                      <span>{entry.requirement || t("Production evidence", "生产证据")}</span>
-                      <strong>{entry.file_name}</strong>
-                      <small>{formatDate(entry.uploaded_at, zh)}</small>
-                    </a>
-                  );
-                })}
-              </div>
-
-              {reviewTask.completionReview.status === "approved" ? (
-                <div className="production-review-approved">
-                  <strong>{t("Approved by Cho", "已由 Cho 批准")}</strong>
-                  <span>{reviewTask.completionReview.review?.note}</span>
-                </div>
-              ) : (
-                <>
-                  {!reviewEvidenceReady && (
-                    <div className="production-review-warning">
-                      <strong>{t("Evidence is not ready for approval", "证据尚未达到批准条件")}</strong>
-                      {Number(reviewTask.progress_percent || 0) < 100 && (
-                        <span>{t("Supplier progress must reach 100%.", "供应商上报进度必须达到 100%。")}</span>
-                      )}
-                      {reviewTask.evidenceSummary.missing.length > 0 && (
-                        <span>
-                          {t("Missing required evidence:", "仍缺少指定证据：")}{" "}
-                          {reviewTask.evidenceSummary.missing.join(", ")}
-                        </span>
-                      )}
-                      {reviewTask.completionReview.status === "changes_required" && (
-                        <span>
-                          {t(
-                            "The supplier must upload a corrected file after the latest return decision.",
-                            "供应商必须在最近一次退回后上传修正文件。"
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {!reviewTask.hasApprovedBaseline && (
-                    <div className="production-review-advisory">
-                      <strong>{t("Production schedule is not an approved baseline", "供应商排产尚未获批")}</strong>
-                      <span>
-                        {t(
-                          `Schedule v${dashboard.schedule.version || 1} is ${dashboard.schedule.status.replaceAll("_", " ")}. This no longer blocks evidence review, but the exception will be kept in the audit record.`,
-                          `供应商第 ${dashboard.schedule.version || 1} 版排产目前为“${label(dashboard.schedule.status, true)}”。这不会再阻止完工证据审核，但系统会保留例外记录。`
-                        )}
-                      </span>
-                    </div>
-                  )}
-                  {reviewRequiresRiskAcknowledgement && (
-                    <div className="production-review-risk-acknowledgement">
-                      <strong>{t("Evidence risk requires Cho confirmation", "证据风险需要 Cho 确认")}</strong>
-                      <span>
-                        {reviewTask.duplicateEvidence
-                          ? t(
-                              "At least one uploaded file is also used in another work package. Confirm that the reused evidence genuinely proves this stage.",
-                              "至少一份上传文件同时用于其他生产工序。请确认该重复证据确实能够证明本工序已经完成。"
-                            )
-                          : t(
-                              `The current stored risk level is ${reviewTask.risk_level}. Review the evidence before overriding it.`,
-                              `当前记录的风险等级为 ${reviewTask.risk_level}，请核实证据后再决定是否覆盖。`
-                            )}
-                      </span>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={reviewRiskAcknowledged}
-                          onChange={(event) => setReviewRiskAcknowledged(event.target.checked)}
-                        />
-                        <b>
-                          {t(
-                            "I verified the evidence and accept responsibility for this risk override.",
-                            "我已核实证据，并确认承担本次风险覆盖的审核责任。"
-                          )}
-                        </b>
-                      </label>
-                    </div>
-                  )}
-                  <label className="production-review-note-field">
-                    <span>{t("Cho review note / correction instructions", "Cho 审核备注／返工指示")}</span>
-                    <textarea
-                      value={reviewNote}
-                      onChange={(event) => setReviewNote(event.target.value)}
-                      placeholder={t(
-                        reviewRequiresRiskAcknowledgement
-                          ? "Explain why the flagged evidence is acceptable. This note is required."
-                          : "Approval note is optional. A correction reason is required when returning evidence.",
-                        reviewRequiresRiskAcknowledgement
-                          ? "请说明为何可以接受该风险证据；此审核说明为必填。"
-                          : "批准备注可留空；退回证据时必须说明需要修正的内容。"
-                      )}
-                    />
-                  </label>
-                  <div className="production-review-actions">
-                    <button
-                      type="button"
-                      className="return"
-                      disabled={Boolean(busy)}
-                      onClick={() => submitCompletionReview("changes_required")}
-                    >
-                      {t("Return for correction", "退回供应商修正")}
-                    </button>
-                    <button
-                      type="button"
-                      className="approve"
-                      disabled={Boolean(busy) || !canApproveReviewTask}
-                      onClick={() => submitCompletionReview("approved")}
-                    >
-                      {busy === `review-${reviewTask.id}`
-                        ? t("Saving review...", "正在保存审核……")
-                        : reviewRequiresRiskAcknowledgement
-                          ? t("Acknowledge risk and approve", "确认风险并批准")
-                          : t("Approve completion evidence", "批准完工证据")}
-                    </button>
-                  </div>
-                </>
-              )}
-            </section>
+                </article>
+              ))}
+            </div>
           )}
-        </>
-      )}
+          {drawingReviewId && (
+            <div className="production-drawing-review">
+              <label>
+                <span>{t("Technical review note / correction instruction", "技术审核备注／修正指示")}</span>
+                <textarea
+                  value={drawingReviewNote}
+                  onChange={(event) => setDrawingReviewNote(event.target.value)}
+                  placeholder={t(
+                    "Check geometry, dimensions, construction, tolerances and revision scope.",
+                    "检查几何、尺寸、结构、公差及本次版本范围。"
+                  )}
+                />
+              </label>
+              <div>
+                <button type="button" disabled={Boolean(busy)} onClick={() => reviewShopDrawing("changes_required")}>
+                  {t("Return for revision", "退回修订")}
+                </button>
+                <button
+                  className="approve"
+                  type="button"
+                  disabled={Boolean(busy)}
+                  onClick={() => reviewShopDrawing("approved")}
+                >
+                  {busy === `drawing-${drawingReviewId}`
+                    ? t("Saving review...", "正在保存审核……")
+                    : t("Approve for manufacture", "批准用于生产")}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      </WorkflowDisclosure>
+      <WorkflowDisclosure
+        title={t("Factory schedule", "工厂排程")}
+        detail={label(dashboard.schedule.status, zh)}
+        defaultOpen={drawingGate.approved && dashboard.schedule.status !== "approved"}
+      >
+        <section className={`production-schedule-approval schedule-${dashboard.schedule.status}`}>
+          <header>
+            <div>
+              <span>{t("FACTORY PRODUCTION SCHEDULE", "供应商真实生产排期")}</span>
+              <h4>{label(dashboard.schedule.status, zh)}</h4>
+              <p>
+                {t(
+                  "Crafton validates the supplier's dates, capacity, process sequence, quoted lead time and shipping buffer. Only Cho approval activates a new baseline.",
+                  "会校验供应商日期、产能、工序顺序、报价交期和运输缓冲期；只有 Cho 批准后，新版本才会成为正式基准。"
+                )}
+              </p>
+            </div>
+            <div className="production-schedule-version">
+              <span>{t("Supplier version", "供应商版本")}</span>
+              <strong>V{dashboard.schedule.version || "—"}</strong>
+              <small>
+                {t("Approved baseline", "已批准基准")} V{dashboard.schedule.approvedVersion || "—"}
+              </small>
+            </div>
+          </header>
+          <div className="production-schedule-dates">
+            <div>
+              <span>{t("Supplier proposed completion", "供应商建议完工")}</span>
+              <strong>{formatDate(dashboard.schedule.proposedCompletion, zh)}</strong>
+            </div>
+            <div>
+              <span>{t("Active approved completion", "当前批准完工")}</span>
+              <strong>{formatDate(dashboard.schedule.approvedCompletion, zh)}</strong>
+            </div>
+          </div>
+          {dashboard.schedule.issues.length > 0 && (
+            <div className="production-schedule-issues">
+              {dashboard.schedule.issues.map((issue, index) => (
+                <div className={issue.severity === "high" ? "high" : "warning"} key={`${issue.code}-${index}`}>
+                  <strong>{issue.severity === "high" ? t("Must fix", "必须修正") : t("Warning", "提醒")}</strong>
+                  <span>
+                    {issue.taskName ? `${issue.taskName}: ` : ""}
+                    {zh ? issue.messageCn || issue.message : issue.message}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="production-schedule-actions">
+            <p>
+              {dashboard.schedule.status === "revision_pending_cho"
+                ? t(
+                    "The previous approved schedule remains active until this revision is approved.",
+                    "在本次改期获批之前，原已批准排产仍然是有效跟单基准。"
+                  )
+                : dashboard.schedule.status === "approved"
+                  ? t(
+                      "This approved schedule is the active baseline for production follow-up.",
+                      "此已批准排程是当前生产跟进的正式基准。"
+                    )
+                  : t(
+                      "Production overdue alerts stay disabled until the first supplier schedule is approved.",
+                      "首版供应商排产获批之前，系统不会按预测日期产生逾期警报。"
+                    )}
+            </p>
+            <button
+              type="button"
+              disabled={Boolean(busy) || !dashboard.schedule.canApprove || !drawingGate.approved}
+              onClick={approveSchedule}
+              title={
+                !drawingGate.approved
+                  ? t("Approve every supplier shop drawing first.", "请先批准全部供应商施工图。")
+                  : ""
+              }
+            >
+              {busy === "schedule"
+                ? t("Approving baseline...", "正在批准基准……")
+                : t("Cho approves production baseline", "Cho 批准为正式生产基准")}
+            </button>
+          </div>
+        </section>
+      </WorkflowDisclosure>
+
+      <WorkflowDisclosure
+        title={t("Work packages & completion review", "生产工序与完工审核")}
+        detail={t(
+          `${dashboard.approvedCompletion}/${dashboard.tasks.length} work packages approved`,
+          `${dashboard.approvedCompletion}/${dashboard.tasks.length} 个工序已批准`
+        )}
+        defaultOpen={dashboard.tasks.length > 0}
+      >
+        {!dashboard.tasks.length ? (
+          <div className="production-controller-empty">
+            <strong>{t("No released production work packages yet.", "目前尚未下达生产工序。")}</strong>
+            <p>
+              {t(
+                "Generate and release the work-package framework below after S08 supplier approval.",
+                "请在 S08 批准供应商后，于下方生成并下达生产工序框架。"
+              )}
+            </p>
+          </div>
+        ) : (
+          <>
+            <section className={`production-completion-gate ${dashboard.allCompletionApproved ? "released" : ""}`}>
+              <div>
+                <span>{t("S09 COMPLETION REVIEW GATE", "S09 完工审核闸口")}</span>
+                <h4>
+                  {dashboard.allCompletionApproved
+                    ? t("Released to S11 visual quality inspection", "已放行进入 S11 视觉品质检验")
+                    : t("Cho approval required for every work package", "每个生产工序都必须经过 Cho 审核")}
+                </h4>
+                <p>
+                  {t(
+                    "Review the supplier's files below. The final approval automatically releases the project to S11; returned evidence is tracked in S10.",
+                    "请逐项检查供应商上传的文件。最后一项批准后项目会自动进入 S11；被退回的证据会进入 S10 跟进。"
+                  )}
+                </p>
+              </div>
+              <div className="production-completion-count">
+                <strong>
+                  {dashboard.approvedCompletion}/{dashboard.tasks.length}
+                </strong>
+                <span>{t("work packages approved", "个工序已批准")}</span>
+                {dashboard.changesRequired > 0 && (
+                  <small>
+                    {dashboard.changesRequired} {t("returned", "项已退回")}
+                  </small>
+                )}
+              </div>
+            </section>
+
+            <div className="production-work-package-grid">
+              {dashboard.tasks.map((task, index) => (
+                <article className={`risk-${task.activeRiskLevel}`} key={task.id}>
+                  <header>
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <div>
+                      <small>{task.item_name || t("Production package", "生产工序")}</small>
+                      <h5>{task.process_name}</h5>
+                    </div>
+                    <b>{label(task.activeRiskLevel, zh)}</b>
+                  </header>
+                  <div className="production-package-progress">
+                    <div>
+                      <span style={{ width: `${task.progress_percent || 0}%` }} />
+                    </div>
+                    <strong>{task.progress_percent || 0}%</strong>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>
+                        {task.hasApprovedBaseline
+                          ? t("Approved due", "已批准截止")
+                          : t("Supplier proposed", "供应商建议")}
+                      </dt>
+                      <dd>
+                        {formatDate(
+                          task.hasApprovedBaseline ? task.expected_at : latestEntry(task, "supplier_plan")?.expected_at,
+                          zh
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t("Evidence", "证据")}</dt>
+                      <dd>
+                        {task.evidenceSummary.coverage}% · {task.evidenceSummary.uploads.length} {t("files", "份文件")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t("Cho gate", "Cho 审核")}</dt>
+                      <dd>
+                        {task.completionReview.status === "approved"
+                          ? t("Approved", "已批准")
+                          : task.completionReview.status === "changes_required"
+                            ? t("Returned", "已退回")
+                            : Number(task.progress_percent || 0) >= 100 && task.evidenceSummary.missing.length === 0
+                              ? t("Ready", "可审核")
+                              : t("Not ready", "未就绪")}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="production-package-checks">
+                    {task.evidenceSummary.required.map((item) => (
+                      <span className={task.evidenceSummary.missing.includes(item) ? "missing" : "done"} key={item}>
+                        {task.evidenceSummary.missing.includes(item) ? "○" : "✓"} {item}
+                      </span>
+                    ))}
+                  </div>
+                  {task.completionReview.review?.note && (
+                    <p className={`completion-review-note ${task.completionReview.status}`}>
+                      {task.completionReview.review.note}
+                    </p>
+                  )}
+                  {task.notes && <p>{task.notes}</p>}
+                  <button
+                    type="button"
+                    className="production-package-review-button"
+                    disabled={!task.completionReview.uploads.length}
+                    onClick={() => openCompletionReview(task)}
+                  >
+                    {task.completionReview.status === "approved"
+                      ? t("View approved evidence", "查看已批准证据")
+                      : t("Review supplier evidence", "审核供应商证据")}
+                  </button>
+                </article>
+              ))}
+            </div>
+
+            {reviewTask && (
+              <section className="production-evidence-review-panel">
+                <header>
+                  <div>
+                    <span>{t("CHO COMPLETION REVIEW", "CHO 完工证据审核")}</span>
+                    <h4>{reviewTask.process_name}</h4>
+                    <p>
+                      {reviewTask.item_name} · {reviewTask.progress_percent || 0}% ·{" "}
+                      {reviewTask.evidenceSummary.coverage}% {t("evidence coverage", "证据完整度")}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setReviewTaskId("")}>
+                    {t("Close", "关闭")}
+                  </button>
+                </header>
+
+                <div className="production-evidence-files">
+                  {reviewTask.completionReview.uploads.map((entry, index) => {
+                    const url = evidenceUrls[`${entry.bucket}:${entry.path}`];
+                    const isImage = String(entry.mime_type || "").startsWith("image/");
+                    return (
+                      <a
+                        href={url || undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={isImage ? "image" : "document"}
+                        key={`${entry.sha256 || entry.path}-${index}`}
+                      >
+                        {isImage && url ? <img src={url} alt={entry.requirement || entry.file_name} /> : <b>FILE</b>}
+                        <span>{entry.requirement || t("Production evidence", "生产证据")}</span>
+                        <strong>{entry.file_name}</strong>
+                        <small>{formatDate(entry.uploaded_at, zh)}</small>
+                      </a>
+                    );
+                  })}
+                </div>
+
+                {reviewTask.completionReview.status === "approved" ? (
+                  <div className="production-review-approved">
+                    <strong>{t("Approved by Cho", "已由 Cho 批准")}</strong>
+                    <span>{reviewTask.completionReview.review?.note}</span>
+                  </div>
+                ) : (
+                  <>
+                    {!reviewEvidenceReady && (
+                      <div className="production-review-warning">
+                        <strong>{t("Evidence is not ready for approval", "证据尚未达到批准条件")}</strong>
+                        {Number(reviewTask.progress_percent || 0) < 100 && (
+                          <span>{t("Supplier progress must reach 100%.", "供应商上报进度必须达到 100%。")}</span>
+                        )}
+                        {reviewTask.evidenceSummary.missing.length > 0 && (
+                          <span>
+                            {t("Missing required evidence:", "仍缺少指定证据：")}{" "}
+                            {reviewTask.evidenceSummary.missing.join(", ")}
+                          </span>
+                        )}
+                        {reviewTask.completionReview.status === "changes_required" && (
+                          <span>
+                            {t(
+                              "The supplier must upload a corrected file after the latest return decision.",
+                              "供应商必须在最近一次退回后上传修正文件。"
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {!reviewTask.hasApprovedBaseline && (
+                      <div className="production-review-advisory">
+                        <strong>{t("Production schedule is not an approved baseline", "供应商排产尚未获批")}</strong>
+                        <span>
+                          {t(
+                            `Schedule v${dashboard.schedule.version || 1} is ${dashboard.schedule.status.replaceAll("_", " ")}. This no longer blocks evidence review, but the exception will be kept in the audit record.`,
+                            `供应商第 ${dashboard.schedule.version || 1} 版排产目前为“${label(dashboard.schedule.status, true)}”。这不会再阻止完工证据审核，但系统会保留例外记录。`
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {reviewRequiresRiskAcknowledgement && (
+                      <div className="production-review-risk-acknowledgement">
+                        <strong>{t("Evidence risk requires Cho confirmation", "证据风险需要 Cho 确认")}</strong>
+                        <span>
+                          {reviewTask.duplicateEvidence
+                            ? t(
+                                "At least one uploaded file is also used in another work package. Confirm that the reused evidence genuinely proves this stage.",
+                                "至少一份上传文件同时用于其他生产工序。请确认该重复证据确实能够证明本工序已经完成。"
+                              )
+                            : t(
+                                `The current stored risk level is ${reviewTask.risk_level}. Review the evidence before overriding it.`,
+                                `当前记录的风险等级为 ${reviewTask.risk_level}，请核实证据后再决定是否覆盖。`
+                              )}
+                        </span>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={reviewRiskAcknowledged}
+                            onChange={(event) => setReviewRiskAcknowledged(event.target.checked)}
+                          />
+                          <b>
+                            {t(
+                              "I verified the evidence and accept responsibility for this risk override.",
+                              "我已核实证据，并确认承担本次风险覆盖的审核责任。"
+                            )}
+                          </b>
+                        </label>
+                      </div>
+                    )}
+                    <label className="production-review-note-field">
+                      <span>{t("Cho review note / correction instructions", "Cho 审核备注／返工指示")}</span>
+                      <textarea
+                        value={reviewNote}
+                        onChange={(event) => setReviewNote(event.target.value)}
+                        placeholder={t(
+                          reviewRequiresRiskAcknowledgement
+                            ? "Explain why the flagged evidence is acceptable. This note is required."
+                            : "Approval note is optional. A correction reason is required when returning evidence.",
+                          reviewRequiresRiskAcknowledgement
+                            ? "请说明为何可以接受该风险证据；此审核说明为必填。"
+                            : "批准备注可留空；退回证据时必须说明需要修正的内容。"
+                        )}
+                      />
+                    </label>
+                    <div className="production-review-actions">
+                      <button
+                        type="button"
+                        className="return"
+                        disabled={Boolean(busy)}
+                        onClick={() => submitCompletionReview("changes_required")}
+                      >
+                        {t("Return for correction", "退回供应商修正")}
+                      </button>
+                      <button
+                        type="button"
+                        className="approve"
+                        disabled={Boolean(busy) || !canApproveReviewTask}
+                        onClick={() => submitCompletionReview("approved")}
+                      >
+                        {busy === `review-${reviewTask.id}`
+                          ? t("Saving review...", "正在保存审核……")
+                          : reviewRequiresRiskAcknowledgement
+                            ? t("Acknowledge risk and approve", "确认风险并批准")
+                            : t("Approve completion evidence", "批准完工证据")}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+          </>
+        )}
+      </WorkflowDisclosure>
     </div>
   );
 }

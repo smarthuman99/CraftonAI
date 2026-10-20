@@ -5,6 +5,9 @@ import AiRfqWorkspace from "./AiRfqWorkspace";
 import AiQuoteComparison from "./AiQuoteComparison";
 import AiOperationsAutomation from "./AiOperationsAutomation";
 import ProductionControlTower from "./ProductionControlTower";
+import WorkflowOverview, { WorkflowDisclosure } from "./WorkflowOverview";
+import { productionOverview, shippingOverview } from "./workflowPresentation.mjs";
+import "./workflowOverview.css";
 import { parseSupplierRfqWorkbook } from "./rfqExcel";
 import { matchSupplierReturn, mergeImportedQuoteLines, quoteLinesForBatch, quoteTotalsFromLines } from "./quoteIntake";
 import { activeProjectJob } from "../../shared/clientProjectEditing.mjs";
@@ -96,10 +99,19 @@ function StageSection({
   children,
   wide = false,
   hidden = false,
+  panelId,
+  tabId,
   className = ""
 }) {
   return (
-    <section className={`admin-ops-section ${wide ? "wide" : ""} ${className}`.trim()} hidden={hidden}>
+    <section
+      className={`admin-ops-section ${wide ? "wide" : ""} ${className}`.trim()}
+      hidden={hidden}
+      id={panelId}
+      role={panelId ? "tabpanel" : undefined}
+      aria-labelledby={tabId}
+      tabIndex={panelId ? 0 : undefined}
+    >
       <header>
         <div>
           <span>{stage}</span>
@@ -107,7 +119,7 @@ function StageSection({
           <p>{description}</p>
         </div>
         <div className="admin-ops-stage-actions">
-          <b>{status}</b>
+          <b>{String(status || "").replaceAll("_", " ")}</b>
           {actions}
         </div>
       </header>
@@ -136,6 +148,7 @@ export default function AdminWorkflowWorkspace({
   supabaseClient,
   dbConnected,
   onOpenLoadingAi,
+  onNavigateFlow,
   onProjectChanged
 }) {
   const projectId = project?.id || null;
@@ -161,6 +174,18 @@ export default function AdminWorkflowWorkspace({
   const [bulkQuoteResults, setBulkQuoteResults] = useState([]);
   const [quoteAutoAnalyzeToken, setQuoteAutoAnalyzeToken] = useState("");
   const [sourcingView, setSourcingView] = useState("prepare");
+  const sourcingTabs = useRef([]);
+  const [operationsSelection, setOperationsSelection] = useState({ scope: "", view: "" });
+  const operationsScope = `${projectId}:${flow}`;
+  const chooseOperationsView = (view) => setOperationsSelection({ scope: operationsScope, view });
+  const openOperationsTask = (view) => {
+    chooseOperationsView(view);
+    window.requestAnimationFrame(() => {
+      const panel = document.getElementById(`workflow-${flow}-${view}`);
+      panel?.scrollIntoView({ block: "start", behavior: "auto" });
+      panel?.focus({ preventScroll: true });
+    });
+  };
   const [showSupplierDirectory, setShowSupplierDirectory] = useState(false);
   const sourcingProjectRef = React.useRef("");
 
@@ -1386,18 +1411,6 @@ export default function AdminWorkflowWorkspace({
       </Notice>
     );
 
-  const toolbar = (
-    <div className="admin-ops-toolbar">
-      <div>
-        <strong>{project?.clientName || "Client"}</strong>
-        <span>{project?.orderId || projectId}</span>
-      </div>
-      <button type="button" onClick={loadData} disabled={loading}>
-        Refresh data
-      </button>
-    </div>
-  );
-
   const statusBanner = (
     <>
       {authStatus === "anonymous" && (
@@ -1427,7 +1440,7 @@ export default function AdminWorkflowWorkspace({
 
   if (flow === "sourcing") {
     return localize(
-      <div className="admin-ops-workspace sourcing-next-workspace">
+      <div className="admin-ops-workspace sourcing-next-workspace workflow-next-workspace">
         {statusBanner}
         <section className="sourcing-next-hero">
           <div className="sourcing-next-hero-copy">
@@ -1454,7 +1467,11 @@ export default function AdminWorkflowWorkspace({
             >
               {sourcingNextAction.complete
                 ? t("Decision recorded", "决策已记录")
-                : t("Open current task", "打开当前任务")}
+                : sourcingNextAction.phase === "prepare"
+                  ? t("Prepare RFQ", "准备询价")
+                  : sourcingNextAction.phase === "collect"
+                    ? t("Collect supplier quotes", "收集供应商报价")
+                    : t("Review supplier decision", "审核供应商选择")}
             </button>
           </div>
           <div className="sourcing-next-metrics">
@@ -1493,14 +1510,33 @@ export default function AdminWorkflowWorkspace({
             </div>
           </div>
           <div className="sourcing-next-stage-track" role="tablist" aria-label={t("Sourcing phases", "采购阶段")}>
-            {sourcingPhases.map((phase) => (
+            {sourcingPhases.map((phase, index) => (
               <button
+                ref={(node) => {
+                  sourcingTabs.current[index] = node;
+                }}
                 key={phase.id}
                 type="button"
                 role="tab"
+                id={`workflow-sourcing-tab-${phase.id}`}
+                aria-controls={`workflow-sourcing-${phase.id}`}
                 aria-selected={sourcingView === phase.id}
+                tabIndex={sourcingView === phase.id ? 0 : -1}
                 className={`${phase.done ? "complete" : ""} ${sourcingView === phase.id ? "current" : ""}`.trim()}
                 onClick={() => setSourcingView(phase.id)}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next =
+                    event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? sourcingPhases.length - 1
+                        : (index + (event.key === "ArrowRight" ? 1 : -1) + sourcingPhases.length) %
+                          sourcingPhases.length;
+                  setSourcingView(sourcingPhases[next].id);
+                  sourcingTabs.current[next]?.focus();
+                }}
               >
                 <span className="sourcing-next-stage-line" />
                 <small>{phase.stage}</small>
@@ -1688,6 +1724,8 @@ export default function AdminWorkflowWorkspace({
 
           <StageSection
             stage="S06"
+            panelId="workflow-sourcing-prepare"
+            tabId="workflow-sourcing-tab-prepare"
             title="RFQ Excel preparation"
             status={data.rfq_batches[0]?.status || "pending"}
             description="Generate and approve a bilingual RFQ, then download the supplier-fillable Excel file for sending from your own mailbox."
@@ -1712,6 +1750,8 @@ export default function AdminWorkflowWorkspace({
 
           <StageSection
             stage="S07"
+            panelId="workflow-sourcing-collect"
+            tabId="workflow-sourcing-tab-collect"
             title="Supplier return intake and comparison"
             status={`${scoredQuotes.length} quotes`}
             description="Upload several supplier quotation workbooks. The system reads and records the prices automatically, then Crafton compares the offers."
@@ -2115,14 +2155,25 @@ export default function AdminWorkflowWorkspace({
 
           <StageSection
             stage="S08"
+            panelId="workflow-sourcing-decide"
+            tabId="workflow-sourcing-tab-decide"
             title="Cho supplier decision"
-            status={selectedQuote ? "approved" : "needs review"}
-            description="Human gate: review normalized terms and approve the winning supplier."
+            status={
+              selectedQuote
+                ? "approved"
+                : quoteAnalysisReady
+                  ? "needs review"
+                  : t("Waiting for comparison", "等待报价比较")
+            }
+            description={t(
+              "Review comparable terms and approve the winning supplier.",
+              "审核可比较的商务条件，并批准中选供应商。"
+            )}
             wide
             hidden={sourcingView !== "decide"}
             className="sourcing-next-panel sourcing-next-decision-panel"
           >
-            {sourcingScoredQuotes.length > 0 && !quoteAnalysisReady && (
+            {sourcingScoredQuotes.length > 0 && !quoteAnalysisReady && !selectedQuote && (
               <Notice tone="error">
                 {t(
                   "Run the S07 quotation comparison before Cho approves the winning supplier.",
@@ -2164,7 +2215,17 @@ export default function AdminWorkflowWorkspace({
                 ))}
               </div>
             ) : (
-              <Empty>At least one quote is required before Cho can approve a supplier.</Empty>
+              <Empty>
+                <p>
+                  {t(
+                    "Collect supplier quotations and complete the comparison before making a decision.",
+                    "请先收集供应商报价并完成比价，再进行选择。"
+                  )}
+                </p>
+                <button type="button" onClick={() => setSourcingView("collect")}>
+                  {t("Go to quote collection", "前往收集报价")}
+                </button>
+              </Empty>
             )}
           </StageSection>
         </div>
@@ -2241,31 +2302,131 @@ export default function AdminWorkflowWorkspace({
   }
 
   if (flow === "production") {
-    const riskUpdates = data.production_updates.filter(
-      (row) =>
-        row.risk_level &&
-        row.risk_level !== "low" &&
-        (Array.isArray(row.evidence) ? row.evidence : []).some((entry) => entry?.type === "cho_plan_approval")
-    );
+    const overview = productionOverview(data);
+    const riskUpdates = overview.risks;
+    const view = operationsSelection.scope === operationsScope ? operationsSelection.view : overview.suggestedView;
+    const monitoring = overview.monitored.length > 0;
+    const action = !overview.supplier
+      ? {
+          title: t("Supplier selection comes first", "请先确认生产供应商"),
+          detail: t(
+            "Approve the winning quote before preparing production access and work packages.",
+            "先批准中选报价，再准备生产权限与工序。"
+          ),
+          label: t("Review supplier selection", "审核供应商选择"),
+          onClick: onNavigateFlow ? () => onNavigateFlow("sourcing") : () => openOperationsTask("production")
+        }
+      : riskUpdates.length
+        ? {
+            title: t("Production needs attention", "生产事项需要关注"),
+            detail: t(
+              `${riskUpdates.length} work package(s) need follow-up.`,
+              `${riskUpdates.length} 个生产工序需要跟进。`
+            ),
+            label: t("Review production risks", "查看生产风险"),
+            onClick: () => openOperationsTask("risks")
+          }
+        : overview.inspections.length
+          ? {
+              title: t("Review quality and release", "查看质检与放行"),
+              detail: t(
+                "Check inspection results and the remaining approval decisions.",
+                "检查质检结果与尚待处理的批准事项。"
+              ),
+              label: t("Review inspections", "查看质检报告"),
+              onClick: () => openOperationsTask("quality")
+            }
+          : {
+              title: monitoring
+                ? t("Review factory progress", "查看工厂进度")
+                : t("Prepare production release", "准备生产放行"),
+              detail: monitoring
+                ? t("Check the latest factory evidence and work-package progress.", "查看最新工厂凭证和工序进度。")
+                : t("Review shop drawings, work packages and the supplier schedule.", "审核施工图、工序与供应商排程。"),
+              label: monitoring
+                ? t("View production progress", "查看生产进度")
+                : t("Review production setup", "查看生产准备"),
+              onClick: () => openOperationsTask("production")
+            };
     return localize(
-      <div className="admin-ops-workspace">
-        {toolbar}
+      <div className="admin-ops-workspace sourcing-next-workspace workflow-next-workspace workflow-production-workspace">
         {statusBanner}
-        <div className="admin-ops-grid">
+        <WorkflowOverview
+          lang={lang}
+          project={project}
+          kicker={t("PRODUCTION · S09–S11", "生产工作区 · S09–S11")}
+          description={t(
+            "Prepare the factory, follow production evidence and approve quality before shipment.",
+            "准备工厂生产、跟进工序凭证，并在出货前完成品质放行。"
+          )}
+          loading={loading || authStatus === "checking"}
+          onRefresh={loadData}
+          action={action}
+          panelPrefix="workflow-production"
+          view={view}
+          onViewChange={chooseOperationsView}
+          metrics={[
+            {
+              value: overview.progress === null ? "—" : `${overview.progress}%`,
+              label: t("REPORTED PROGRESS", "上报进度"),
+              detail: t("Supplier-reported · not release approval", "供应商上报 · 不代表已放行")
+            },
+            { value: overview.tasks.length, label: t("WORK PACKAGES", "生产工序") },
+            {
+              value: monitoring ? riskUpdates.length : "—",
+              label: t("RISK FLAGS", "风险事项"),
+              detail: monitoring
+                ? t("From approved schedules", "依据已批准排程")
+                : t("Awaiting approved schedule", "等待排程获批")
+            },
+            {
+              value: `${overview.approvedInspections}/${overview.inspections.length}`,
+              label: t("INSPECTIONS APPROVED", "质检已批准")
+            }
+          ]}
+          phases={[
+            {
+              id: "production",
+              stage: "S09",
+              label: t("Production progress", "生产进度"),
+              detail: overview.supplier
+                ? monitoring
+                  ? t("Factory reporting active", "工厂正在上报")
+                  : t("Prepare drawings and schedule", "准备施工图与排程")
+                : t("Awaiting supplier selection", "等待确认供应商")
+            },
+            {
+              id: "risks",
+              stage: "S10",
+              label: t("Risks & follow-up", "风险与跟进"),
+              detail: monitoring
+                ? t(`${riskUpdates.length} recorded risk(s)`, `${riskUpdates.length} 项已记录风险`)
+                : t("Monitoring not started", "监测尚未开始")
+            },
+            {
+              id: "quality",
+              stage: "S11",
+              label: t("Quality & release", "质检与放行"),
+              detail: t(
+                `${overview.inspections.length} inspection report(s)`,
+                `${overview.inspections.length} 份质检报告`
+              )
+            }
+          ]}
+        />
+        <div className="admin-ops-grid sourcing-next-grid">
           <StageSection
+            panelId="workflow-production-production"
+            tabId="workflow-production-tab-production"
+            hidden={view !== "production"}
             stage="S09"
             title="Production controller"
-            status={data.production_updates[0]?.status || "pending"}
-            description="Crafton follows the factory through its private portal, validates evidence coverage and sends only exceptions or release gates to Cho."
+            status={monitoring ? t("In progress", "生产中") : t("Preparation", "准备中")}
+            description={t(
+              "Review factory evidence and the approvals needed to move production forward.",
+              "查看工厂凭证，以及推进生产所需的审核事项。"
+            )}
             wide
-            actions={
-              <button
-                disabled={!data.production_updates.length}
-                onClick={() => setActiveForm(activeForm === "production" ? "" : "production")}
-              >
-                Emergency override
-              </button>
-            }
           >
             <ProductionControlTower
               lang={lang}
@@ -2278,106 +2439,137 @@ export default function AdminWorkflowWorkspace({
               productionUpdates={data.production_updates}
               onChanged={loadData}
             />
-            <div className="production-plan-divider">
-              <span>FRAMEWORK &amp; FACTORY COMMITMENT</span>
-              <p>
-                Crafton defines the work packages; the supplier submits real factory dates; we check them and Cho
-                approves the active baseline.
-              </p>
-            </div>
-            <AiOperationsAutomation
-              scope="production"
-              lang={lang}
-              project={project}
-              supabaseClient={supabaseClient}
-              projectFiles={data.project_files}
-              productionUpdates={data.production_updates}
-              shipmentDocuments={data.shipment_documents}
-              onChanged={loadData}
-              onOpenLoadingAi={onOpenLoadingAi}
-            />
-            {activeForm === "production" && (
-              <form className="admin-ops-form" onSubmit={submitProduction}>
-                <Notice>
-                  This emergency override can update progress, status, risk and notes only. Schedule changes must be
-                  submitted by the supplier and approved as a new version by Cho.
-                </Notice>
-                <Field label="Existing work package" wide>
-                  <select
-                    required
-                    value={productionForm.production_update_id}
-                    onChange={(e) => {
-                      const row = data.production_updates.find((entry) => entry.id === e.target.value);
-                      setProductionForm({
-                        ...productionForm,
-                        production_update_id: e.target.value,
-                        item_name: row?.item_name || "",
-                        process_name: row?.process_name || "",
-                        status: row?.status || "in_progress",
-                        progress_percent: String(row?.progress_percent || 0),
-                        risk_level: row?.risk_level || "low",
-                        notes: row?.notes || ""
-                      });
-                    }}
-                  >
-                    <option value="">Select work package</option>
-                    {data.production_updates.map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {row.process_name} · {row.item_name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Status">
-                  <select
-                    value={productionForm.status}
-                    onChange={(e) => setProductionForm({ ...productionForm, status: e.target.value })}
-                  >
-                    <option>not_started</option>
-                    <option>in_progress</option>
-                    <option>blocked</option>
-                    <option>completed</option>
-                  </select>
-                </Field>
-                <Field label="Progress %">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={productionForm.progress_percent}
-                    onChange={(e) => setProductionForm({ ...productionForm, progress_percent: e.target.value })}
-                  />
-                </Field>
-                <Field label="Risk">
-                  <select
-                    value={productionForm.risk_level}
-                    onChange={(e) => setProductionForm({ ...productionForm, risk_level: e.target.value })}
-                  >
-                    <option>low</option>
-                    <option>medium</option>
-                    <option>high</option>
-                  </select>
-                </Field>
-                <Field label="Emergency override reason / note" wide>
-                  <textarea
-                    required
-                    value={productionForm.notes}
-                    onChange={(e) => setProductionForm({ ...productionForm, notes: e.target.value })}
-                  />
-                </Field>
-                <div className="admin-ops-form-actions">
-                  <button className="btn-premium" disabled={loading}>
-                    Save emergency override
-                  </button>
-                </div>
-              </form>
-            )}
+            <WorkflowDisclosure
+              key={`${projectId}-framework`}
+              title={t("Work-package framework", "生产工序框架")}
+              detail={t(
+                "Generate the work packages before the supplier proposes factory dates.",
+                "先生成生产工序，再由供应商提交工厂排程。"
+              )}
+              defaultOpen={Boolean(overview.supplier) && !overview.tasks.length}
+            >
+              <AiOperationsAutomation
+                scope="production"
+                lang={lang}
+                project={project}
+                supabaseClient={supabaseClient}
+                projectFiles={data.project_files}
+                productionUpdates={data.production_updates}
+                shipmentDocuments={data.shipment_documents}
+                onChanged={loadData}
+                onOpenLoadingAi={onOpenLoadingAi}
+              />
+            </WorkflowDisclosure>
+            <WorkflowDisclosure
+              key={`${projectId}-override`}
+              title={t("Emergency controls", "紧急调整")}
+              detail={t("Update an existing work package with a recorded reason.", "填写原因后调整已有工序。")}
+            >
+              <button
+                type="button"
+                disabled={!overview.tasks.length}
+                aria-expanded={activeForm === "production"}
+                onClick={() => setActiveForm(activeForm === "production" ? "" : "production")}
+              >
+                {activeForm === "production"
+                  ? t("Close override", "收起紧急调整")
+                  : t("Emergency override", "紧急调整")}
+              </button>
+              {activeForm === "production" && (
+                <form className="admin-ops-form" onSubmit={submitProduction}>
+                  <Notice>
+                    This emergency override can update progress, status, risk and notes only. Schedule changes must be
+                    submitted by the supplier and approved as a new version by Cho.
+                  </Notice>
+                  <Field label="Existing work package" wide>
+                    <select
+                      required
+                      value={productionForm.production_update_id}
+                      onChange={(e) => {
+                        const row = data.production_updates.find((entry) => entry.id === e.target.value);
+                        setProductionForm({
+                          ...productionForm,
+                          production_update_id: e.target.value,
+                          item_name: row?.item_name || "",
+                          process_name: row?.process_name || "",
+                          status: row?.status || "in_progress",
+                          progress_percent: String(row?.progress_percent || 0),
+                          risk_level: row?.risk_level || "low",
+                          notes: row?.notes || ""
+                        });
+                      }}
+                    >
+                      <option value="">Select work package</option>
+                      {data.production_updates.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.process_name} · {row.item_name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Status">
+                    <select
+                      value={productionForm.status}
+                      onChange={(e) => setProductionForm({ ...productionForm, status: e.target.value })}
+                    >
+                      <option>not_started</option>
+                      <option>in_progress</option>
+                      <option>blocked</option>
+                      <option>completed</option>
+                    </select>
+                  </Field>
+                  <Field label="Progress %">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={productionForm.progress_percent}
+                      onChange={(e) => setProductionForm({ ...productionForm, progress_percent: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Risk">
+                    <select
+                      value={productionForm.risk_level}
+                      onChange={(e) => setProductionForm({ ...productionForm, risk_level: e.target.value })}
+                    >
+                      <option>low</option>
+                      <option>medium</option>
+                      <option>high</option>
+                    </select>
+                  </Field>
+                  <Field label="Emergency override reason / note" wide>
+                    <textarea
+                      required
+                      value={productionForm.notes}
+                      onChange={(e) => setProductionForm({ ...productionForm, notes: e.target.value })}
+                    />
+                  </Field>
+                  <div className="admin-ops-form-actions">
+                    <button className="btn-premium" disabled={loading}>
+                      Save emergency override
+                    </button>
+                  </div>
+                </form>
+              )}
+            </WorkflowDisclosure>
           </StageSection>
           <StageSection
+            panelId="workflow-production-risks"
+            tabId="workflow-production-tab-risks"
+            hidden={view !== "risks"}
             stage="S10"
             title="Delay risk control"
-            status={riskUpdates.length ? `${riskUpdates.length} risks` : "clear"}
-            description="Exception queue generated from supplier deadlines, missing evidence, duplicate files and reporting gaps."
+            status={
+              riskUpdates.length
+                ? t(`${riskUpdates.length} risks`, `${riskUpdates.length} 项风险`)
+                : monitoring
+                  ? t("No recorded risks", "暂无已记录风险")
+                  : t("Not monitoring", "尚未监测")
+            }
+            description={t(
+              "Follow up on missed deadlines, missing evidence and production reporting gaps.",
+              "跟进逾期工序、缺失凭证与生产上报中断。"
+            )}
           >
             {riskUpdates.length ? (
               riskUpdates.map((row) => (
@@ -2390,17 +2582,32 @@ export default function AdminWorkflowWorkspace({
                 </Notice>
               ))
             ) : (
-              <Notice tone="success">No medium or high production risks are currently recorded.</Notice>
+              <Notice>
+                {monitoring
+                  ? t("No medium or high production risks are currently recorded.", "目前没有已记录的中高风险。")
+                  : t(
+                      "Risk monitoring starts after a supplier production schedule is approved. No risk assessment is available yet.",
+                      "供应商生产排程获批后才会开始风险监测，目前暂无风险评估。"
+                    )}
+              </Notice>
             )}
           </StageSection>
           <StageSection
+            panelId="workflow-production-quality"
+            tabId="workflow-production-tab-quality"
+            hidden={view !== "quality"}
             stage="S11"
             title="Visual quality inspection"
             status={data.inspection_reports[0]?.status || "pending"}
             description="Record CAD/photo match, colour and geometry scores, defects and Cho release."
             wide
             actions={
-              <button onClick={() => setActiveForm(activeForm === "inspection" ? "" : "inspection")}>New report</button>
+              <button
+                aria-expanded={activeForm === "inspection"}
+                onClick={() => setActiveForm(activeForm === "inspection" ? "" : "inspection")}
+              >
+                {activeForm === "inspection" ? t("Close form", "收起表单") : t("New report", "新增报告")}
+              </button>
             }
           >
             {activeForm === "inspection" && (
@@ -2492,7 +2699,7 @@ export default function AdminWorkflowWorkspace({
                           {row.ai_match_score || "-"} / {row.color_score || "-"} / {row.geometry_score || "-"}
                         </td>
                         <td>{Array.isArray(row.issues) ? row.issues.join(", ") : "-"}</td>
-                        <td>{row.status}</td>
+                        <td>{String(adminText(row.status || "pending", lang)).replaceAll("_", " ")}</td>
                         <td>
                           <button
                             disabled={loading || row.status === "approved"}
@@ -2515,481 +2722,652 @@ export default function AdminWorkflowWorkspace({
     );
   }
 
+  const overview = shippingOverview(data);
+  const view = operationsSelection.scope === operationsScope ? operationsSelection.view : overview.suggestedView;
+  const dateLabel = overview.latestShipment?.eta
+    ? new Date(overview.latestShipment.eta).toLocaleDateString(lang === "Cn" ? "zh-CN" : "en-GB", {
+        day: "numeric",
+        month: "short"
+      })
+    : t("Not scheduled", "尚未安排");
+  const actionView = overview.suggestedView;
+  const action =
+    actionView === "handover"
+      ? {
+          title: t("Review delivery and sign-off", "查看交付与签收"),
+          detail: t(
+            "Confirm acceptance, resolve issues and prepare the project archive.",
+            "确认验收、处理问题并准备项目归档。"
+          ),
+          label: t("Review handover", "查看交付"),
+          onClick: () => openOperationsTask("handover")
+        }
+      : actionView === "tracking"
+        ? {
+            title: t("Follow the latest shipment", "跟进最新运输状态"),
+            detail: t(
+              "Review the carrier, arrival estimate and latest location.",
+              "查看承运信息、预计到达日期与最新位置。"
+            ),
+            label: t("View shipment tracking", "查看运输追踪"),
+            onClick: () => openOperationsTask("tracking")
+          }
+        : {
+            title: t("Prepare the shipment", "准备出货"),
+            detail: t(
+              "Review the loading plan and export documents before booking transport.",
+              "安排运输前先确认装柜方案与出口文件。"
+            ),
+            label: t("Review shipping preparation", "查看出货准备"),
+            onClick: () => openOperationsTask("prepare")
+          };
   return localize(
-    <div className="admin-ops-workspace">
-      {toolbar}
+    <div className="admin-ops-workspace sourcing-next-workspace workflow-next-workspace workflow-shipping-workspace">
       {statusBanner}
-      <div className="admin-ops-grid">
-        <StageSection
-          stage="S12"
-          title="Container loading plan"
-          status={data.packing_plans[0]?.status || "pending"}
-          description="Open Loading Planner with this project's BOM dimensions and save its packing result back to Supabase."
-          wide
-          actions={
-            <button
-              className="btn-premium"
-              onClick={() => onOpenLoadingAi?.({ project, projectId, specifications: data.specifications })}
+      <WorkflowOverview
+        lang={lang}
+        project={project}
+        kicker={t("SHIPPING & HANDOVER · S12–S17", "运输与交付 · S12–S17")}
+        description={t(
+          "Prepare shipment documents, follow delivery and complete client handover.",
+          "准备出货文件、跟进运输并完成客户交付。"
+        )}
+        loading={loading || authStatus === "checking"}
+        onRefresh={loadData}
+        action={action}
+        panelPrefix="workflow-shipping"
+        view={view}
+        onViewChange={chooseOperationsView}
+        metrics={[
+          { value: overview.packingPlans.length, label: t("LOADING PLANS", "装柜方案") },
+          {
+            value: `${overview.checkedDocuments}/${overview.documents.length}`,
+            label: t("DOCUMENTS CHECKED", "文件检查通过"),
+            detail: t("Of recorded documents", "占已登记文件")
+          },
+          { value: dateLabel, label: t("LATEST SHIPMENT ETA", "最新运输预计到达"), compact: true },
+          { value: overview.handovers.length, label: t("HANDOVER RECORDS", "交付记录") }
+        ]}
+        phases={[
+          {
+            id: "prepare",
+            stage: "S12–S13",
+            label: t("Shipping preparation", "出货准备"),
+            detail: t("Loading plan & export documents", "装柜方案与出口文件")
+          },
+          {
+            id: "tracking",
+            stage: "S14",
+            label: t("Shipment tracking", "运输追踪"),
+            detail: overview.shipments.length
+              ? t(`${overview.shipments.length} shipment(s) recorded`, `已记录 ${overview.shipments.length} 批运输`)
+              : t("Awaiting booking", "等待订舱")
+          },
+          {
+            id: "handover",
+            stage: "S16–S17",
+            label: t("Handover & archive", "交付与归档"),
+            detail: overview.archived
+              ? t("Archive available", "已有归档记录")
+              : overview.hasAcceptedHandover
+                ? t("Acceptance recorded", "已记录验收")
+                : t("Awaiting client acceptance", "等待客户验收")
+          }
+        ]}
+      />
+      <div className="admin-ops-grid sourcing-next-grid">
+        <div
+          className="workflow-phase-panel"
+          id="workflow-shipping-prepare"
+          role="tabpanel"
+          aria-labelledby="workflow-shipping-tab-prepare"
+          tabIndex={0}
+          hidden={view !== "prepare"}
+        >
+          <StageSection
+            stage="S12"
+            title="Container loading plan"
+            status={data.packing_plans[0]?.status || "pending"}
+            description={t(
+              "Use the project dimensions to plan container loading and save the packing result.",
+              "使用项目尺寸规划装柜并保存装载结果。"
+            )}
+            wide
+            actions={
+              <button
+                className="btn-premium"
+                onClick={() => onOpenLoadingAi?.({ project, projectId, specifications: data.specifications })}
+              >
+                Open Loading Planner
+              </button>
+            }
+          >
+            <WorkflowDisclosure
+              title={t("Delivery planning", "交付计划")}
+              detail={t("Review the proposed loading and document checklist.", "查看建议的装柜与文件检查清单。")}
             >
-              Open Loading Planner
-            </button>
-          }
-        >
-          <AiOperationsAutomation
-            scope="delivery"
-            lang={lang}
-            project={project}
-            supabaseClient={supabaseClient}
-            projectFiles={data.project_files}
-            productionUpdates={data.production_updates}
-            shipmentDocuments={data.shipment_documents}
-            onChanged={loadData}
-            onOpenLoadingAi={(context) => onOpenLoadingAi?.({ ...context, specifications: data.specifications })}
-          />
-          {data.packing_plans.length ? (
-            <div className="admin-table-wrap">
-              <table className="admin-mini-table">
-                <thead>
-                  <tr>
-                    <th>Generated</th>
-                    <th>Engine</th>
-                    <th>Container</th>
-                    <th>Count</th>
-                    <th>Utilization</th>
-                    <th>Unpacked</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.packing_plans.map((row) => (
-                    <tr key={row.id}>
-                      <td>{shortDate(row.generated_at)}</td>
-                      <td>{row.engine_mode}</td>
-                      <td>{row.container_type || "-"}</td>
-                      <td>{row.total_containers}</td>
-                      <td>{row.utilization_percent || 0}%</td>
-                      <td>{row.unpacked_count}</td>
+              <AiOperationsAutomation
+                scope="delivery"
+                lang={lang}
+                project={project}
+                supabaseClient={supabaseClient}
+                projectFiles={data.project_files}
+                productionUpdates={data.production_updates}
+                shipmentDocuments={data.shipment_documents}
+                onChanged={loadData}
+                onOpenLoadingAi={(context) => onOpenLoadingAi?.({ ...context, specifications: data.specifications })}
+              />
+            </WorkflowDisclosure>
+            {data.packing_plans.length ? (
+              <div className="admin-table-wrap">
+                <table className="admin-mini-table">
+                  <thead>
+                    <tr>
+                      <th>Generated</th>
+                      <th>Engine</th>
+                      <th>Container</th>
+                      <th>Count</th>
+                      <th>Utilization</th>
+                      <th>Unpacked</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <Empty>No saved loading plan. Open Loading Planner and save a computed result.</Empty>
-          )}
-        </StageSection>
-        <StageSection
-          stage="S13"
-          title="Export document compliance"
-          status={data.shipment_documents[0]?.status || "pending"}
-          description="Register invoice, packing list, customs, IPPC and bill of lading checks."
-          wide
-          actions={
-            <button onClick={() => setActiveForm(activeForm === "document" ? "" : "document")}>Add document</button>
-          }
-        >
-          {activeForm === "document" && (
-            <form className="admin-ops-form" onSubmit={submitDocument}>
-              <Field label="Document type">
-                <select
-                  value={documentForm.document_type}
-                  onChange={(e) => setDocumentForm({ ...documentForm, document_type: e.target.value })}
-                >
-                  <option>commercial_invoice</option>
-                  <option>packing_list</option>
-                  <option>customs_declaration</option>
-                  <option>ippc_certificate</option>
-                  <option>bill_of_lading</option>
-                  <option>insurance</option>
-                </select>
-              </Field>
-              <Field label="Document name">
-                <input
-                  required
-                  value={documentForm.document_name}
-                  onChange={(e) => setDocumentForm({ ...documentForm, document_name: e.target.value })}
-                />
-              </Field>
-              <Field label="Check status">
-                <select
-                  value={documentForm.status}
-                  onChange={(e) => setDocumentForm({ ...documentForm, status: e.target.value })}
-                >
-                  <option>pending_review</option>
-                  <option>passed</option>
-                  <option>blocked</option>
-                  <option>revision_required</option>
-                </select>
-              </Field>
-              <Field label="Check result">
-                <input
-                  value={documentForm.check_result}
-                  onChange={(e) => setDocumentForm({ ...documentForm, check_result: e.target.value })}
-                />
-              </Field>
-              <Field label="Notes" wide>
-                <textarea
-                  value={documentForm.notes}
-                  onChange={(e) => setDocumentForm({ ...documentForm, notes: e.target.value })}
-                />
-              </Field>
-              <div className="admin-ops-form-actions">
-                <button className="btn-premium" disabled={loading}>
-                  Save document check
-                </button>
-              </div>
-            </form>
-          )}
-          {data.shipment_documents.length ? (
-            <div className="admin-table-wrap">
-              <table className="admin-mini-table">
-                <thead>
-                  <tr>
-                    <th>Document</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Result</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.shipment_documents.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.document_name}</td>
-                      <td>{row.document_type}</td>
-                      <td>{row.status}</td>
-                      <td>{row.check_result || row.notes || "-"}</td>
-                      <td>{shortDate(row.updated_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <Empty>No export documents recorded.</Empty>
-          )}
-        </StageSection>
-        <StageSection
-          stage="S14"
-          title="Shipment and freight tracking"
-          status={data.shipments[0]?.status || "pending"}
-          description="Maintain booking reference, carrier, vessel, ports, ETD/ETA and current location."
-          wide
-          actions={
-            <button onClick={() => setActiveForm(activeForm === "shipment" ? "" : "shipment")}>Add tracking</button>
-          }
-        >
-          {activeForm === "shipment" && (
-            <form className="admin-ops-form" onSubmit={submitShipment}>
-              <Field label="Reference">
-                <input
-                  required
-                  value={shipmentForm.reference_number}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, reference_number: e.target.value })}
-                />
-              </Field>
-              <Field label="Carrier">
-                <input
-                  value={shipmentForm.carrier}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, carrier: e.target.value })}
-                />
-              </Field>
-              <Field label="Vessel">
-                <input
-                  value={shipmentForm.vessel_name}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, vessel_name: e.target.value })}
-                />
-              </Field>
-              <Field label="Status">
-                <select
-                  value={shipmentForm.status}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, status: e.target.value })}
-                >
-                  <option>booking</option>
-                  <option>loaded</option>
-                  <option>departed</option>
-                  <option>in_transit</option>
-                  <option>customs</option>
-                  <option>delivered</option>
-                  <option>delayed</option>
-                </select>
-              </Field>
-              <Field label="Origin">
-                <input
-                  value={shipmentForm.origin}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, origin: e.target.value })}
-                />
-              </Field>
-              <Field label="Destination">
-                <input
-                  value={shipmentForm.destination}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, destination: e.target.value })}
-                />
-              </Field>
-              <Field label="ETD">
-                <input
-                  type="datetime-local"
-                  value={shipmentForm.etd}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, etd: e.target.value })}
-                />
-              </Field>
-              <Field label="ETA">
-                <input
-                  type="datetime-local"
-                  value={shipmentForm.eta}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, eta: e.target.value })}
-                />
-              </Field>
-              <Field label="Current location">
-                <input
-                  value={shipmentForm.current_location}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, current_location: e.target.value })}
-                />
-              </Field>
-              <Field label="Tracking URL">
-                <input
-                  type="url"
-                  value={shipmentForm.tracking_url}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, tracking_url: e.target.value })}
-                />
-              </Field>
-              <Field label="Container type / count">
-                <input
-                  value={`${shipmentForm.container_type} / ${shipmentForm.container_count}`}
-                  onChange={(e) => {
-                    const [type, count = "1"] = e.target.value.split("/");
-                    setShipmentForm({ ...shipmentForm, container_type: type.trim(), container_count: count.trim() });
-                  }}
-                />
-              </Field>
-              <Field label="Notes">
-                <input
-                  value={shipmentForm.notes}
-                  onChange={(e) => setShipmentForm({ ...shipmentForm, notes: e.target.value })}
-                />
-              </Field>
-              <div className="admin-ops-form-actions">
-                <button className="btn-premium" disabled={loading}>
-                  Save tracking update
-                </button>
-              </div>
-            </form>
-          )}
-          {data.shipments.length ? (
-            <div className="admin-table-wrap">
-              <table className="admin-mini-table">
-                <thead>
-                  <tr>
-                    <th>Reference</th>
-                    <th>Carrier / vessel</th>
-                    <th>Route</th>
-                    <th>Status / location</th>
-                    <th>ETA</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.shipments.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.reference_number}</td>
-                      <td>
-                        {row.carrier || "-"}
-                        <br />
-                        <small>{row.vessel_name}</small>
-                      </td>
-                      <td>
-                        {row.origin || "-"} → {row.destination || "-"}
-                      </td>
-                      <td>
-                        {row.status}
-                        <br />
-                        <small>{row.current_location}</small>
-                      </td>
-                      <td>{shortDate(row.eta)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <Empty>No shipment tracking record.</Empty>
-          )}
-        </StageSection>
-        <StageSection
-          stage="S15"
-          title="Split delivery and quantity audit"
-          status={data.quantity_adjustments.length ? "recalculated" : "pending"}
-          description="Record approved quantity changes and calculate their commercial impact."
-          actions={
-            <button onClick={() => setActiveForm(activeForm === "adjustment" ? "" : "adjustment")}>
-              New adjustment
-            </button>
-          }
-        >
-          {activeForm === "adjustment" && (
-            <form className="admin-ops-form one-column" onSubmit={submitAdjustment}>
-              <Field label="Item">
-                <input
-                  required
-                  value={adjustmentForm.item_name}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, item_name: e.target.value })}
-                />
-              </Field>
-              <Field label="Original quantity">
-                <input
-                  type="number"
-                  required
-                  value={adjustmentForm.original_quantity}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, original_quantity: e.target.value })}
-                />
-              </Field>
-              <Field label="Revised quantity">
-                <input
-                  type="number"
-                  required
-                  value={adjustmentForm.revised_quantity}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, revised_quantity: e.target.value })}
-                />
-              </Field>
-              <Field label="Unit price">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={adjustmentForm.unit_price}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, unit_price: e.target.value })}
-                />
-              </Field>
-              <Field label="Reason">
-                <textarea
-                  value={adjustmentForm.reason}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })}
-                />
-              </Field>
-              <div className="admin-ops-form-actions">
-                <button className="btn-premium" disabled={loading}>
-                  Apply adjustment
-                </button>
-              </div>
-            </form>
-          )}
-          {data.quantity_adjustments.length ? (
-            data.quantity_adjustments.map((row) => (
-              <Notice key={row.id}>
-                <strong>{row.item_name}</strong>
-                <br />
-                {row.original_quantity} → {row.revised_quantity} · impact {money(row.financial_impact)}
-              </Notice>
-            ))
-          ) : (
-            <Empty>No quantity adjustments.</Empty>
-          )}
-        </StageSection>
-        <StageSection
-          stage="S16"
-          title="Client handover"
-          status={data.handover_reports[0]?.status || "pending"}
-          description="Record accepted quantity, issues and client sign-off."
-          actions={
-            <button onClick={() => setActiveForm(activeForm === "handover" ? "" : "handover")}>Record handover</button>
-          }
-        >
-          {activeForm === "handover" && (
-            <form className="admin-ops-form one-column" onSubmit={submitHandover}>
-              <Field label="Status">
-                <select
-                  value={handoverForm.status}
-                  onChange={(e) => setHandoverForm({ ...handoverForm, status: e.target.value })}
-                >
-                  <option>accepted</option>
-                  <option>accepted_with_issues</option>
-                  <option>rejected</option>
-                </select>
-              </Field>
-              <Field label="Accepted quantity">
-                <input
-                  type="number"
-                  value={handoverForm.accepted_quantity}
-                  onChange={(e) => setHandoverForm({ ...handoverForm, accepted_quantity: e.target.value })}
-                />
-              </Field>
-              <Field label="Signed by">
-                <input
-                  required
-                  value={handoverForm.signed_by}
-                  onChange={(e) => setHandoverForm({ ...handoverForm, signed_by: e.target.value })}
-                />
-              </Field>
-              <Field label="Signed at">
-                <input
-                  type="datetime-local"
-                  value={handoverForm.signed_at}
-                  onChange={(e) => setHandoverForm({ ...handoverForm, signed_at: e.target.value })}
-                />
-              </Field>
-              <Field label="Issue summary">
-                <textarea
-                  value={handoverForm.issue_summary}
-                  onChange={(e) => setHandoverForm({ ...handoverForm, issue_summary: e.target.value })}
-                />
-              </Field>
-              <div className="admin-ops-form-actions">
-                <button className="btn-premium" disabled={loading}>
-                  Save handover
-                </button>
-              </div>
-            </form>
-          )}
-          {data.handover_reports.length ? (
-            data.handover_reports.map((row) => (
-              <Notice key={row.id} tone={row.status === "accepted" ? "success" : "error"}>
-                <strong>{row.status}</strong>
-                <br />
-                {row.accepted_quantity} accepted · {row.signed_by || "unsigned"} · {shortDate(row.signed_at)}
-              </Notice>
-            ))
-          ) : (
-            <Empty>No client handover record.</Empty>
-          )}
-        </StageSection>
-        <StageSection
-          stage="S17"
-          title="Audit archive"
-          status={data.project_files.some((row) => row.stage_id === "S17") ? "archived" : "pending"}
-          description="Generate a manifest of project records and save a SHA-256 audit hash."
-          wide
-          actions={
-            <button className="btn-premium" disabled={loading} onClick={archiveProject}>
-              Generate archive
-            </button>
-          }
-        >
-          {data.project_files.filter((row) => row.stage_id === "S17").length ? (
-            <div className="admin-table-wrap">
-              <table className="admin-mini-table">
-                <thead>
-                  <tr>
-                    <th>Manifest</th>
-                    <th>SHA-256</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.project_files
-                    .filter((row) => row.stage_id === "S17")
-                    .map((row) => (
+                  </thead>
+                  <tbody>
+                    {data.packing_plans.map((row) => (
                       <tr key={row.id}>
-                        <td>{row.file_name}</td>
-                        <td>
-                          <code>{row.sha256}</code>
-                        </td>
-                        <td>{shortDate(row.created_at)}</td>
+                        <td>{shortDate(row.generated_at)}</td>
+                        <td>{row.engine_mode}</td>
+                        <td>{row.container_type || "-"}</td>
+                        <td>{row.total_containers}</td>
+                        <td>{row.utilization_percent || 0}%</td>
+                        <td>{row.unpacked_count}</td>
                       </tr>
                     ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <Empty>No audit archive generated.</Empty>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty>No saved loading plan. Open Loading Planner and save a computed result.</Empty>
+            )}
+          </StageSection>
+          <StageSection
+            stage="S13"
+            title="Export document compliance"
+            status={
+              overview.documents.length
+                ? t(
+                    `${overview.checkedDocuments}/${overview.documents.length} checked`,
+                    `${overview.checkedDocuments}/${overview.documents.length} 已通过检查`
+                  )
+                : t("No documents", "暂无文件")
+            }
+            description="Register invoice, packing list, customs, IPPC and bill of lading checks."
+            wide
+            actions={
+              <button
+                aria-expanded={activeForm === "document"}
+                onClick={() => setActiveForm(activeForm === "document" ? "" : "document")}
+              >
+                {activeForm === "document" ? t("Close form", "收起表单") : t("Add document", "添加文件")}
+              </button>
+            }
+          >
+            {activeForm === "document" && (
+              <form className="admin-ops-form" onSubmit={submitDocument}>
+                <Field label="Document type">
+                  <select
+                    value={documentForm.document_type}
+                    onChange={(e) => setDocumentForm({ ...documentForm, document_type: e.target.value })}
+                  >
+                    <option>commercial_invoice</option>
+                    <option>packing_list</option>
+                    <option>customs_declaration</option>
+                    <option>ippc_certificate</option>
+                    <option>bill_of_lading</option>
+                    <option>insurance</option>
+                  </select>
+                </Field>
+                <Field label="Document name">
+                  <input
+                    required
+                    value={documentForm.document_name}
+                    onChange={(e) => setDocumentForm({ ...documentForm, document_name: e.target.value })}
+                  />
+                </Field>
+                <Field label="Check status">
+                  <select
+                    value={documentForm.status}
+                    onChange={(e) => setDocumentForm({ ...documentForm, status: e.target.value })}
+                  >
+                    <option>pending_review</option>
+                    <option>passed</option>
+                    <option>blocked</option>
+                    <option>revision_required</option>
+                  </select>
+                </Field>
+                <Field label="Check result">
+                  <input
+                    value={documentForm.check_result}
+                    onChange={(e) => setDocumentForm({ ...documentForm, check_result: e.target.value })}
+                  />
+                </Field>
+                <Field label="Notes" wide>
+                  <textarea
+                    value={documentForm.notes}
+                    onChange={(e) => setDocumentForm({ ...documentForm, notes: e.target.value })}
+                  />
+                </Field>
+                <div className="admin-ops-form-actions">
+                  <button className="btn-premium" disabled={loading}>
+                    Save document check
+                  </button>
+                </div>
+              </form>
+            )}
+            {data.shipment_documents.length ? (
+              <div className="admin-table-wrap">
+                <table className="admin-mini-table">
+                  <thead>
+                    <tr>
+                      <th>Document</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Result</th>
+                      <th>Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.shipment_documents.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.document_name}</td>
+                        <td>{row.document_type}</td>
+                        <td>{String(adminText(row.status || "pending", lang)).replaceAll("_", " ")}</td>
+                        <td>{row.check_result || row.notes || "-"}</td>
+                        <td>{shortDate(row.updated_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty>No export documents recorded.</Empty>
+            )}
+          </StageSection>
+        </div>
+        <div
+          className="workflow-phase-panel"
+          id="workflow-shipping-tracking"
+          role="tabpanel"
+          aria-labelledby="workflow-shipping-tab-tracking"
+          tabIndex={0}
+          hidden={view !== "tracking"}
+        >
+          <StageSection
+            stage="S14"
+            title="Shipment and freight tracking"
+            status={overview.latestShipment?.status || "pending"}
+            description="Maintain booking reference, carrier, vessel, ports, ETD/ETA and current location."
+            wide
+            actions={
+              <button
+                aria-expanded={activeForm === "shipment"}
+                onClick={() => setActiveForm(activeForm === "shipment" ? "" : "shipment")}
+              >
+                {activeForm === "shipment" ? t("Close form", "收起表单") : t("Add tracking", "添加运输记录")}
+              </button>
+            }
+          >
+            {activeForm === "shipment" && (
+              <form className="admin-ops-form" onSubmit={submitShipment}>
+                <Field label="Reference">
+                  <input
+                    required
+                    value={shipmentForm.reference_number}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, reference_number: e.target.value })}
+                  />
+                </Field>
+                <Field label="Carrier">
+                  <input
+                    value={shipmentForm.carrier}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, carrier: e.target.value })}
+                  />
+                </Field>
+                <Field label="Vessel">
+                  <input
+                    value={shipmentForm.vessel_name}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, vessel_name: e.target.value })}
+                  />
+                </Field>
+                <Field label="Status">
+                  <select
+                    value={shipmentForm.status}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, status: e.target.value })}
+                  >
+                    <option>booking</option>
+                    <option>loaded</option>
+                    <option>departed</option>
+                    <option>in_transit</option>
+                    <option>customs</option>
+                    <option>delivered</option>
+                    <option>delayed</option>
+                  </select>
+                </Field>
+                <Field label="Origin">
+                  <input
+                    value={shipmentForm.origin}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, origin: e.target.value })}
+                  />
+                </Field>
+                <Field label="Destination">
+                  <input
+                    value={shipmentForm.destination}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, destination: e.target.value })}
+                  />
+                </Field>
+                <Field label="ETD">
+                  <input
+                    type="datetime-local"
+                    value={shipmentForm.etd}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, etd: e.target.value })}
+                  />
+                </Field>
+                <Field label="ETA">
+                  <input
+                    type="datetime-local"
+                    value={shipmentForm.eta}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, eta: e.target.value })}
+                  />
+                </Field>
+                <Field label="Current location">
+                  <input
+                    value={shipmentForm.current_location}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, current_location: e.target.value })}
+                  />
+                </Field>
+                <Field label="Tracking URL">
+                  <input
+                    type="url"
+                    value={shipmentForm.tracking_url}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, tracking_url: e.target.value })}
+                  />
+                </Field>
+                <Field label="Container type / count">
+                  <input
+                    value={`${shipmentForm.container_type} / ${shipmentForm.container_count}`}
+                    onChange={(e) => {
+                      const [type, count = "1"] = e.target.value.split("/");
+                      setShipmentForm({ ...shipmentForm, container_type: type.trim(), container_count: count.trim() });
+                    }}
+                  />
+                </Field>
+                <Field label="Notes">
+                  <input
+                    value={shipmentForm.notes}
+                    onChange={(e) => setShipmentForm({ ...shipmentForm, notes: e.target.value })}
+                  />
+                </Field>
+                <div className="admin-ops-form-actions">
+                  <button className="btn-premium" disabled={loading}>
+                    Save tracking update
+                  </button>
+                </div>
+              </form>
+            )}
+            {data.shipments.length ? (
+              <div className="admin-table-wrap">
+                <table className="admin-mini-table">
+                  <thead>
+                    <tr>
+                      <th>Reference</th>
+                      <th>Carrier / vessel</th>
+                      <th>Route</th>
+                      <th>Status / location</th>
+                      <th>ETA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.shipments.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.reference_number}</td>
+                        <td>
+                          {row.carrier || "-"}
+                          <br />
+                          <small>{row.vessel_name}</small>
+                        </td>
+                        <td>
+                          {row.origin || "-"} → {row.destination || "-"}
+                        </td>
+                        <td>
+                          {String(adminText(row.status || "pending", lang)).replaceAll("_", " ")}
+                          <br />
+                          <small>{row.current_location}</small>
+                        </td>
+                        <td>{shortDate(row.eta)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty>No shipment tracking record.</Empty>
+            )}
+          </StageSection>
+        </div>
+        <div
+          className="workflow-phase-panel"
+          id="workflow-shipping-handover"
+          role="tabpanel"
+          aria-labelledby="workflow-shipping-tab-handover"
+          tabIndex={0}
+          hidden={view !== "handover"}
+        >
+          <StageSection
+            stage="S16"
+            title="Client handover"
+            status={data.handover_reports[0]?.status || "pending"}
+            description="Record accepted quantity, issues and client sign-off."
+            actions={
+              <button
+                aria-expanded={activeForm === "handover"}
+                onClick={() => setActiveForm(activeForm === "handover" ? "" : "handover")}
+              >
+                {activeForm === "handover" ? t("Close form", "收起表单") : t("Record handover", "登记交付")}
+              </button>
+            }
+          >
+            {activeForm === "handover" && (
+              <form className="admin-ops-form one-column" onSubmit={submitHandover}>
+                <Field label="Status">
+                  <select
+                    value={handoverForm.status}
+                    onChange={(e) => setHandoverForm({ ...handoverForm, status: e.target.value })}
+                  >
+                    <option>accepted</option>
+                    <option>accepted_with_issues</option>
+                    <option>rejected</option>
+                  </select>
+                </Field>
+                <Field label="Accepted quantity">
+                  <input
+                    type="number"
+                    value={handoverForm.accepted_quantity}
+                    onChange={(e) => setHandoverForm({ ...handoverForm, accepted_quantity: e.target.value })}
+                  />
+                </Field>
+                <Field label="Signed by">
+                  <input
+                    required
+                    value={handoverForm.signed_by}
+                    onChange={(e) => setHandoverForm({ ...handoverForm, signed_by: e.target.value })}
+                  />
+                </Field>
+                <Field label="Signed at">
+                  <input
+                    type="datetime-local"
+                    value={handoverForm.signed_at}
+                    onChange={(e) => setHandoverForm({ ...handoverForm, signed_at: e.target.value })}
+                  />
+                </Field>
+                <Field label="Issue summary">
+                  <textarea
+                    value={handoverForm.issue_summary}
+                    onChange={(e) => setHandoverForm({ ...handoverForm, issue_summary: e.target.value })}
+                  />
+                </Field>
+                <div className="admin-ops-form-actions">
+                  <button className="btn-premium" disabled={loading}>
+                    Save handover
+                  </button>
+                </div>
+              </form>
+            )}
+            {data.handover_reports.length ? (
+              data.handover_reports.map((row) => (
+                <Notice key={row.id} tone={row.status === "accepted" ? "success" : "error"}>
+                  <strong>{String(adminText(row.status || "pending", lang)).replaceAll("_", " ")}</strong>
+                  <br />
+                  {row.accepted_quantity} accepted · {row.signed_by || "unsigned"} · {shortDate(row.signed_at)}
+                </Notice>
+              ))
+            ) : (
+              <Empty>No client handover record.</Empty>
+            )}
+          </StageSection>
+          <WorkflowDisclosure
+            title={t("S17 · Project archive", "S17 · 项目归档")}
+            defaultOpen={overview.hasAcceptedHandover}
+            detail={
+              overview.archived
+                ? t("Archive available for review", "已有归档可供查看")
+                : t("Create a traceable record of the completed project.", "为已完成项目建立可追溯记录。")
+            }
+          >
+            <StageSection
+              stage="S17"
+              title="Audit archive"
+              status={data.project_files.some((row) => row.stage_id === "S17") ? "archived" : "pending"}
+              description={t(
+                "Save a manifest of project records with an integrity check.",
+                "保存项目记录清单与完整性校验。"
+              )}
+              wide
+              actions={
+                <button className="btn-premium" disabled={loading} onClick={archiveProject}>
+                  Generate archive
+                </button>
+              }
+            >
+              {data.project_files.filter((row) => row.stage_id === "S17").length ? (
+                <div className="admin-table-wrap">
+                  <table className="admin-mini-table">
+                    <thead>
+                      <tr>
+                        <th>Manifest</th>
+                        <th>SHA-256</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.project_files
+                        .filter((row) => row.stage_id === "S17")
+                        .map((row) => (
+                          <tr key={row.id}>
+                            <td>{row.file_name}</td>
+                            <td>
+                              <code>{row.sha256}</code>
+                            </td>
+                            <td>{shortDate(row.created_at)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Empty>No audit archive generated.</Empty>
+              )}
+            </StageSection>
+          </WorkflowDisclosure>
+        </div>
+        <WorkflowDisclosure
+          className="workflow-adjustments"
+          title={t("S15 · Quantity adjustments", "S15 · 数量调整")}
+          detail={t(
+            `${data.quantity_adjustments.length} recorded adjustment(s) · open when delivery quantities change`,
+            `${data.quantity_adjustments.length} 项调整记录 · 交付数量变更时打开`
           )}
-        </StageSection>
+        >
+          <StageSection
+            stage="S15"
+            title="Split delivery and quantity audit"
+            status={data.quantity_adjustments.length ? "recalculated" : t("No changes", "暂无变更")}
+            description="Record approved quantity changes and calculate their commercial impact."
+            actions={
+              <button
+                aria-expanded={activeForm === "adjustment"}
+                onClick={() => setActiveForm(activeForm === "adjustment" ? "" : "adjustment")}
+              >
+                {activeForm === "adjustment" ? t("Close form", "收起表单") : t("New adjustment", "新增调整")}
+              </button>
+            }
+          >
+            {activeForm === "adjustment" && (
+              <form className="admin-ops-form one-column" onSubmit={submitAdjustment}>
+                <Field label="Item">
+                  <input
+                    required
+                    value={adjustmentForm.item_name}
+                    onChange={(e) => setAdjustmentForm({ ...adjustmentForm, item_name: e.target.value })}
+                  />
+                </Field>
+                <Field label="Original quantity">
+                  <input
+                    type="number"
+                    required
+                    value={adjustmentForm.original_quantity}
+                    onChange={(e) => setAdjustmentForm({ ...adjustmentForm, original_quantity: e.target.value })}
+                  />
+                </Field>
+                <Field label="Revised quantity">
+                  <input
+                    type="number"
+                    required
+                    value={adjustmentForm.revised_quantity}
+                    onChange={(e) => setAdjustmentForm({ ...adjustmentForm, revised_quantity: e.target.value })}
+                  />
+                </Field>
+                <Field label="Unit price">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={adjustmentForm.unit_price}
+                    onChange={(e) => setAdjustmentForm({ ...adjustmentForm, unit_price: e.target.value })}
+                  />
+                </Field>
+                <Field label="Reason">
+                  <textarea
+                    value={adjustmentForm.reason}
+                    onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })}
+                  />
+                </Field>
+                <div className="admin-ops-form-actions">
+                  <button className="btn-premium" disabled={loading}>
+                    Apply adjustment
+                  </button>
+                </div>
+              </form>
+            )}
+            {data.quantity_adjustments.length ? (
+              data.quantity_adjustments.map((row) => (
+                <Notice key={row.id}>
+                  <strong>{row.item_name}</strong>
+                  <br />
+                  {row.original_quantity} → {row.revised_quantity} · impact {money(row.financial_impact)}
+                </Notice>
+              ))
+            ) : (
+              <Empty>No quantity adjustments.</Empty>
+            )}
+          </StageSection>
+        </WorkflowDisclosure>
       </div>
     </div>
   );

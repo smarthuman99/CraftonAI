@@ -10613,6 +10613,14 @@ function App() {
     return order;
   };
 
+  const selectAdminFlow = (flowId) => {
+    const flow = adminProgressFlows.find((entry) => entry.id === flowId);
+    if (!flow) return;
+    setActiveAdminFlow(flowId);
+    setCurrentStageIndex(flow.stageIndexes[0]);
+    document.querySelector(".crafton-backoffice .main-content")?.scrollTo({ top: 0, behavior: "auto" });
+  };
+
   const renderAdminProgressBoard = () => {
     const flowStageIndexes = activeAdminFlowConfig.stageIndexes;
     const flowTitle = lang === "Cn" ? activeAdminFlowConfig.titleCn : activeAdminFlowConfig.titleEn;
@@ -10636,6 +10644,7 @@ function App() {
       production: () => (
         <AdminWorkflowWorkspace
           flow="production"
+          onNavigateFlow={selectAdminFlow}
           lang={lang}
           project={activeAdminProject}
           supabaseClient={getSupabaseBrowserClient()}
@@ -17787,10 +17796,7 @@ function App() {
                       key={flow.id}
                       type="button"
                       className={`admin-progress-button ${isActive ? "active" : ""}`}
-                      onClick={() => {
-                        setActiveAdminFlow(flow.id);
-                        setCurrentStageIndex(flow.stageIndexes[0]);
-                      }}
+                      onClick={() => selectAdminFlow(flow.id)}
                     >
                       <span className="admin-progress-index">0{flowIndex + 1}</span>
                       <span className="admin-progress-copy">

@@ -1,0 +1,612 @@
+/* Menus 02–04 inherit the approved intake/sourcing design language. */
+.crafton-backoffice .workflow-next-workspace {
+  gap: 18px;
+  color: var(--craft-ink, #232220);
+  font-family: var(--font-sans);
+}
+.crafton-backoffice .workflow-next-workspace [hidden] {
+  display: none !important;
+}
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(.sourcing-next-hero, .sourcing-next-stage-card, .admin-ops-section, .workflow-disclosure) {
+  border: 1px solid var(--sourcing-line);
+  border-radius: 14px;
+  background: var(--sourcing-paper);
+  box-shadow: none;
+  min-width: 0;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-hero-copy h2 {
+  font-family: var(--font-display);
+  overflow-wrap: anywhere;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-project-meta {
+  margin-bottom: 8px;
+}
+.crafton-backoffice .workflow-next-workspace :is(.sourcing-next-hero-copy p, .admin-ops-section > header p) {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-hero-action > small {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 20px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-primary svg {
+  flex-shrink: 0;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-metrics > div {
+  padding-inline: 20px;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-metrics > div:first-child {
+  padding-left: 0;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-metrics span {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-metrics small {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-metrics .workflow-metric-text {
+  font-size: 27px;
+  line-height: 1.25;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-stage-track > button {
+  min-height: 112px;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-stage-track strong {
+  font-size: 14px;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-stage-track p {
+  white-space: normal;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: visible;
+}
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(.sourcing-next-stage-track small, .sourcing-next-kicker, .sourcing-next-status) {
+  font-size: 11px;
+}
+.crafton-backoffice .workflow-next-workspace :is(.sourcing-next-section-title h3, .admin-ops-section > header h3) {
+  margin: 5px 0 6px;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.crafton-backoffice .workflow-next-workspace .admin-ops-section > header {
+  padding: 24px 28px;
+  gap: 20px;
+  background: transparent;
+}
+.crafton-backoffice .workflow-next-workspace .admin-ops-section > header span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .admin-ops-body {
+  padding: 24px 28px;
+  gap: 18px;
+}
+.crafton-backoffice .workflow-next-workspace .admin-ops-stage-actions {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.crafton-backoffice .workflow-next-workspace .admin-ops-stage-actions b {
+  padding: 6px 10px;
+  border: 1px solid var(--sourcing-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sourcing-body);
+  font: 500 11px/1.5 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(
+    .admin-ops-stage-actions button,
+    .sourcing-next-secondary-actions button,
+    .admin-ops-form-actions button,
+    .production-control-tower button,
+    .workflow-disclosure-body > button,
+    .ai-workflow-commandbar button
+  ) {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 1px solid var(--sourcing-line-strong);
+  border-radius: 999px;
+  background: var(--sourcing-paper);
+  color: var(--sourcing-ink);
+  font: 600 14px/1.4 var(--font-sans);
+  cursor: pointer;
+  box-shadow: none;
+}
+.crafton-backoffice .workflow-next-workspace .btn-premium,
+.crafton-backoffice .workflow-next-workspace .production-control-tower button.approve {
+  border-color: var(--sourcing-walnut);
+  background: var(--sourcing-walnut);
+  color: var(--sourcing-paper);
+}
+.crafton-backoffice .workflow-next-workspace button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+.crafton-backoffice .workflow-next-workspace :is(button, summary, input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--sourcing-walnut);
+  outline-offset: 4px;
+}
+.crafton-backoffice .workflow-next-workspace [role="tabpanel"] {
+  scroll-margin-top: 140px;
+}
+.crafton-backoffice .workflow-next-workspace [role="tabpanel"]:focus {
+  outline: none;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-phase-panel {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure {
+  overflow: hidden;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  min-height: 76px;
+  list-style: none;
+  cursor: pointer;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure > summary strong {
+  display: block;
+  font: 600 15px/1.5 var(--font-sans);
+  color: var(--sourcing-ink);
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure > summary small {
+  display: block;
+  margin-top: 4px;
+  font: 400 13px/1.5 var(--font-sans);
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure > summary svg {
+  flex-shrink: 0;
+  color: var(--sourcing-walnut);
+  transition: transform 0.2s;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure[open] > summary {
+  border-bottom: 1px solid var(--sourcing-line);
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure[open] > summary svg {
+  transform: rotate(180deg);
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure-body {
+  padding: 22px 24px;
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure-body > .admin-ops-section {
+  border: 0;
+  box-shadow: none;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure-body > .admin-ops-section > header {
+  padding: 0 0 20px;
+}
+.crafton-backoffice .workflow-next-workspace .workflow-disclosure-body > .admin-ops-section > .admin-ops-body {
+  padding: 20px 0 0;
+}
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(.admin-empty-state, .admin-ops-notice, .ai-workflow-empty, .production-controller-empty) {
+  padding: 18px 20px;
+  border: 1px solid var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper-muted);
+  color: var(--sourcing-body);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.crafton-backoffice .workflow-next-workspace :is(.admin-empty-state, .ai-workflow-empty) p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.crafton-backoffice .workflow-next-workspace .admin-ops-notice.error {
+  border-left: 3px solid var(--sourcing-walnut);
+}
+.crafton-backoffice .workflow-next-workspace .admin-ops-form {
+  padding: 20px;
+  gap: 20px;
+  border-radius: 10px;
+  box-shadow: none;
+  background: var(--sourcing-paper);
+}
+.crafton-backoffice .workflow-next-workspace .admin-ops-form label > span,
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(.ai-rfq-controls > label > span, .ai-rfq-suppliers-field > span, .sourcing-next-source-strip span) {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .admin-ops-form :is(input, select, textarea) {
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.crafton-backoffice .workflow-next-workspace .admin-mini-table {
+  font-size: 14px;
+}
+.crafton-backoffice .workflow-next-workspace .admin-mini-table th {
+  font-size: 11px;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .admin-mini-table :is(th, td) {
+  padding: 14px;
+}
+.crafton-backoffice .workflow-next-workspace .admin-mini-table code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.crafton-backoffice .workflow-next-workspace .admin-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.crafton-backoffice .workflow-next-workspace .sourcing-next-channel-note {
+  font-size: 13px;
+}
+.crafton-backoffice .workflow-next-workspace input[type="checkbox"] {
+  accent-color: var(--sourcing-walnut);
+}
+.crafton-backoffice .workflow-next-workspace .production-control-tower {
+  gap: 16px;
+}
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(
+    .production-controller-command,
+    .supplier-access-control,
+    .production-schedule-approval,
+    .production-drawing-gate,
+    .production-completion-gate,
+    .production-work-package-grid > article
+  ) {
+  border-color: var(--sourcing-line);
+  border-radius: 10px;
+  background: var(--sourcing-paper);
+  box-shadow: none;
+}
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(.production-controller-command, .supplier-access-control, .production-completion-gate) {
+  padding: 20px;
+  gap: 20px;
+}
+.crafton-backoffice .workflow-next-workspace .production-controller-metrics {
+  margin-top: 18px;
+  border-color: var(--sourcing-line);
+  background: var(--sourcing-line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.crafton-backoffice .workflow-next-workspace .production-controller-metrics article {
+  background: var(--sourcing-paper);
+  padding: 18px;
+  box-shadow: none;
+}
+.crafton-backoffice .workflow-next-workspace .production-controller-metrics strong {
+  font: italic 500 28px/1.3 var(--font-display);
+}
+.crafton-backoffice .workflow-next-workspace .production-controller-metrics strong.date-value {
+  font: 500 15px/1.5 var(--font-sans);
+  white-space: normal;
+}
+.crafton-backoffice .workflow-next-workspace .production-controller-metrics :is(span, small) {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .production-controller-metrics span {
+  font-weight: 500;
+}
+.crafton-backoffice .workflow-next-workspace .production-control-tower :is(h4, .production-controller-empty strong) {
+  font-size: 16px;
+  line-height: 1.5;
+}
+.crafton-backoffice .workflow-next-workspace .production-control-tower p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(
+    .production-controller-command > div > span,
+    .supplier-access-control > div > span,
+    .production-schedule-approval > header span,
+    .production-schedule-dates span
+  ) {
+  font: 500 11px/1.5 var(--font-mono);
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .production-schedule-approval > header {
+  padding: 20px;
+  background: var(--sourcing-paper-muted);
+  border-radius: 10px 10px 0 0;
+}
+.crafton-backoffice .workflow-next-workspace .production-schedule-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px;
+  border-top: 1px solid var(--sourcing-line);
+  background: var(--sourcing-paper-muted);
+  border-radius: 0 0 10px 10px;
+}
+.crafton-backoffice .workflow-next-workspace .production-schedule-actions p {
+  margin: 0;
+}
+.crafton-backoffice .workflow-next-workspace .production-schedule-actions button {
+  flex-shrink: 0;
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid > article {
+  padding: 20px;
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid header {
+  gap: 12px;
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid h5 {
+  margin-top: 4px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid :is(header small, dd) {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid :is(header > span, header b, dt) {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid header b {
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid dl {
+  gap: 16px;
+  margin: 18px 0;
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid dl div {
+  padding: 0;
+  background: transparent;
+}
+.crafton-backoffice .workflow-next-workspace .production-work-package-grid > article > p {
+  max-height: none;
+  overflow: visible;
+}
+.crafton-backoffice .workflow-next-workspace .production-package-progress {
+  grid-template-columns: minmax(0, 1fr) 48px;
+  margin: 18px 0;
+}
+.crafton-backoffice .workflow-next-workspace .production-package-progress strong {
+  font-size: 14px;
+}
+.crafton-backoffice .workflow-next-workspace .production-package-checks span {
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.crafton-backoffice .workflow-next-workspace .production-control-tower small {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(
+    .production-completion-gate span,
+    .production-schedule-version span,
+    .production-evidence-review-panel > header span,
+    .production-review-note-field span
+  ) {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--sourcing-body);
+}
+.crafton-backoffice .workflow-next-workspace .production-schedule-dates > div {
+  padding: 20px;
+  background: var(--sourcing-paper);
+}
+.crafton-backoffice .workflow-next-workspace .production-schedule-dates strong {
+  font-size: 15px;
+  line-height: 1.5;
+}
+.crafton-backoffice
+  .workflow-next-workspace
+  :is(
+    .production-schedule-issues > div,
+    .production-review-warning,
+    .production-review-approved,
+    .production-review-advisory,
+    .production-review-risk-acknowledgement,
+    .production-review-risk-acknowledgement b,
+    .production-review-note-field textarea
+  ) {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.crafton-backoffice .workflow-next-workspace .production-evidence-review-panel {
+  padding: 20px;
+  border-radius: 10px;
+  background: var(--sourcing-paper);
+  box-shadow: none;
+}
+.crafton-backoffice .workflow-next-workspace .production-evidence-files a > :is(span, small) {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.crafton-backoffice .workflow-next-workspace .production-evidence-files a > strong {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.crafton-backoffice .workflow-next-workspace .production-controller-message {
+  background: var(--sourcing-paper-muted);
+  border-color: var(--sourcing-line);
+  color: var(--sourcing-body);
+  font-size: 14px;
+  border-radius: 10px;
+}
+.crafton-backoffice .workflow-next-workspace .ai-workflow-commandbar {
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 18px;
+  box-shadow: none;
+  border-radius: 10px;
+}
+.crafton-app[lang="cn"]
+  .workflow-next-workspace
+  :is(.sourcing-next-hero-copy h2, .sourcing-next-section-title h3, .admin-ops-section > header h3) {
+  font-style: normal;
+}
+@media (max-width: 1100px) {
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-hero {
+    grid-template-columns: 1fr;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-hero-action {
+    padding: 20px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--sourcing-line);
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-primary {
+    width: auto;
+  }
+  .crafton-backoffice .workflow-next-workspace .production-controller-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .crafton-backoffice .workflow-next-workspace :is(.sourcing-next-hero, .sourcing-next-stage-card) {
+    padding: 22px 18px;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-hero-copy h2 {
+    font-size: 36px;
+    line-height: 1.1;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-metrics > div {
+    padding: 18px 12px;
+    min-width: 0;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-metrics > div:nth-child(odd) {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-metrics > div:nth-child(n + 3) {
+    border-top: 1px solid var(--sourcing-line);
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-metrics strong {
+    font-size: 30px;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-metrics .workflow-metric-text {
+    font-size: 23px;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-stage-track {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-stage-track > button {
+    min-height: 90px;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-stage-line {
+    margin-bottom: 10px;
+    height: 5px;
+  }
+  .crafton-backoffice
+    .workflow-next-workspace
+    :is(.admin-ops-section > header, .admin-ops-body, .workflow-disclosure-body, .workflow-disclosure > summary) {
+    padding: 20px 18px;
+  }
+  .crafton-backoffice
+    .workflow-next-workspace
+    :is(
+      .admin-ops-section > header,
+      .production-controller-command,
+      .supplier-access-control,
+      .production-schedule-actions
+    ) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .crafton-backoffice .workflow-next-workspace .admin-ops-form {
+    padding: 16px;
+    grid-template-columns: 1fr;
+  }
+  .crafton-backoffice .workflow-next-workspace .admin-ops-form .wide {
+    grid-column: 1;
+  }
+  .crafton-backoffice .workflow-next-workspace .sourcing-next-secondary-actions {
+    flex-wrap: wrap;
+  }
+  .crafton-backoffice .workflow-next-workspace .production-work-package-grid dl {
+    grid-template-columns: 1fr;
+  }
+  .crafton-backoffice .workflow-next-workspace .production-work-package-grid header {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .crafton-backoffice .workflow-next-workspace .production-work-package-grid header b {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .crafton-backoffice .workflow-next-workspace .production-drawing-list article,
+  .crafton-backoffice .workflow-next-workspace .production-drawing-review {
+    grid-template-columns: 1fr;
+  }
+  .crafton-backoffice .workflow-next-workspace .production-drawing-gate > header {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .crafton-backoffice .workflow-next-workspace .production-drawing-list article > div:last-child,
+  .crafton-backoffice .workflow-next-workspace .production-drawing-review > div {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crafton-backoffice .workflow-next-workspace :is(button, summary svg) {
+    transition: none;
+    transform: none;
+  }
+}

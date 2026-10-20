@@ -285,10 +285,7 @@ export default function AiRfqWorkspace({
         await onChanged?.();
       } else {
         setMessage(
-          t(
-            "RFQ draft generated. Review all warnings before approval.",
-            "询价单草稿已生成，请在批准前检查所有警示。"
-          )
+          t("RFQ draft generated. Review all warnings before approval.", "询价单草稿已生成，请在批准前检查所有警示。")
         );
       }
     } catch (error) {
@@ -850,11 +847,11 @@ export default function AiRfqWorkspace({
 
       {hierarchical && dispatchService && !dispatchService.configured && (
         <div className="sourcing-next-channel-note">
-          <strong>{t("Direct email is not configured", "直接邮件发送尚未配置")}</strong>
+          <strong>{t("Send from your mailbox", "使用你的邮箱发送")}</strong>
           <span>
             {t(
-              "The workflow will use the archived Excel package for manual email delivery. Configure Resend later to enable one-click sending.",
-              "当前会生成并归档 Excel 询价包，供管理员用邮箱发送；日后配置 Resend 后即可启用一键发送。"
+              "Download the approved RFQ Excel, send it to the selected suppliers, then upload their returned quotations here.",
+              "下载已批准的询价 Excel，发送给选定供应商，再将回传报价上传至此。"
             )}
           </span>
         </div>

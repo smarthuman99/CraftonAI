@@ -99,14 +99,12 @@ export default function AiOperationsAutomation({
         event_type: `${scope}_ai_plan_generated`,
         actor: "Crafton",
         message_cn:
-          scope === "production"
-            ? "已生成生产控制计划，等待 Cho 应用。"
-            : "已生成出货与交付控制计划，等待 Cho 应用。",
+          scope === "production" ? "已生成生产控制计划，等待 Cho 应用。" : "已生成出货与交付控制计划，等待 Cho 应用。",
         message_en: `Crafton generated the ${scope} control plan for Cho review.`,
         payload: { plan_hash: hash }
       });
       setPlan(next);
-      setMessage(t("Plan generated and versioned in Supabase.", "计划已生成并在 Supabase 留存版本。"));
+      setMessage(t("Plan generated and saved as a new version.", "计划已生成并保存为新版本。"));
       onChanged?.();
     } catch (error) {
       setMessage(error.message || String(error));
@@ -255,12 +253,7 @@ export default function AiOperationsAutomation({
       {message && <div className="admin-ops-notice">{message}</div>}
       {!current && (
         <div className="ai-workflow-empty">
-          <p>
-            {t(
-              "Generate an control plan from the live Supabase project.",
-              "从 Supabase 当前项目资料生成控制计划。"
-            )}
-          </p>
+          <p>{t("Generate a plan using the latest project records.", "根据最新项目资料生成计划。")}</p>
         </div>
       )}
       {production && (

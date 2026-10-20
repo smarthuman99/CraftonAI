@@ -224,7 +224,7 @@ export default function AiQuoteComparison({
           </select>
         </label>
         <div>
-          <span className="ai-data-source">SUPABASE + CRAFTON</span>
+          <span className="ai-data-source">{t("QUOTE COMPARISON", "报价比较")}</span>
           <button
             type="button"
             className="btn-premium"
