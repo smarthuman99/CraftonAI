@@ -610,3 +610,11 @@
     transform: none;
   }
 }
+
+.ai-rfq-workspace.is-hierarchical .ai-rfq-exports > .ai-rfq-document-toolbar {
+  padding: 14px 18px;
+}
+
+.ai-rfq-exports td button + button {
+  margin-left: 6px;
+}

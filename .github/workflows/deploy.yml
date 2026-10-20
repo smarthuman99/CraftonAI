@@ -31,6 +31,7 @@ jobs:
         run: |
           npm run test:project-editing
           npm run test:intake
+          npm run test:rfq
           npm run test:performance
           node --test src/intakeEvidenceView.test.mjs
           python3 server/configure-thumbnail-cache.test.py

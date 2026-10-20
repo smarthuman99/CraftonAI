@@ -279,7 +279,7 @@ async function loadProjectSourceFiles(supabase, projectId) {
     source: "intake_files"
   }));
   const operationalFiles = projectFiles
-    .filter((file) => !["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(file.file_group))
+    .filter((file) => !["rfq_document", "rfq_dispatch", "rfq_excel", "rfq_pdf", "supplier_quote", "quote_analysis"].includes(file.file_group))
     .map((file) => ({
       id: file.id,
       name: file.file_name,

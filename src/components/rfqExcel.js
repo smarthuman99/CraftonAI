@@ -1,4 +1,4 @@
-import { isImageReference } from "../../shared/rfqReferences.mjs";
+import { isImageReference, referencesForItem } from "../../shared/rfqReferences.mjs";
 
 const COLORS = {
   cream: "FFEFE7D6",
@@ -539,6 +539,21 @@ export async function buildRfqWorkbook({ project, batch, document, form, referen
             tl: { col: 0.3, row: anchorRow - 0.7 },
             ext: { width: image.width ? image.width * scale : 255, height: image.height ? image.height * scale : 155 },
             editAs: "oneCell"
+          });
+          document.items.forEach((item, index) => {
+            if (referencesForItem(item, references).filter(isImageReference)[0] !== reference) return;
+            const rowNumber = itemStartRow + index;
+            const row = sheet.getRow(rowNumber);
+            row.height = Math.max(140, row.height);
+            const thumbnailScale = image.width && image.height ? Math.min(180 / image.width, 110 / image.height) : 1;
+            sheet.addImage(imageId, {
+              tl: { col: 1.08, row: rowNumber - 1 + 58 / ((row.height * 4) / 3) },
+              ext: {
+                width: image.width ? image.width * thumbnailScale : 180,
+                height: image.height ? image.height * thumbnailScale : 110
+              },
+              editAs: "oneCell"
+            });
           });
         } catch {
           throw new Error(

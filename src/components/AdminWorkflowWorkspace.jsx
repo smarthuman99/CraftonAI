@@ -9,6 +9,7 @@ import WorkflowOverview, { WorkflowDisclosure } from "./WorkflowOverview";
 import { productionOverview, shippingOverview } from "./workflowPresentation.mjs";
 import "./workflowOverview.css";
 import { parseSupplierRfqWorkbook } from "./rfqExcel";
+import { downloadRfqBlob, readArchivedRfqFile } from "./rfqArchive";
 import { matchSupplierReturn, mergeImportedQuoteLines, quoteLinesForBatch, quoteTotalsFromLines } from "./quoteIntake";
 import { activeProjectJob } from "../../shared/clientProjectEditing.mjs";
 
@@ -175,6 +176,18 @@ export default function AdminWorkflowWorkspace({
   const [quoteAutoAnalyzeToken, setQuoteAutoAnalyzeToken] = useState("");
   const [sourcingView, setSourcingView] = useState("prepare");
   const sourcingTabs = useRef([]);
+  const [openingRfqFile, setOpeningRfqFile] = useState("");
+  async function reopenRfqFile(file) {
+    setOpeningRfqFile(file.id);
+    try {
+      const blob = await readArchivedRfqFile(supabaseClient, file);
+      downloadRfqBlob(blob, file.file_name);
+    } catch (error) {
+      setMessage(error.message || String(error));
+    } finally {
+      setOpeningRfqFile("");
+    }
+  }
   const [operationsSelection, setOperationsSelection] = useState({ scope: "", view: "" });
   const operationsScope = `${projectId}:${flow}`;
   const chooseOperationsView = (view) => setOperationsSelection({ scope: operationsScope, view });
@@ -1501,6 +1514,19 @@ export default function AdminWorkflowWorkspace({
               <h3>{t("Prepare, collect, decide", "准备、收集、决策")}</h3>
             </div>
             <div className="sourcing-next-secondary-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setSourcingView("prepare");
+                  window.requestAnimationFrame(() => {
+                    document
+                      .getElementById(`rfq-files-${projectId}`)
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  });
+                }}
+              >
+                {t("RFQ files", "RFQ 文件")}
+              </button>
               <button type="button" onClick={() => setShowSupplierDirectory((current) => !current)}>
                 {showSupplierDirectory ? t("Hide suppliers", "收起供应商") : t("Manage suppliers", "管理供应商")}
               </button>
@@ -2230,14 +2256,14 @@ export default function AdminWorkflowWorkspace({
           </StageSection>
         </div>
         <div className="sourcing-next-disclosures">
-          <details>
+          <details open>
             <summary>
               <span>
                 <strong>{t("RFQ and quote records", "询价与报价文件")}</strong>
                 <small>
                   {t(
-                    `${data.project_files.filter((file) => ["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(file.file_group)).length} traceable records`,
-                    `${data.project_files.filter((file) => ["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(file.file_group)).length} 份可追溯记录`
+                    `${data.project_files.filter((file) => ["rfq_document", "rfq_dispatch", "rfq_excel", "rfq_pdf", "supplier_quote", "quote_analysis"].includes(file.file_group)).length} traceable records`,
+                    `${data.project_files.filter((file) => ["rfq_document", "rfq_dispatch", "rfq_excel", "rfq_pdf", "supplier_quote", "quote_analysis"].includes(file.file_group)).length} 份可追溯记录`
                   )}
                 </small>
               </span>
@@ -2246,7 +2272,7 @@ export default function AdminWorkflowWorkspace({
             <div className="sourcing-next-record-list">
               {data.project_files
                 .filter((file) =>
-                  ["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(
+                  ["rfq_document", "rfq_dispatch", "rfq_excel", "rfq_pdf", "supplier_quote", "quote_analysis"].includes(
                     file.file_group
                   )
                 )
@@ -2256,10 +2282,15 @@ export default function AdminWorkflowWorkspace({
                     <span>{String(file.file_group || "FILE").replaceAll("_", " ")}</span>
                     <strong>{file.file_name || "-"}</strong>
                     <small>{shortDate(file.created_at)}</small>
+                    {["rfq_excel", "rfq_pdf"].includes(file.file_group) && (
+                      <button type="button" disabled={Boolean(openingRfqFile)} onClick={() => reopenRfqFile(file)}>
+                        {t("Download", "下载文件")}
+                      </button>
+                    )}
                   </div>
                 ))}
               {!data.project_files.some((file) =>
-                ["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(
+                ["rfq_document", "rfq_dispatch", "rfq_excel", "rfq_pdf", "supplier_quote", "quote_analysis"].includes(
                   file.file_group
                 )
               ) && <Empty>{t("No sourcing records yet.", "当前还没有采购文件记录。")}</Empty>}

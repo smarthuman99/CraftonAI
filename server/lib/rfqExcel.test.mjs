@@ -180,7 +180,7 @@ test("RFQ export embeds images, preserves clarified identity and units, and prov
     missingInformation: [{ messageEn: "Confirm Crib 5 scope.", messageCn: "确认 Crib 5 范围。" }]
   };
   const exported = await buildRfqWorkbook({ project, batch, document: fullDocument, form,
-    references: [{ name: "Source page", type: "image/png", url: png }, { name: "Source.pdf", type: "application/pdf" }] });
+    references: [{ name: "Source page", itemNo: fullDocument.items[0].itemNo, type: "image/png", url: png }, { name: "Source.pdf", type: "application/pdf" }] });
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(exported.buffer);
   const sheet = workbook.getWorksheet("RFQ");
@@ -194,6 +194,10 @@ test("RFQ export embeds images, preserves clarified identity and units, and prov
   assert.equal(sheet.getCell("E18").protection.locked, false);
   assert.match(sheet.getCell("A23").value, /Crib 5/);
   assert.equal(workbook.getWorksheet("Product References").getImages().length, 1);
+  assert.equal(sheet.getImages().length, 1);
+  assert.equal(sheet.getImages()[0].range.tl.nativeCol, 1);
+  assert.equal(sheet.getImages()[0].range.tl.nativeRow, 14);
+  assert.ok(sheet.getRow(15).height >= 140);
   sheet.getCell("E18").value = "Sample USD 100; 7 days";
   sheet.getCell("E20").value = "24 months";
   const response = await workbook.xlsx.writeBuffer();

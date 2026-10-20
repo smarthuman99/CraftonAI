@@ -20,6 +20,14 @@ export function isImageReference(file = {}) {
   );
 }
 
+// Match by a durable item identifier or an explicitly linked filename, never by
+// array position: source documents and unassigned references may be interleaved.
+export function referencesForItem(item, references = []) {
+  return references.filter((file) =>
+    file.itemNo ? String(file.itemNo) === String(item.itemNo) : (item.referenceFiles || []).includes(file.name)
+  );
+}
+
 export async function resolveRfqReference(file, supabase) {
   const location = referenceStorageLocation(file, supabase.supabaseUrl);
   if (location) {

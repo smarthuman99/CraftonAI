@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { buildRfqWorkbook } from "./rfqExcel";
-import { buildPrintableRfqHtml } from "./rfqPrint";
+import { buildRfqPdf } from "./rfqPdf";
+import { archiveRfqExport, downloadRfqBlob, readArchivedRfqFile } from "./rfqArchive";
 import { isImageReference, resolveRfqReference } from "../../shared/rfqReferences.mjs";
 import { rfqReviewWarnings } from "../../shared/rfqValidation.mjs";
 
@@ -62,10 +63,34 @@ export default function AiRfqWorkspace({
   const [form, setForm] = useState({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: [] });
   const autoUpgradeRef = useRef("");
   const activeProjectRef = useRef("");
-  const projectBatches = useMemo(() => batches.filter((row) => row.project_id === project.id), [batches, project.id]);
+  const [savedBatches, setSavedBatches] = useState({});
+  const [savedFiles, setSavedFiles] = useState([]);
+  const projectBatches = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          [...batches, ...Object.values(savedBatches)]
+            .filter((row) => row.project_id === project.id)
+            .map((row) => [row.id, row])
+        ).values()
+      ).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)),
+    [batches, savedBatches, project.id]
+  );
   const currentProjectFiles = useMemo(
-    () => projectFiles.filter((row) => row.project_id === project.id),
-    [projectFiles, project.id]
+    () =>
+      Array.from(
+        new Map(
+          [...projectFiles, ...savedFiles].filter((row) => row.project_id === project.id).map((row) => [row.id, row])
+        ).values()
+      ),
+    [projectFiles, savedFiles, project.id]
+  );
+  const exportedFiles = useMemo(
+    () =>
+      currentProjectFiles
+        .filter((file) => ["rfq_excel", "rfq_pdf"].includes(file.file_group))
+        .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)),
+    [currentProjectFiles]
   );
   const currentIntakeJobs = useMemo(
     () => intakeJobs.filter((row) => row.project_id === project.id),
@@ -118,7 +143,9 @@ export default function AiRfqWorkspace({
       ...currentProjectFiles
         .filter(
           (file) =>
-            !["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(file.file_group)
+            !["rfq_document", "rfq_dispatch", "rfq_excel", "rfq_pdf", "supplier_quote", "quote_analysis"].includes(
+              file.file_group
+            )
         )
         .map((file) => ({
           id: file.id,
@@ -292,20 +319,19 @@ export default function AiRfqWorkspace({
       setActiveBatchId(targetBatch?.id || null);
       setStatus("draft");
       setForm(nextForm);
-      if (targetBatch?.id) {
-        await persist("draft", {
-          document: result.document,
-          generation: result.generation,
-          activeBatchId: targetBatch.id,
-          form: nextForm
-        });
-        setMessage(t("Legacy RFQ upgraded to a complete inquiry document.", "旧版 RFQ 已自动升级为完整询盘文件。"));
-        await onChanged?.();
-      } else {
-        setMessage(
-          t("RFQ draft generated. Review all warnings before approval.", "询价单草稿已生成，请在批准前检查所有警示。")
-        );
-      }
+      await persist("draft", {
+        document: result.document,
+        generation: result.generation,
+        activeBatchId: targetBatch?.id || null,
+        form: nextForm
+      });
+      setMessage(
+        t(
+          "RFQ draft generated and saved. Reopen it from RFQ history.",
+          "询价草稿已生成并自动保存，关闭后可从询价版本记录再次打开。"
+        )
+      );
+      await onChanged?.();
     } catch (error) {
       setMessage(error.message || String(error));
     } finally {
@@ -317,6 +343,7 @@ export default function AiRfqWorkspace({
     return (
       Math.max(
         0,
+        Number(projectBatches.find((row) => row.id === batchId)?.payload?.version || 0),
         ...versions
           .filter((file) => file.payload?.rfq_batch_id === batchId)
           .map((file) => Number(file.payload?.version || 0))
@@ -348,6 +375,7 @@ export default function AiRfqWorkspace({
     const code = `RFQ-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${window.crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     let version = workingBatchId ? nextVersion(workingBatchId) : 1;
     const basePayload = {
+      ...(projectBatches.find((row) => row.id === workingBatchId)?.payload || {}),
       document: workingDocument,
       generation: workingGeneration,
       version,
@@ -391,19 +419,27 @@ export default function AiRfqWorkspace({
       batch = data;
     }
 
+    setActiveBatchId(batch.id);
+    setSavedBatches((current) => ({ ...current, [batch.id]: batch }));
+    setStatus(nextStatus);
     version = workingBatchId ? nextVersion(batch.id) : 1;
     const record = { ...basePayload, rfq_batch_id: batch.id, rfq_code: batch.rfq_code, version };
     const hash = await sha256(record);
-    const { error: fileError } = await supabaseClient.from("project_files").insert({
-      project_id: project.id,
-      stage_id: "S06",
-      file_group: "rfq_document",
-      file_name: `${batch.rfq_code}-v${version}.json`,
-      sha256: hash,
-      audit_hash: hash,
-      payload: record
-    });
+    const { data: savedVersion, error: fileError } = await supabaseClient
+      .from("project_files")
+      .insert({
+        project_id: project.id,
+        stage_id: "S06",
+        file_group: "rfq_document",
+        file_name: `${batch.rfq_code}-v${version}.json`,
+        sha256: hash,
+        audit_hash: hash,
+        payload: record
+      })
+      .select()
+      .single();
     if (fileError) throw fileError;
+    setSavedFiles((current) => [...current, savedVersion]);
 
     await event(
       nextStatus === "approved" ? "rfq_document_approved" : "rfq_document_version_saved",
@@ -411,13 +447,6 @@ export default function AiRfqWorkspace({
       `${batch.rfq_code} RFQ version ${version} ${nextStatus === "approved" ? "approved" : "saved"}.`,
       { rfq_batch_id: batch.id, version, sha256: hash, supplier_ids: workingForm.supplierIds }
     );
-    const { error: projectError } = await supabaseClient
-      .from("projects")
-      .update({ current_stage: 6 })
-      .eq("id", project.id);
-    if (projectError) throw projectError;
-    setActiveBatchId(batch.id);
-    setStatus(nextStatus);
     return batch;
   }
 
@@ -600,35 +629,80 @@ export default function AiRfqWorkspace({
     if (status !== "draft") setStatus("draft");
   }
 
-  function printRfq() {
-    if (!document) return;
+  async function exportReferences() {
+    return Promise.all(
+      (document.attachments || []).map(async (file) => ({
+        ...file,
+        url: await resolveRfqReference(file, supabaseClient)
+      }))
+    );
+  }
 
-    const popup = window.open("", "_blank");
-    if (!popup) {
-      setMessage(t("Allow pop-ups to open the printable RFQ.", "请允许浏览器弹出窗口以打开可打印 RFQ。"));
-      return;
-    }
-
+  async function openExport(file, preview = false) {
+    const popup = preview ? window.open("", "_blank") : null;
+    if (popup) popup.opener = null;
+    setBusy("open-file");
+    setMessage("");
     try {
-      const batch = projectBatches.find((row) => row.id === activeBatchId) || null;
-      const html = buildPrintableRfqHtml({
+      const blob = await readArchivedRfqFile(supabaseClient, file);
+      if (popup) {
+        const url = URL.createObjectURL(new window.Blob([blob], { type: "application/pdf" }));
+        popup.location.href = url;
+        window.setTimeout(() => URL.revokeObjectURL(url), 300000);
+      } else downloadRfqBlob(blob, file.file_name);
+    } catch (error) {
+      popup?.close();
+      setMessage(error.message || String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function printRfq() {
+    if (!document) return;
+    setBusy("pdf");
+    setMessage(t("Preparing PDF with embedded images...", "正在生成含产品图片的 PDF…"));
+    try {
+      let batch = projectBatches.find((row) => row.id === activeBatchId);
+      const unchanged =
+        batch &&
+        JSON.stringify(batch.payload?.document) === JSON.stringify(document) &&
+        batch.status === status &&
+        batch.currency === form.currency &&
+        (batch.notes || "") === form.notes &&
+        JSON.stringify(batch.supplier_ids || []) === JSON.stringify(form.supplierIds) &&
+        (batch.due_at ? new Date(batch.due_at).getTime() : 0) === (form.dueAt ? new Date(form.dueAt).getTime() : 0);
+      if (!unchanged) batch = await persist("draft");
+      const exported = await buildRfqPdf({
+        project,
+        batch,
         document: { ...document, missingInformation: reviewWarnings },
         form,
-        batch,
-        project,
-        attachmentUrls,
-        lang,
-        autoPrint: true
+        references: await exportReferences()
       });
-
-      popup.opener = null;
-      popup.document.open();
-      popup.document.write(html);
-      popup.document.close();
-      popup.focus();
+      const hash = await sha256Buffer(exported.buffer);
+      const archived = await archiveRfqExport({
+        client: supabaseClient,
+        projectId: project.id,
+        batch,
+        supplierIds: form.supplierIds,
+        exported,
+        hash,
+        group: "rfq_pdf"
+      });
+      setSavedFiles((current) => [...current, archived.file]);
+      downloadRfqBlob(archived.blob, exported.fileName);
+      setMessage(
+        t(
+          "PDF downloaded and archived. Reopen it from Generated files.",
+          "PDF 已下载并归档，可在「已生成文件」中再次查看或下载。"
+        )
+      );
+      await onChanged?.();
     } catch (error) {
-      popup.close();
       setMessage(error.message || String(error));
+    } finally {
+      setBusy("");
     }
   }
 
@@ -652,12 +726,7 @@ export default function AiRfqWorkspace({
     setBusy("excel");
     setMessage("");
     try {
-      const references = await Promise.all(
-        (document.attachments || []).map(async (file) => ({
-          ...file,
-          url: await resolveRfqReference(file, supabaseClient)
-        }))
-      );
+      const references = await exportReferences();
       const exported = await buildRfqWorkbook({
         project,
         batch,
@@ -666,37 +735,17 @@ export default function AiRfqWorkspace({
         references
       });
       const hash = await sha256Buffer(exported.buffer);
-      const { data: authData, error: authError } = await supabaseClient.auth.getUser();
-      if (authError || !authData?.user?.id) throw authError || new Error("Staff session unavailable.");
-      const storagePath = `${authData.user.id}/rfq-exports/${project.id}/${Date.now()}-${exported.fileName}`;
-      const exportFile = new window.File([exported.buffer], exported.fileName, { type: exported.mimeType });
-      const { error: uploadError } = await supabaseClient.storage
-        .from("intake-files")
-        .upload(storagePath, exportFile, { contentType: exported.mimeType, upsert: false });
-      if (uploadError) throw uploadError;
-
-      const exportedAt = new Date().toISOString();
-      const { error: fileError } = await supabaseClient.from("project_files").insert({
-        project_id: project.id,
-        stage_id: "S06",
-        file_group: "rfq_excel",
-        file_name: exported.fileName,
-        file_path: storagePath,
-        sha256: hash,
-        audit_hash: hash,
-        payload: {
-          ...exported.metadata,
-          rfq_batch_id: batch.id,
-          rfq_code: batch.rfq_code,
-          supplier_ids: form.supplierIds,
-          storage_bucket: "intake-files",
-          storage_path: storagePath,
-          mime_type: exported.mimeType,
-          exported_at: exportedAt
-        }
+      const archived = await archiveRfqExport({
+        client: supabaseClient,
+        projectId: project.id,
+        batch,
+        supplierIds: form.supplierIds,
+        exported,
+        hash,
+        group: "rfq_excel"
       });
-      if (fileError) throw fileError;
-
+      setSavedFiles((current) => [...current, archived.file]);
+      const exportedAt = archived.file.payload.exported_at;
       const { error: batchError } = await supabaseClient
         .from("rfq_batches")
         .update({
@@ -722,14 +771,7 @@ export default function AiRfqWorkspace({
         { rfq_batch_id: batch.id, file_name: exported.fileName, sha256: hash, supplier_ids: form.supplierIds }
       );
 
-      const url = URL.createObjectURL(exportFile);
-      const link = window.document.createElement("a");
-      link.href = url;
-      link.download = exported.fileName;
-      window.document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadRfqBlob(archived.blob, exported.fileName);
       setMessage(
         t(
           "Excel RFQ downloaded and archived. Send the same file from your own mailbox, then import each supplier return below.",
@@ -877,8 +919,75 @@ export default function AiRfqWorkspace({
         </div>
       )}
 
+      <section
+        id={`rfq-files-${project.id}`}
+        className="ai-rfq-exports ai-rfq-history"
+        aria-label={t("Generated files", "已生成文件")}
+      >
+        <div className="ai-rfq-document-toolbar">
+          <div>
+            <strong>{t("Generated files", "已生成文件")}</strong>
+            <span>
+              {t(
+                "Saved to this project. Available after closing or refreshing.",
+                "文件保存在此项目中，关闭或刷新后仍可查看和下载。"
+              )}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              window.document
+                .getElementById(`rfq-history-${project.id}`)
+                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+          >
+            {t("RFQ version history", "查看询价版本记录")}
+          </button>
+        </div>
+        {exportedFiles.length ? (
+          <div className="admin-table-wrap">
+            <table className="admin-mini-table">
+              <thead>
+                <tr>
+                  <th>{t("File", "文件")}</th>
+                  <th>{t("Created", "生成时间")}</th>
+                  <th>{t("Actions", "操作")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exportedFiles.map((file) => (
+                  <tr key={file.id}>
+                    <td>
+                      <strong>{file.file_group === "rfq_pdf" ? "PDF" : "Excel"}</strong>
+                      <br />
+                      {file.file_name}
+                    </td>
+                    <td>{displayDate(file.created_at || file.payload?.exported_at, lang)}</td>
+                    <td>
+                      {file.file_group === "rfq_pdf" && (
+                        <button type="button" disabled={Boolean(busy)} onClick={() => openExport(file, true)}>
+                          {t("View PDF", "查看 PDF")}
+                        </button>
+                      )}
+                      <button type="button" disabled={Boolean(busy)} onClick={() => openExport(file)}>
+                        {t("Download again", "再次下载")}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="admin-empty-state">
+            {t("Your generated Excel and PDF files will appear here.", "生成的 Excel 和 PDF 将显示在这里。")}
+          </div>
+        )}
+      </section>
+
       {document && (
-        <div className="ai-rfq-document">
+        <div className="ai-rfq-document" id={`rfq-preview-${project.id}`}>
           <div className="ai-rfq-document-toolbar">
             <div>
               <strong>{t("RFQ Excel content preview", "RFQ Excel 内容预览")}</strong>
@@ -914,12 +1023,12 @@ export default function AiRfqWorkspace({
                       {t("Sent to selected suppliers", "已发送给所选供应商")}
                     </span>
                   )}
+                  <button type="button" disabled={Boolean(busy)} onClick={printRfq}>
+                    {busy === "pdf" ? t("Creating PDF...", "正在生成 PDF...") : t("Download PDF", "下载 PDF")}
+                  </button>
                   <details className="sourcing-next-more-menu">
                     <summary>{t("More", "更多")}</summary>
                     <div>
-                      <button type="button" disabled={Boolean(busy)} onClick={printRfq}>
-                        {t("Print / Save PDF", "打印 / 保存 PDF")}
-                      </button>
                       <button type="button" disabled={Boolean(busy)} onClick={save}>
                         {busy === "save" ? t("Saving...", "保存中...") : t("Save version", "保存版本")}
                       </button>
@@ -934,7 +1043,7 @@ export default function AiRfqWorkspace({
               ) : (
                 <>
                   <button type="button" disabled={Boolean(busy)} onClick={printRfq}>
-                    {t("Print / Save PDF", "打印 / 保存 PDF")}
+                    {busy === "pdf" ? t("Creating PDF...", "正在生成 PDF...") : t("Download PDF", "下载 PDF")}
                   </button>
                   <button type="button" disabled={Boolean(busy)} onClick={save}>
                     {busy === "save" ? t("Saving...", "保存中...") : t("Save version", "保存版本")}
@@ -1146,8 +1255,9 @@ export default function AiRfqWorkspace({
       )}
 
       <details
+        id={`rfq-history-${project.id}`}
         className={`ai-rfq-history ${hierarchical ? "is-disclosure" : ""}`.trim()}
-        open={!hierarchical ? true : undefined}
+        open
       >
         {hierarchical && (
           <summary>
@@ -1162,8 +1272,8 @@ export default function AiRfqWorkspace({
           <strong>{t("RFQ history", "RFQ 历史记录")}</strong>
           <span>
             {t(
-              "Every approved version and generated Excel file is retained in Supabase.",
-              "每个批准版本及生成的 Excel 文件都会保留在 Supabase。"
+              "Generated drafts are saved automatically. Reopen a saved RFQ below.",
+              "生成草稿时自动保存，可在这里重新打开已保存的询价单。"
             )}
           </span>
         </div>
@@ -1196,7 +1306,19 @@ export default function AiRfqWorkspace({
                     <td>{zh ? statusCn[batch.status] || batch.status : batch.status}</td>
                     <td>{displayDate(batch.due_at, lang)}</td>
                     <td>
-                      <button type="button" onClick={() => loadBatch(batch)}>
+                      <button
+                        type="button"
+                        disabled={Boolean(busy)}
+                        onClick={() => {
+                          loadBatch(batch);
+                          window.requestAnimationFrame(() => {
+                            const preview = window.document.getElementById(`rfq-preview-${project.id}`);
+                            const details = preview?.querySelector(".ai-rfq-document-details");
+                            if (details) details.open = true;
+                            preview?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          });
+                        }}
+                      >
                         {t("Preview", "预览")}
                       </button>
                     </td>
