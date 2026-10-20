@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { buildRfqWorkbook } from "./rfqExcel";
 import { buildPrintableRfqHtml } from "./rfqPrint";
+import { isImageReference, resolveRfqReference } from "../../shared/rfqReferences.mjs";
+import { rfqReviewWarnings } from "../../shared/rfqValidation.mjs";
 
 const AI_API_URL = import.meta.env.VITE_AI_SUPPORT_API_URL || "/api/ai-support-chat";
 
@@ -54,6 +56,9 @@ export default function AiRfqWorkspace({
   const [message, setMessage] = useState("");
   const [dispatchService, setDispatchService] = useState(null);
   const [attachmentUrls, setAttachmentUrls] = useState({});
+  const [attachmentErrors, setAttachmentErrors] = useState({});
+  const [attachmentRetry, setAttachmentRetry] = useState(0);
+  const reviewWarnings = useMemo(() => (document ? rfqReviewWarnings(document) : []), [document]);
   const [form, setForm] = useState({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: [] });
   const autoUpgradeRef = useRef("");
   const activeProjectRef = useRef("");
@@ -135,7 +140,7 @@ export default function AiRfqWorkspace({
     [currentProjectFiles]
   );
   const selectedSuppliers = suppliers.filter((supplier) => form.supplierIds.includes(supplier.id));
-  const highWarnings = (document?.missingInformation || []).filter((warning) => warning.severity === "high").length;
+  const highWarnings = reviewWarnings.filter((warning) => warning.severity === "high").length;
 
   useEffect(() => {
     if (activeProjectRef.current === project.id) return;
@@ -147,6 +152,7 @@ export default function AiRfqWorkspace({
     setMessage("");
     setDispatchService(null);
     setAttachmentUrls({});
+    setAttachmentErrors({});
     autoUpgradeRef.current = "";
     setForm({ title: "", dueAt: futureInput(), currency: "USD", notes: "", supplierIds: suggestedSupplierIds });
   }, [project.id]);
@@ -182,22 +188,34 @@ export default function AiRfqWorkspace({
       };
     }
 
-    Promise.all(
-      attachments.map(async (file) => {
-        const key = file.id || file.name;
-        if (file.url) return [key, file.url];
-        if (!file.bucket || !file.path) return [key, ""];
-        const { data } = await supabaseClient.storage.from(file.bucket).createSignedUrl(file.path, 60 * 60);
-        return [key, data?.signedUrl || ""];
-      })
-    ).then((entries) => {
-      if (active) setAttachmentUrls(Object.fromEntries(entries));
-    });
+    const refresh = async () => {
+      const results = await Promise.allSettled(attachments.map((file) => resolveRfqReference(file, supabaseClient)));
+      if (!active) return;
+      setAttachmentUrls(
+        Object.fromEntries(
+          attachments.map((file, index) => [
+            file.id || file.name,
+            results[index].status === "fulfilled" ? results[index].value : ""
+          ])
+        )
+      );
+      setAttachmentErrors(
+        Object.fromEntries(
+          attachments.map((file, index) => [
+            file.id || file.name,
+            results[index].status === "rejected" || !results[index].value
+          ])
+        )
+      );
+    };
+    refresh();
+    const timer = setInterval(refresh, 45 * 60 * 1000);
 
     return () => {
       active = false;
+      clearInterval(timer);
     };
-  }, [document?.attachments, supabaseClient]);
+  }, [document?.attachments, supabaseClient, attachmentRetry]);
 
   useEffect(() => {
     let active = true;
@@ -320,7 +338,7 @@ export default function AiRfqWorkspace({
   }
 
   async function persist(nextStatus, overrides = {}) {
-    const workingDocument = overrides.document || document;
+    const workingDocument = overrides.document || (document && { ...document, missingInformation: reviewWarnings });
     const workingGeneration = overrides.generation || generation;
     const workingBatchId = Object.prototype.hasOwnProperty.call(overrides, "activeBatchId")
       ? overrides.activeBatchId
@@ -440,7 +458,7 @@ export default function AiRfqWorkspace({
         reviewer_name: "Cho",
         notes: `${batch.rfq_code} approved for supplier Excel export.`,
         reviewed_at: new Date().toISOString(),
-        payload: { rfq_batch_id: batch.id, warning_count: document.missingInformation?.length || 0 }
+        payload: { rfq_batch_id: batch.id, warning_count: reviewWarnings.length }
       });
       if (error) throw error;
       setMessage(t("RFQ approved and ready for Excel export.", "RFQ 已批准，可以下载供应商 Excel 询价文件。"));
@@ -594,7 +612,7 @@ export default function AiRfqWorkspace({
     try {
       const batch = projectBatches.find((row) => row.id === activeBatchId) || null;
       const html = buildPrintableRfqHtml({
-        document,
+        document: { ...document, missingInformation: reviewWarnings },
         form,
         batch,
         project,
@@ -634,16 +652,18 @@ export default function AiRfqWorkspace({
     setBusy("excel");
     setMessage("");
     try {
+      const references = await Promise.all(
+        (document.attachments || []).map(async (file) => ({
+          ...file,
+          url: await resolveRfqReference(file, supabaseClient)
+        }))
+      );
       const exported = await buildRfqWorkbook({
         project,
         batch,
-        document,
+        document: { ...document, missingInformation: reviewWarnings },
         form,
-        references: (document.attachments || []).map((file) => ({
-          name: file.name,
-          note: file.note,
-          url: attachmentUrls[file.id || file.name] || file.url || ""
-        }))
+        references
       });
       const hash = await sha256Buffer(exported.buffer);
       const { data: authData, error: authError } = await supabaseClient.auth.getUser();
@@ -943,8 +963,8 @@ export default function AiRfqWorkspace({
                 <strong>{t("Review RFQ contents", "复核询价内容")}</strong>
                 <small>
                   {t(
-                    `${document.items.length} items · ${document.missingInformation.length} warning(s)`,
-                    `${document.items.length} 项明细 · ${document.missingInformation.length} 条提示`
+                    `${document.items.length} items · ${reviewWarnings.length} warning(s)`,
+                    `${document.items.length} 项明细 · ${reviewWarnings.length} 条提示`
                   )}
                 </small>
               </span>
@@ -956,7 +976,7 @@ export default function AiRfqWorkspace({
               <input value={document.titleEn} onChange={(e) => updateDocument("titleEn", e.target.value)} />
               <div>
                 <b>{t("Project", "项目")}</b> {project.orderId || project.id}
-                <b>{t("Client", "客户")}</b> {project.clientName || "-"}
+                <b>{t("Client", "客户")}</b> {document.project?.clientName || project.clientName || "-"}
                 <b>{t("Due", "截止")}</b> {displayDate(form.dueAt, lang)}
                 <b>{t("Currency", "币种")}</b> {form.currency}
               </div>
@@ -1076,9 +1096,24 @@ export default function AiRfqWorkspace({
                     {document.attachments.map((file, index) => (
                       <li key={`${file.name}-${index}`}>
                         {attachmentUrls[file.id || file.name] &&
-                          (file.type?.startsWith("image/") || /\.(png|jpe?g|webp|avif|heic)$/i.test(file.name)) && (
-                            <img src={attachmentUrls[file.id || file.name]} alt={file.name} />
+                          !attachmentErrors[file.id || file.name] &&
+                          isImageReference(file) && (
+                            <img
+                              src={attachmentUrls[file.id || file.name]}
+                              alt={file.name}
+                              onError={() =>
+                                setAttachmentErrors((current) => ({ ...current, [file.id || file.name]: true }))
+                              }
+                            />
                           )}
+                        {attachmentErrors[file.id || file.name] && (
+                          <span role="status">
+                            {t("Reference unavailable. ", "参考附件暂时无法读取。")}
+                            <button type="button" onClick={() => setAttachmentRetry((value) => value + 1)}>
+                              {t("Retry", "重试")}
+                            </button>
+                          </span>
+                        )}
                         <strong>{file.name}</strong>
                         <span>
                           {file.type} · {file.note}
@@ -1092,9 +1127,9 @@ export default function AiRfqWorkspace({
               </section>
               <section className="ai-rfq-warnings">
                 <h4>{t("Review warnings", "审核警示")}</h4>
-                {document.missingInformation.length ? (
+                {reviewWarnings.length ? (
                   <ul>
-                    {document.missingInformation.map((warning, index) => (
+                    {reviewWarnings.map((warning, index) => (
                       <li data-severity={warning.severity} key={`${warning.field}-${index}`}>
                         <b>{warning.severity}</b>
                         <span>{zh ? warning.messageCn : warning.messageEn}</span>

@@ -43,7 +43,8 @@ export function buildPrintableRfqHtml({
   const locale = lang === "Cn" ? "zh-CN" : "en-GB";
   const rfqCode = batch?.rfq_code || "DRAFT";
   const projectReference = project.orderId || project.projectName || project.id || "-";
-  const client = project.clientCompany || project.company || project.clientName || "-";
+  const client =
+    rfqDocument.project?.clientName || project.clientCompany || project.company || project.clientName || "-";
   const destination = project.projectLocation || project.destination || "-";
   const deliveryDate = project.desiredDeliveryDate || project.deliveryDate;
   const items = asArray(rfqDocument.items);

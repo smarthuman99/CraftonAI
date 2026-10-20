@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDeterministicRfq } from "./rfqGenerator.mjs";
+import { buildDeterministicRfq, createRfqDraft } from "./rfqGenerator.mjs";
 import { renderRfqEmail } from "./rfqDispatch.mjs";
 import { mergeVerifiedIntakeItems } from "./rfqSourceData.mjs";
 
@@ -37,7 +37,8 @@ test("RFQ generation preserves verified production data and source files", () =>
   assert.equal(document.attachments[0].id, "source-file-1");
   assert.equal(document.attachments[0].bucket, "intake-files");
   assert.equal(document.attachments[0].path, "client/chair-reference.jpg");
-  assert.equal(document.missingInformation.length, 0);
+  assert.equal(document.missingInformation.filter((warning) => warning.severity === "high").length, 0);
+  assert.ok(document.missingInformation.some((warning) => warning.field === "items.finishColor"));
 });
 
 test("RFQ generation flags absent drawings and dimensions instead of inventing them", () => {
@@ -84,4 +85,38 @@ test("Supabase intake dimensions and production fields override incomplete UI it
   assert.equal(items[0].tolerance, "±5mm");
   assert.equal(items[0].materialEn, "Metal and foam");
   assert.equal(items[0].compliance, "UK Crib 5 required");
+});
+
+test("quantity units are independent of dimension units and missing quantity is flagged", () => {
+  const document = buildDeterministicRfq({ project: {}, items: [
+    { typeEn: "Bistro Set", quantity: 10, unit: "sets", dimensions: "600 x 600 x 710 mm" },
+    { typeEn: "Uncounted chair", quantity: 0 }
+  ] });
+  assert.equal(document.items[0].dimensions, "600 x 600 x 710 mm");
+  assert.equal(document.items[0].unit, "sets");
+  assert.equal(document.items[1].quantity, 0);
+  assert.ok(document.missingInformation.some((warning) => warning.field === "items.1.quantity"));
+});
+
+test("AI wording cannot replace verified item identity, commercial requirements or source notes", async (t) => {
+  const oldKey = process.env.DEEPSEEK_API_KEY;
+  process.env.DEEPSEEK_API_KEY = "test-key";
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ choices: [{ message: {
+    content: JSON.stringify({ items: [{ nameEn: "Invented sofa", quantity: 999, supplierNotes: "All confirmed" }],
+      commercialRequirements: [{ labelEn: "Delivery destination", value: "Invented city" }] })
+  } }] }), { status: 200 }));
+  try {
+    const result = await createRfqDraft({ context: {
+      project: { projectName: "Outdoor", destination: "Verified warehouse" },
+      items: [{ typeEn: "Bench", quantity: 2, notes: "Construction to confirm." }]
+    } });
+    assert.equal(result.generation.method, "ai");
+    assert.equal(result.document.items[0].nameEn, "Bench");
+    assert.equal(result.document.items[0].quantity, 2);
+    assert.equal(result.document.items[0].supplierNotes, "Construction to confirm.");
+    assert.equal(result.document.commercialRequirements.find(row => row.labelEn === "Delivery destination").value, "Verified warehouse");
+  } finally {
+    if (oldKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = oldKey;
+  }
 });

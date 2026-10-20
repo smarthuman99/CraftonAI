@@ -1,4 +1,6 @@
 import { activeProjectJob } from "../../shared/clientProjectEditing.mjs";
+import { referenceStorageLocation } from "../../shared/rfqReferences.mjs";
+import { isUnconfirmed } from "../../shared/rfqValidation.mjs";
 const MAX_EMAIL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const MAX_EMAIL_ATTACHMENTS = 12;
 
@@ -10,47 +12,76 @@ export async function enrichRfqContextFromSupabase({ supabase, context = {} }) {
     throw error;
   }
 
-  const [files, jobs, specifications] = await Promise.all([
+  const [files, jobs, specifications, projects] = await Promise.all([
     loadProjectSourceFiles(supabase, projectId),
     queryRows(
       supabase.from("intake_jobs").select("*").eq("project_id", projectId).order("created_at", { ascending: false })
     ),
     queryRows(
       supabase.from("specifications").select("*").eq("project_id", projectId).order("created_at", { ascending: false })
-    )
+    ),
+    queryRows(supabase.from("projects").select("id,name,client_name").eq("id", projectId))
   ]);
 
   const intake = mergeProjectIntakeJobs(jobs) || context.intake || {};
   const intakeProject = intake.project || {};
-  const catalogueFiles = (intake.items || [])
-    .filter((item) => item.image_url || item.imageUrl || item.preview_url)
-    .map((item, index) => ({
-      id: `catalogue-${item.id || index + 1}`,
-      name: [item.id, item.item_type_en || item.typeEn || item.item_type_cn || item.typeCn]
-        .filter(Boolean)
-        .join(" · "),
-      mimeType: "image/catalogue-reference",
-      group: "set_furniture_catalogue",
-      note: "Verified Set Furniture catalogue image and product specification.",
-      url: item.image_url || item.imageUrl || item.preview_url,
-      source: "set_furniture_catalogue"
-    }));
+  const catalogueFiles = buildIntakeReferenceFiles(intake, supabase.supabaseUrl);
+  const verifiedProject = projects[0] || {};
+  const present = (...values) => values.find((value) => !isUnconfirmed(value)) || "";
   return {
     ...context,
     project: {
-      projectName: intakeProject.name,
-      clientName: intakeProject.client_name,
-      destination: intakeProject.destination,
-      deliveryDate: intakeProject.desired_delivery_date,
-      packaging: intake.packaging,
       ...(context.project || {}),
+      projectName: present(verifiedProject.name, intakeProject.name, context.project?.projectName),
+      clientName: present(verifiedProject.client_name, intakeProject.client_name, context.project?.clientName),
+      destination: present(intakeProject.delivery_address, intakeProject.destination, context.project?.destination),
+      deliveryDate: present(intakeProject.desired_delivery_date, context.project?.deliveryDate),
+      packaging: present(intake.packaging, context.project?.packaging),
       id: projectId
     },
-    items: mergeVerifiedIntakeItems(context.items || [], intake.items || []),
+    items: mergeVerifiedIntakeItems(context.items || [], clarifiedRfqItems(intake)),
     files: mergeFiles(files, context.files || [], catalogueFiles),
     specifications: specifications.length ? specifications : context.specifications || [],
     intake
   };
+}
+
+function clarifiedRfqItems(intake) {
+  const applied = (intake.clarification_history || []).filter((entry) => entry.status !== "failed" && entry.applied_patch);
+  return (intake.items || []).map((item, index) => {
+    const patches = applied.flatMap((entry) => entry.applied_patch.items || []).filter((row) => row.item_index === index);
+    const fields = Object.assign({}, ...patches.map((row) => row.patch));
+    const values = [
+      fields.item_type_en && `Item: ${item.item_type_en}`,
+      fields.material_en && `Material: ${item.material_en}`,
+      fields.quantity_text && `Quantity: ${item.quantity_text}`
+    ].filter(Boolean);
+    if (!values.length) return item;
+    return { ...item, notes_en: `Client clarification: ${values.join("; ")}.\nEarlier source notes: ${item.notes_en || item.notes_cn || ""}` };
+  });
+}
+
+export function buildIntakeReferenceFiles(intake = {}, supabaseUrl = "") {
+  const catalogue = intake.source_mode === "set_furniture";
+  return (intake.items || []).flatMap((item, index) => {
+    const url = item.image_url || item.imageUrl || item.preview_url || "";
+    const location = referenceStorageLocation({ ...item, url }, supabaseUrl);
+    if (!location && !url) return [];
+    const extension = (location?.path || url).split("?")[0].split(".").pop().toLowerCase();
+    return [{
+      id: `catalogue-${item.id || index + 1}`,
+      itemNo: item.id || String(index + 1),
+      name: [item.id, item.item_type_en || item.typeEn || item.item_type_cn || item.typeCn]
+        .filter(Boolean)
+        .join(" · "),
+      mimeType: `image/${extension === "jpg" ? "jpeg" : ["png", "jpeg", "webp", "avif", "gif"].includes(extension) ? extension : "reference"}`,
+      group: catalogue ? "set_furniture_catalogue" : "intake_item_reference",
+      note: catalogue ? "Set Furniture catalogue reference." : "Customer document reference image; review with the source document and client clarifications.",
+      ...(location || {}),
+      url: location ? "" : url,
+      source: catalogue ? "set_furniture_catalogue" : "intake_item_reference"
+    }];
+  });
 }
 
 export function mergeProjectIntakeJobs(jobs = []) {
@@ -151,7 +182,10 @@ export function mergeVerifiedIntakeItems(contextItems = [], intakeItems = []) {
       itemNo: current.itemNo || current.id || verified.id || `ITEM-${index + 1}`,
       typeCn: verified.item_type_cn || current.typeCn || current.nameCn,
       typeEn: verified.item_type_en || current.typeEn || current.nameEn,
-      quantity: Number(verified.quantity || current.quantity || current.qty || 1),
+      quantity: Number(verified.quantity ?? current.quantity ?? current.qty ?? 0),
+      quantityUnit: verified.quantity_unit || verified.quantityUnit ||
+        (/^\s*\d+(?:\.\d+)?\s*(sets?|套)\s*$/i.test(verified.quantity_text || "") ? "sets" : current.quantityUnit ||
+          (/^(pcs?|pieces?|sets?|套|件)$/i.test(verified.unit || current.unit || "") ? verified.unit || current.unit : "pcs")),
       dimensions: dimensionText || current.dimensions,
       dimensionUnit: dimensions.unit || current.dimensionUnit,
       tolerance: verified.tolerance || current.tolerance,
@@ -245,7 +279,7 @@ async function loadProjectSourceFiles(supabase, projectId) {
     source: "intake_files"
   }));
   const operationalFiles = projectFiles
-    .filter((file) => !["rfq_document", "rfq_dispatch"].includes(file.file_group))
+    .filter((file) => !["rfq_document", "rfq_dispatch", "rfq_excel", "supplier_quote", "quote_analysis"].includes(file.file_group))
     .map((file) => ({
       id: file.id,
       name: file.file_name,

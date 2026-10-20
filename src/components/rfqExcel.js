@@ -1,3 +1,5 @@
+import { isImageReference } from "../../shared/rfqReferences.mjs";
+
 const COLORS = {
   cream: "FFEFE7D6",
   paper: "FFFBF6EC",
@@ -213,17 +215,35 @@ async function excelJs() {
   return module.default || module;
 }
 
-async function imageAsBase64(url) {
+export async function imageAsBase64(url) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Image download failed: ${response.status}`);
   const blob = await response.blob();
-  if (!/image\/(png|jpe?g)/i.test(blob.type)) throw new Error("Excel supports PNG and JPEG references only.");
-  return await new Promise((resolve, reject) => {
-    const reader = new window.FileReader();
-    reader.onload = () => resolve({ base64: reader.result, extension: /png/i.test(blob.type) ? "png" : "jpeg" });
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  if (!blob.type.startsWith("image/")) throw new Error("Reference did not return an image.");
+  // Excel cannot embed WebP/AVIF. Convert to a bounded PNG without stretching
+  // portrait document pages or downloading the image again.
+  if (typeof globalThis.createImageBitmap === "function") {
+    const bitmap = await globalThis.createImageBitmap(blob);
+    try {
+      const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
+      const canvas = globalThis.document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return { base64: canvas.toDataURL("image/png"), extension: "png", width: canvas.width, height: canvas.height };
+    } finally {
+      bitmap.close();
+    }
+  }
+  if (!/^image\/(png|jpe?g)$/i.test(blob.type)) throw new Error("This browser cannot convert this reference image.");
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 8192)
+    binary += String.fromCharCode(...bytes.subarray(index, index + 8192));
+  return {
+    base64: `data:${blob.type};base64,${globalThis.btoa(binary)}`,
+    extension: blob.type.includes("png") ? "png" : "jpeg"
+  };
 }
 
 export async function buildRfqWorkbook({ project, batch, document, form, references = [] }) {
@@ -281,7 +301,7 @@ export async function buildRfqWorkbook({ project, batch, document, form, referen
   const metaValues = [
     batch.rfq_code,
     project.orderId || project.projectName || project.id,
-    project.clientName || project.clientCompany || "-",
+    document.project?.clientName || project.clientName || project.clientCompany || "-",
     form.dueAt ? new Date(form.dueAt).toLocaleString("en-GB") : "-",
     form.currency || batch.currency || "USD"
   ];
@@ -409,7 +429,15 @@ export async function buildRfqWorkbook({ project, batch, document, form, referen
       allowBlank: true,
       formulae: ['"Yes / 是,No / 否,Conditional / 有条件"']
     };
-    row.height = 58;
+    const lines = requestValues.map((value, column) =>
+      String(value ?? "")
+        .split("\n")
+        .reduce((count, line) => {
+          const width = [...line].reduce((sum, character) => sum + (character.codePointAt(0) > 255 ? 2 : 1), 0);
+          return count + Math.max(1, Math.ceil(width / Math.max(8, sheet.columns[column].width - 3)));
+        }, 0)
+    );
+    row.height = Math.min(409, Math.max(58, Math.max(...lines) * 12 + 10));
   });
 
   const totalRowNumber = itemStartRow + document.items.length;
@@ -420,7 +448,10 @@ export async function buildRfqWorkbook({ project, batch, document, form, referen
   totalRow.getCell(1).font = { name: "Arial", size: 10, bold: true, color: { argb: COLORS.paper } };
   totalRow.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.walnut } };
   totalRow.getCell(9).value = "";
-  totalRow.getCell(10).value = { formula: `SUM(J${itemStartRow}:J${totalRowNumber - 1})`, result: 0 };
+  totalRow.getCell(10).value = {
+    formula: `IF(COUNT(I${itemStartRow}:I${totalRowNumber - 1})=0,"",SUM(J${itemStartRow}:J${totalRowNumber - 1}))`,
+    result: ""
+  };
   totalRow.getCell(10).numFmt = "#,##0.00";
   for (let column = 9; column <= 15; column += 1) {
     const cell = totalRow.getCell(column);
@@ -429,6 +460,34 @@ export async function buildRfqWorkbook({ project, batch, document, form, referen
     cell.font = { name: "Arial", size: 10, bold: column === 10, color: { argb: COLORS.ink } };
   }
   totalRow.height = 28;
+
+  const existingResponseKeys = new Set(["unitPrice", "totalPrice", "moq", "leadTime", "validity", "payment"]);
+  const additionalResponses = (document.supplierResponseFields || []).filter(
+    (field) => !existingResponseKeys.has(field.key)
+  );
+  additionalResponses.forEach((field, index) => {
+    const row = totalRowNumber + 2 + index;
+    sheet.mergeCells(row, 1, row, 4);
+    sheet.mergeCells(row, 5, row, 15);
+    const label = sheet.getCell(row, 1);
+    label.value = `${field.labelEn || field.key} / ${field.labelCn || ""}`;
+    styleLabel(label);
+    styleInput(sheet.getCell(row, 5));
+    sheet.getRow(row).height = 32;
+  });
+  if (document.missingInformation?.length) {
+    const row = totalRowNumber + 3 + additionalResponses.length;
+    sheet.mergeCells(row, 1, row, 15);
+    sheet.getCell(row, 1).value = "CLARIFICATIONS / 待确认事项";
+    styleHeader(sheet.getCell(row, 1));
+    document.missingInformation.forEach((warning, index) => {
+      const number = row + index + 1;
+      sheet.mergeCells(number, 1, number, 15);
+      sheet.getCell(number, 1).value = [warning.messageEn, warning.messageCn].filter(Boolean).join("\n");
+      styleRequestCell(sheet.getCell(number, 1));
+      sheet.getRow(number).height = 44;
+    });
+  }
 
   sheet.autoFilter = { from: { row: 14, column: 1 }, to: { row: totalRowNumber - 1, column: 15 } };
   sheet.getColumn(3).numFmt = "0";
@@ -470,18 +529,27 @@ export async function buildRfqWorkbook({ project, batch, document, form, referen
       referenceSheet.getCell(`D${anchorRow + 1}`).value = reference.note || "";
       referenceSheet.getCell(`D${anchorRow + 1}`).alignment = { wrapText: true, vertical: "top" };
       referenceSheet.mergeCells(`D${anchorRow + 1}:G${anchorRow + 4}`);
-      if (reference.url) {
+      if (isImageReference(reference)) {
         try {
+          if (!reference.url) throw new Error("No accessible image URL.");
           const image = await imageAsBase64(reference.url);
-          const imageId = workbook.addImage(image);
+          const imageId = workbook.addImage({ base64: image.base64, extension: image.extension });
+          const scale = image.width && image.height ? Math.min(255 / image.width, 155 / image.height) : 1;
           referenceSheet.addImage(imageId, {
             tl: { col: 0.3, row: anchorRow - 0.7 },
-            ext: { width: 255, height: 155 },
+            ext: { width: image.width ? image.width * scale : 255, height: image.height ? image.height * scale : 155 },
             editAs: "oneCell"
           });
         } catch {
-          referenceSheet.getCell(`A${anchorRow}`).value = "Image unavailable in export";
+          throw new Error(
+            `Reference image could not be embedded: ${reference.name}. Refresh and retry. / 参考图片无法嵌入：${reference.name}，请刷新后重试。`
+          );
         }
+      } else {
+        referenceSheet.mergeCells(`A${anchorRow}:C${anchorRow + 4}`);
+        referenceSheet.getCell(`A${anchorRow}`).value =
+          "Source document — send the original file with this RFQ. / 来源文件，请随 RFQ 一并发送原文件。";
+        styleRequestCell(referenceSheet.getCell(`A${anchorRow}`));
       }
       for (let row = anchorRow; row < anchorRow + 7; row += 1) referenceSheet.getRow(row).height = 24;
       anchorRow += 8;
@@ -498,6 +566,8 @@ export async function buildRfqWorkbook({ project, batch, document, form, referen
     ["document_version", batch.payload?.version || 1],
     ["item_start_row", itemStartRow],
     ["item_end_row", totalRowNumber - 1],
+    ["response_start_row", totalRowNumber + 2],
+    ["response_keys", JSON.stringify(additionalResponses.map((field) => field.key))],
     ["exported_at", new Date().toISOString()]
   ];
   metadata.addRows(metaRows);
@@ -567,6 +637,15 @@ export async function parseSupplierRfqWorkbook(file) {
   }
   if (!items.length) throw new Error("No RFQ item rows were found in the workbook.");
 
+  const extraResponses = metadata.response_start_row
+    ? JSON.parse(metadata.response_keys || "[]")
+        .map((key, index) => {
+          const row = Number(metadata.response_start_row) + index;
+          return { key, label: textOf(sheet.getCell(row, 1)), value: textOf(sheet.getCell(row, 5)) };
+        })
+        .filter((field) => field.value)
+    : [];
+
   return {
     metadata,
     supplierCompany: textOf(sheet.getCell("B6")),
@@ -581,7 +660,9 @@ export async function parseSupplierRfqWorkbook(file) {
     materialConfirmation: textOf(sheet.getCell("B9")),
     deliveryTerms: textOf(sheet.getCell("H9")),
     packing: textOf(sheet.getCell("M9")),
-    notes: textOf(sheet.getCell("B10")),
+    notes: [textOf(sheet.getCell("B10")), ...extraResponses.map((field) => `${field.label}: ${field.value}`)]
+      .filter(Boolean)
+      .join("\n"),
     items,
     quotedItemCount: items.filter((item) => item.unitPrice > 0).length,
     totalAmount: items.reduce((sum, item) => sum + item.lineTotal, 0)

@@ -1,4 +1,6 @@
-const PROMPT_VERSION = "crafton-rfq-v1";
+import { validateRfqDocument } from "../../shared/rfqValidation.mjs";
+
+const PROMPT_VERSION = "crafton-rfq-v2";
 const MODEL_TIMEOUT_MS = Number(process.env.AI_RFQ_MODEL_TIMEOUT_MS || 60000);
 
 export async function createRfqDraft({ context = {} }) {
@@ -118,7 +120,6 @@ export function buildDeterministicRfq(sourceInput = {}) {
     sourceInput.items.every((item) => Object.hasOwn(item, "nameCn") && Object.hasOwn(item, "referenceFiles"));
   const source = isNormalized ? sourceInput : normalizeContext(sourceInput);
   const projectName = source.project.projectName || source.project.orderId || "Crafton furniture project";
-  const missing = [];
   const attachments = source.files.map((file) => ({
     id: file.id,
     name: file.name,
@@ -126,21 +127,16 @@ export function buildDeterministicRfq(sourceInput = {}) {
     note: file.note || "Supplier must review this reference with the RFQ.",
     bucket: file.bucket,
     path: file.path,
-    url: file.url
+    url: file.url,
+    itemNo: file.itemNo
   }));
 
   const items = source.items.map((item, index) => {
-    if (!item.dimensions || /confirm|待确认/i.test(item.dimensions)) {
-      missing.push(missingItem(`items.${index}.dimensions`, item.nameCn || item.nameEn, "尺寸", "dimensions", "high"));
-    }
-    if (!item.materialCn && !item.materialEn) {
-      missing.push(missingItem(`items.${index}.material`, item.nameCn || item.nameEn, "材质", "material", "high"));
-    }
     return {
       itemNo: item.itemNo || String(index + 1).padStart(2, "0"),
       nameCn: item.nameCn || item.nameEn || `家具品项 ${index + 1}`,
       nameEn: item.nameEn || item.nameCn || `Furniture item ${index + 1}`,
-      quantity: Math.max(1, Number(item.quantity || 1)),
+      quantity: Number(item.quantity ?? 0),
       unit: item.unit || "pcs",
       dimensions: item.dimensions || "待确认 / To confirm",
       tolerance: item.tolerance || "待确认 / To confirm",
@@ -155,16 +151,8 @@ export function buildDeterministicRfq(sourceInput = {}) {
     };
   });
 
-  if (!attachments.length) {
-    missing.push({
-      field: "attachments",
-      severity: "high",
-      messageCn: "未找到客户图纸或照片，发送供应商前必须补充参考附件。",
-      messageEn: "No customer drawing or photo was found. Add reference attachments before dispatch."
-    });
-  }
-
-  return {
+  const document = {
+    project: source.project,
     titleCn: `${projectName} 供应商询价单`,
     titleEn: `${projectName} Supplier Request for Quotation`,
     introductionCn: "请根据下列已审核的项目资料提交正式报价。所有偏差、替代材料、模具费及不包含项目必须在报价中明确列出。",
@@ -190,7 +178,7 @@ export function buildDeterministicRfq(sourceInput = {}) {
       { key: "warranty", labelCn: "质保", labelEn: "Warranty" }
     ],
     attachments,
-    missingInformation: uniqueMissing(missing),
+    sourceQuestions: source.sourceQuestions || [],
     assumptions: [
       { cn: "供应商必须在报价中列出与本询价单不一致的所有项目。", en: "The supplier must list every deviation from this RFQ in its quotation." },
       { cn: "未经书面确认，不得以替代材料或尺寸进行报价。", en: "Do not quote substitute materials or dimensions without written clarification." }
@@ -202,6 +190,8 @@ export function buildDeterministicRfq(sourceInput = {}) {
       bodyEn: `Please review the RFQ for ${projectName} and return your complete quotation and lead time before the due date.`
     }
   };
+  document.missingInformation = validateRfqDocument(document);
+  return document;
 }
 
 function normalizeContext(context) {
@@ -228,6 +218,8 @@ function normalizeContext(context) {
     },
     items,
     files,
+    sourceQuestions: (context.intake?.open_questions || context.intake?.questions || [])
+      .filter((question) => typeof question === "string").map((question) => clean(question, 800)),
     specifications: specifications.map((row) => sanitizeObject(row, 30, 500)),
     intake: sanitizeObject(context.intake || {}, 40, 800)
   };
@@ -237,7 +229,7 @@ function normalizeItem(item = {}, index, files) {
   const length = first(item.length, item.l);
   const width = first(item.width, item.depth, item.w);
   const height = first(item.height, item.h);
-  const dimensionUnit = clean(item.dimensionUnit || item.unit || "mm", 20);
+  const dimensionUnit = clean(item.dimensionUnit || (/^(mm|cm|m|in|inch|inches|ft)$/i.test(item.unit || "") ? item.unit : "mm"), 20);
   const dimensions = item.dimensions || [length && `L ${length}`, width && `W ${width}`, height && `H ${height}`].filter(Boolean).join(" x ");
   const material = clean(item.material || item.materialEn || item.materialCn, 500);
 
@@ -245,8 +237,8 @@ function normalizeItem(item = {}, index, files) {
     itemNo: clean(item.itemNo || item.id || String(index + 1), 80),
     nameCn: clean(item.typeCn || item.nameCn || item.itemCn || item.itemType, 200),
     nameEn: clean(item.typeEn || item.nameEn || item.item || item.itemEn || item.itemType, 200),
-    quantity: Math.max(1, Number(item.qty || item.quantity || 1)),
-    unit: clean(item.quantityUnit || "pcs", 30),
+    quantity: Number(item.qty ?? item.quantity ?? 0),
+    unit: clean(item.quantityUnit || (/^(pcs?|pieces?|sets?|套|件)$/i.test(item.unit || "") ? item.unit : "pcs"), 30),
     dimensions: clean(dimensions ? `${dimensions}${dimensions && !String(dimensions).includes(dimensionUnit) ? ` ${dimensionUnit}` : ""}` : "", 300),
     tolerance: clean(item.tolerance, 120),
     materialCn: clean(item.materialCn || material, 300),
@@ -258,13 +250,14 @@ function normalizeItem(item = {}, index, files) {
     notes: clean(item.notes || item.note, 800),
     referenceFiles: Array.isArray(item.referenceFiles)
       ? item.referenceFiles.slice(0, 12).map((name) => clean(name, 240))
-      : files.map((file) => file.name)
+      : files.filter((file) => !file.itemNo || file.itemNo === (item.itemNo || item.id)).map((file) => file.name)
   };
 }
 
 function normalizeFile(file = {}) {
   return {
     id: clean(file.id, 100),
+    itemNo: clean(file.itemNo, 100),
     name: clean(file.name || file.file_name || file.original_name, 240),
     mimeType: clean(file.mimeType || file.mime_type, 120),
     group: clean(file.group || file.file_group || file.intake_type, 120),
@@ -276,26 +269,7 @@ function normalizeFile(file = {}) {
 }
 
 function mergeWithVerifiedSource(aiDocument = {}, fallback, source) {
-  const aiItems = Array.isArray(aiDocument.items) ? aiDocument.items : [];
-  const items = fallback.items.map((verified, index) => {
-    const ai = aiItems[index] || {};
-    return {
-      ...verified,
-      nameCn: clean(ai.nameCn, 200) || verified.nameCn,
-      nameEn: clean(ai.nameEn, 200) || verified.nameEn,
-      quantity: verified.quantity,
-      dimensions: verified.dimensions,
-      tolerance: verified.tolerance,
-      materialCn: verified.materialCn,
-      materialEn: verified.materialEn,
-      finishColor: verified.finishColor,
-      hardware: verified.hardware,
-      compliance: verified.compliance,
-      usage: verified.usage,
-      supplierNotes: clean(ai.supplierNotes, 800) || verified.supplierNotes,
-      referenceFiles: verified.referenceFiles
-    };
-  });
+  const items = fallback.items;
 
   return {
     ...fallback,
@@ -304,7 +278,7 @@ function mergeWithVerifiedSource(aiDocument = {}, fallback, source) {
     introductionCn: clean(aiDocument.introductionCn, 1200) || fallback.introductionCn,
     introductionEn: clean(aiDocument.introductionEn, 1200) || fallback.introductionEn,
     items,
-    commercialRequirements: normalizePairList(aiDocument.commercialRequirements, fallback.commercialRequirements, "labelCn", "labelEn"),
+    commercialRequirements: fallback.commercialRequirements,
     supplierResponseFields: fallback.supplierResponseFields,
     attachments: fallback.attachments,
     missingInformation: uniqueMissing([
@@ -344,15 +318,6 @@ function normalizeMissing(value) {
     messageCn: clean(row.messageCn, 600),
     messageEn: clean(row.messageEn, 600)
   }));
-}
-
-function missingItem(field, item, cnField, enField, severity) {
-  return {
-    field,
-    severity,
-    messageCn: `${item || "该品项"}缺少${cnField}，发送前必须确认。`,
-    messageEn: `${item || "This item"} is missing ${enField}; confirm it before dispatch.`
-  };
 }
 
 function uniqueMissing(rows) {

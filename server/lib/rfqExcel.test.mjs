@@ -167,3 +167,42 @@ test("returned RFQ items map to the approved batch BOM instead of ITEM placehold
   assert.equal(merged.lines[0].unit_price, "2480");
   assert.equal(supplierMatch.supplier.id, "supplier-hansen");
 });
+
+test("RFQ export embeds images, preserves clarified identity and units, and provides all requested response fields", async () => {
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4YoAAAAASUVORK5CYII=";
+  const fullDocument = { ...document, project: { clientName: "Verified client" },
+    items: [{ ...document.items[0], quantity: 10, unit: "sets" }],
+    supplierResponseFields: [
+      { key: "sample", labelEn: "Sample cost and time", labelCn: "样板费及时间" },
+      { key: "tooling", labelEn: "Tooling/development", labelCn: "模具费" },
+      { key: "warranty", labelEn: "Warranty", labelCn: "质保" }
+    ],
+    missingInformation: [{ messageEn: "Confirm Crib 5 scope.", messageCn: "确认 Crib 5 范围。" }]
+  };
+  const exported = await buildRfqWorkbook({ project, batch, document: fullDocument, form,
+    references: [{ name: "Source page", type: "image/png", url: png }, { name: "Source.pdf", type: "application/pdf" }] });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(exported.buffer);
+  const sheet = workbook.getWorksheet("RFQ");
+  assert.equal(sheet.getCell("G4").value, "Verified client");
+  assert.equal(sheet.getCell("D15").value, "sets");
+  assert.equal(sheet.getCell("C15").value, 10);
+  assert.match(sheet.getCell("J16").formula, /COUNT\(I15:I15\)=0/);
+  assert.match(sheet.getCell("A18").value, /Sample cost/);
+  assert.match(sheet.getCell("A19").value, /Tooling/);
+  assert.match(sheet.getCell("A20").value, /Warranty/);
+  assert.equal(sheet.getCell("E18").protection.locked, false);
+  assert.match(sheet.getCell("A23").value, /Crib 5/);
+  assert.equal(workbook.getWorksheet("Product References").getImages().length, 1);
+  sheet.getCell("E18").value = "Sample USD 100; 7 days";
+  sheet.getCell("E20").value = "24 months";
+  const response = await workbook.xlsx.writeBuffer();
+  const parsed = await parseSupplierRfqWorkbook({ name: "return.xlsx", arrayBuffer: async () => response });
+  assert.match(parsed.notes, /Sample USD 100; 7 days/);
+  assert.match(parsed.notes, /24 months/);
+});
+
+test("RFQ export fails visibly rather than silently dropping an unreadable image", async () => {
+  await assert.rejects(buildRfqWorkbook({ project, batch, document, form,
+    references: [{ name: "missing.png", type: "image/png", url: "" }] }), /could not be embedded/);
+});
