@@ -9809,6 +9809,10 @@ select:focus,
 
 .home-reference-hero {
   border-bottom: 1px solid var(--home-line);
+}
+
+.home-reference-hero,
+.home-reference-page > section {
   background-image:
     linear-gradient(var(--home-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--home-grid) 1px, transparent 1px);
@@ -9951,7 +9955,7 @@ select:focus,
 .home-reference-paper-section {
   border-top: 1px solid var(--home-line);
   border-bottom: 1px solid var(--home-line);
-  background: var(--home-paper);
+  background-color: var(--home-paper);
 }
 
 .home-reference-filters {
