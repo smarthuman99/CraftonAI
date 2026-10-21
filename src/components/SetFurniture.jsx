@@ -472,20 +472,30 @@ export function SetFurnitureCatalog({
             {isChinese ? "按家具类别浏览" : "Browse by furniture type"}
           </div>
           <section
-            className="set-furniture-reference-grid"
+            className="set-category-grid home-reference-product-grid"
             aria-label={isChinese ? "家具分类" : "Furniture categories"}
+            lang={isChinese ? "zh-CN" : "en"}
           >
             {CATALOGUE_CATEGORIES.map((item) => (
-              <article className="set-furniture-reference-card" key={item.slug}>
-                <button type="button" className="set-category-link" onClick={() => openCollection(item.slug)}>
-                  <div className="set-furniture-reference-card-image">
-                    <span>
-                      {item.products.length} {isChinese ? "款" : "pieces"}
-                    </span>
-                    <img src={item.image} alt={isChinese ? item.nameCn : item.nameEn} loading="lazy" />
+              <article className="set-category-card home-reference-product" key={item.slug}>
+                <button type="button" className="home-catalogue-link" onClick={() => openCollection(item.slug)}>
+                  <div className="photo">
+                    <img
+                      className="project-catalogue-photo"
+                      src={item.image}
+                      alt={isChinese ? item.nameCn : item.nameEn}
+                      loading="lazy"
+                    />
                   </div>
-                  <h3>{isChinese ? item.nameCn : item.nameEn}</h3>
-                  <p>{isChinese ? item.summaryCn : item.summaryEn}</p>
+                  <div className="info">
+                    <div className="row">
+                      <h3 className="name">{isChinese ? item.nameCn : item.nameEn}</h3>
+                      <span className="price">
+                        {item.products.length} {isChinese ? "款" : "pieces"}
+                      </span>
+                    </div>
+                    <p className="type">{isChinese ? item.summaryCn : item.summaryEn}</p>
+                  </div>
                 </button>
               </article>
             ))}
