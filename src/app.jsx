@@ -23,6 +23,7 @@ import Footer from "./components/Footer";
 import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurniture";
 import { readPortalWorkspace } from "./portalWorkspace.mjs";
 import PortalImage, { PortalImageProvider } from "./components/PortalImage.jsx";
+import IntakeSourceFilename from "./components/IntakeSourceFilename.jsx";
 import { deferredWorkspace } from "./components/DeferredWorkspace.jsx";
 import {
   clearVerifiedBrowserUser,
@@ -7969,19 +7970,33 @@ function App() {
     const cataloguePreviewItem = isSetFurnitureIntake ? bomItems.find((item) => item.imageUrl || item.image_url) : null;
     const cataloguePreviewUrl = cataloguePreviewItem?.imageUrl || cataloguePreviewItem?.image_url || "";
     const orderPreviewUrl = adminIntakePreview.url || trackerPreviewUrl || cataloguePreviewUrl;
-    const uploadedAssets = [
-      sourceFile
-        ? {
-            id: sourceFile.id || sourceFile.storage_path || sourceFile.original_name,
-            name: sourceFile.original_name || "Uploaded source file",
-            type: sourceFile.mime_type || "file",
-            size: sourceFile.file_size ? `${Math.round(Number(sourceFile.file_size) / 1024)} KB` : "Saved in Supabase"
-          }
-        : null,
-      draft?.fileName && (!sourceFile || draft.fileName !== sourceFile.original_name)
-        ? { id: draft.fileName, name: draft.fileName, type: "client reference", size: "Attached to intake" }
-        : null
-    ].filter(Boolean);
+    const projectFiles = new Map();
+    const addSourceFile = (file) => {
+      if (!file) return;
+      const id = file.id || file.storage_path || file.original_name;
+      projectFiles.set(id, {
+        id,
+        file,
+        name: file.original_name || "Uploaded source file",
+        type: file.mime_type || "file",
+        size: file.file_size ? `${Math.round(Number(file.file_size) / 1024)} KB` : "Saved in Supabase"
+      });
+    };
+    addSourceFile(sourceFile);
+    for (const job of projectJobs) {
+      if (selectedJob?.project_id && job.project_id === selectedJob.project_id)
+        addSourceFile(getIntakeFileFromJob(job));
+    }
+    const uploadedAssets = [...projectFiles.values()];
+    if (draft?.fileName && !uploadedAssets.some((asset) => asset.name === draft.fileName)) {
+      uploadedAssets.push({
+        id: draft.fileName,
+        name: draft.fileName,
+        type: "client reference",
+        size: "Attached to intake"
+      });
+    }
+    const downloadClient = dbConnected && hasVerifiedAdminAccess ? getSupabaseBrowserClient() : null;
     const hasUploadedEvidence = uploadedAssets.length > 0 || Boolean(orderPreviewUrl);
     const catalogueAssets = isSetFurnitureIntake
       ? bomItems.map((item, index) => ({
@@ -8702,7 +8717,7 @@ function App() {
                             .toUpperCase()
                             .slice(0, 12)}
                         </span>
-                        <strong>{asset.name}</strong>
+                        <IntakeSourceFilename asset={asset} client={downloadClient} lang={lang} />
                       </div>
                     ))
                   ) : (
@@ -9263,7 +9278,7 @@ function App() {
                       referenceAssets.map((asset) => (
                         <div className="intake-file-card" key={asset.id}>
                           <span>{asset.type}</span>
-                          <strong>{asset.name}</strong>
+                          <IntakeSourceFilename asset={asset} client={downloadClient} lang={lang} />
                           <small>{asset.size}</small>
                         </div>
                       ))

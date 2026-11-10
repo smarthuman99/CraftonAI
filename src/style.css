@@ -20327,6 +20327,23 @@ select:focus,
   overflow-wrap: anywhere;
 }
 
+.intake-source-download {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+}
+
+.intake-source-download:disabled {
+  cursor: progress;
+}
+
 .intake-next-document-list small {
   grid-column: 2;
   color: var(--intake-body);
