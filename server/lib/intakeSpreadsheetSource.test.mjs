@@ -86,6 +86,56 @@ const backend = () => {
     }
   };
 };
+
+test("two Item headers bind identifiers and names per table, including an unnumbered product and reversed columns", async () => {
+  const wb = new ExcelJS.Workbook(),
+    sheet = wb.addWorksheet("Apartment");
+  for (const row of [
+    ["Item ", "Area", "Item ", "Qty"],
+    [11, "Bedroom", "Bed", 1],
+    [null, "Dining", "Banquette", 1],
+    [12, "Bedroom", "Mattress", 2],
+    ["Item", "Area", "Item", "Qty"],
+    ["Chair", "Living", "A-01", 3]
+  ])
+    sheet.addRow(row);
+  const source = await extractIntakeSource({
+    file: { original_name: "schedule.xlsx" },
+    buffer: await wb.xlsx.writeBuffer()
+  });
+  const m = source.sourceMetadata.spreadsheetManifest;
+  assert.deepEqual(
+    m.rows.map((r) => [r.code, r.name]),
+    [
+      ["11", "Bed"],
+      ["", "Banquette"],
+      ["12", "Mattress"],
+      ["A-01", "Chair"]
+    ]
+  );
+  const result = reconcileSpreadsheetRows(
+    { items: m.rows.map((r) => ({ item_ref: r.code, item_type_en: r.name, quantity: r.quantity })) },
+    m
+  );
+  assert.equal(result.items.length, 4);
+  assert.deepEqual(result.source_reconciliation.recovered_rows, []);
+  assert.deepEqual(result.source_reconciliation.issues, []);
+  assert.equal(result.items[0].field_evidence.find((e) => e.field === "product").source_cell, "C2");
+});
+
+test("ambiguous Item columns keep raw cells for review instead of adding numbered duplicates", async () => {
+  const wb = new ExcelJS.Workbook(),
+    sheet = wb.addWorksheet("Unclear");
+  sheet.addRow(["Item", "Item", "Qty"]);
+  sheet.addRow(["Seat", "Chair", 2]);
+  const m = (
+    await extractIntakeSource({ file: { original_name: "schedule.xlsx" }, buffer: await wb.xlsx.writeBuffer() })
+  ).sourceMetadata.spreadsheetManifest;
+  assert.ok(m.issues.some((i) => i.code === "ambiguous_item_headers"));
+  assert.equal(m.rows.length, 0);
+  assert.equal(m.unclassified_rows[0].cells[1].value, "Chair");
+  assert.equal(reconcileSpreadsheetRows({ items: [{ item_type_en: "Chair" }] }, m).items.length, 1);
+});
 async function complete(source) {
   const manifest = source.sourceMetadata.spreadsheetManifest;
   const result = reconcileSpreadsheetRows({ items: [], questions: [] }, manifest);

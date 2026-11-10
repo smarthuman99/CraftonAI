@@ -163,6 +163,39 @@ export function spreadsheetColumnRole(header) {
   return "other";
 }
 
+const classify = (source) => source.cells.map((c) => ({ ...c, role: spreadsheetColumnRole(c.value) }));
+const tableHeader = (cells) =>
+  cells.some((c) => c.role === "product") && cells.some((c) => c.role === "quantity" || c.role === "code");
+
+// Two "Item" headings can mean the schedule number and the furniture name.
+// Infer the roles from paired values within this table only, never from column order.
+function resolveItemHeaders(columns, rows, start, diagnostics, sheet) {
+  const items = columns.filter((c) => c.role === "product");
+  if (items.length !== 2 || !items.every((c) => clean(c.value).toLowerCase() === "item")) return;
+  const qty = columns.find((c) => c.role === "quantity");
+  const pairs = [];
+  for (let i = start + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (tableHeader(classify(row))) break;
+    const value = (col) => clean(row.cells.find((c) => c.column === col.column)?.value);
+    if (qty && !/^\d+(?:\.\d+)?$/.test(value(qty))) continue;
+    const pair = items.map(value);
+    if (pair.every(Boolean)) pairs.push(pair);
+  }
+  const identifier = (v) => /^(?:\d+|[a-z]{1,8}[-_]\d+)(?:[.-]\d+)*$/i.test(v);
+  const index = [0, 1].find(
+    (i) => pairs.length && pairs.every((p) => identifier(p[i]) && !identifier(p[1 - i]) && /\p{L}/u.test(p[1 - i]))
+  );
+  if (index !== undefined && !columns.some((c) => c.role === "code")) items[index].role = "code";
+  else {
+    // Preserve raw cells for review; do not manufacture products from ambiguous numbers.
+    items.forEach((c) => {
+      c.role = "other";
+    });
+    diagnostics.push({ code: "ambiguous_item_headers", sheet, row: rows[start].row });
+  }
+}
+
 export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash }) {
   const rows = [],
     unclassified = [],
@@ -171,12 +204,10 @@ export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash
   for (const [sheetIndex, sheet] of sheets.entries()) {
     let headers = null,
       foundTable = false;
-    for (const source of sheet.rows) {
-      const classified = source.cells.map((c) => ({ ...c, role: spreadsheetColumnRole(c.value) }));
-      if (
-        classified.some((c) => c.role === "product") &&
-        classified.some((c) => c.role === "quantity" || c.role === "code")
-      ) {
+    for (const [rowIndex, source] of sheet.rows.entries()) {
+      const classified = classify(source);
+      if (tableHeader(classified)) {
+        resolveItemHeaders(classified, sheet.rows, rowIndex, diagnostics, sheet.name);
         headers = new Map(classified.map((c) => [c.column, { header: c.value, role: c.role }]));
         foundTable = true;
         continue;
