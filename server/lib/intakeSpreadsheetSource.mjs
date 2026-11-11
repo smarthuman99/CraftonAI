@@ -12,6 +12,10 @@ const clean = (value) =>
   String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+export const isWorksheetNote = (value) =>
+  /^(?:[*†‡※]|\[\d+\]|(?:footnote|notes?|remarks?)\s*(?:\d+|[:：])|(?:脚注|腳註|附注|附註|备注|備註)[：:])/i.test(
+    clean(value)
+  );
 export const sourceHash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const columnNumber = (ref) => [...ref.match(/^[A-Z]+/)[0]].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0);
 
@@ -249,7 +253,7 @@ export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash
         subtotalStart = source.row + 1;
         continue;
       }
-      if (!name) {
+      if (!name || (!code && !qty && isWorksheetNote(name))) {
         if (cells.some((c) => clean(c.value))) unclassified.push({ sheet: sheet.name, row: source.row, cells });
         continue;
       }

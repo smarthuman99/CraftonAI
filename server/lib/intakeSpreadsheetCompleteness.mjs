@@ -94,6 +94,7 @@ function bindRow(item, row, recovered = false) {
     ...next,
     item_type_cn: next.item_type_cn || row.name,
     source_row_id: row.id,
+    item_ref: row.code || (row.cells.some((c) => c.role === "code") ? "" : next.item_ref),
     source_item_code: row.code,
     source_sheet: row.sheet,
     source_row: row.row,
@@ -369,7 +370,9 @@ function holdConflictingRows(result, manifest, check) {
     "source_identity_conflict",
     "source_quantity_unconfirmed",
     "source_quantity_total_conflict",
-    "merged_product_rows"
+    "merged_product_rows",
+    "worksheet_visual_context_unreviewed",
+    "worksheet_visual_context_incomplete"
   ]);
   const byIndex = new Map(),
     byRow = new Map();

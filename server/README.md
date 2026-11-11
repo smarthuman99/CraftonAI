@@ -54,9 +54,7 @@ GEMINI_API_REVISION=2026-05-20
 GEMINI_VISION_TIMEOUT_MS=180000
 GEMINI_INTAKE_MAX_OUTPUT_TOKENS=32768
 INTAKE_DOCUMENT_MAX_FILE_BYTES=262144000
-INTAKE_GEMINI_PDF_INLINE_MAX_BYTES=50331648
-INTAKE_PDF_BATCH_PAGES=4
-INTAKE_PDF_BATCH_RETRIES=2
+INTAKE_GEMINI_PDF_INLINE_MAX_BYTES=12582912
 INTAKE_PDF_VISUAL_FALLBACK_MIN_TEXT_CHARS_PER_PAGE=80
 INTAKE_PDF_VISUAL_FALLBACK_RENDER_WIDTH=1400
 INTAKE_WORKER_STALE_MINUTES=30
@@ -67,7 +65,7 @@ INTAKE_OFFICE_CONVERSION_TIMEOUT_MS=90000
 
 `DEEPSEEK_API_KEY` is optional. Without it, the worker uses deterministic text parsing so the pipeline can be tested end to end.
 
-`GEMINI_API_KEY` makes Gemini the primary FF&E document analyzer. PDFs within the inline safety limit are sent to Gemini as one complete PDF so the model can classify every page, reconcile furniture across schedules/specifications/layouts, and return evidence plus product-photo coordinates. Larger PDFs are rendered as one visual document when possible. XLS/XLSX and DOC/DOCX files retain their native extracted rows/text and are also converted through headless LibreOffice for Gemini visual review. DeepSeek and deterministic parsing remain failure fallbacks; visual failures are preserved as explicit `manual_review_required` exceptions instead of being presented as customer questions.
+`GEMINI_API_KEY` makes Gemini the primary FF&E document analyzer. The first PDF pass always submits the original document. Up to 12 MiB is sent inline. Larger documents within the provider limits use a temporary Gemini Files API upload, removed after analysis. Unsupported, unreadable, or failed PDF submissions require staff review. The evidence pass may inspect specific pages. Excel uses native cell values, source row IDs and image anchors. Ambiguous headers, images spanning rows and footnotes also receive labelled worksheet-region images. Word retains its existing document conversion path.
 
 Gemini document output is quality-gated: cover/index/floorplan/layout/drawing pages cannot create formal furniture lines, every accepted line must cite an orderable source page and evidence text, and a product photo is saved only when Gemini supplies a unique page bounding box. Items without a verified crop remain image-free rather than inheriting another item's image.
 

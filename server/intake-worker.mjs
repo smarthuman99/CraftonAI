@@ -15,14 +15,7 @@ import {
   openPdfBatchReader,
   requireExcelRowEvidence
 } from "./lib/intakeSourceReader.mjs";
-import {
-  bindBatchSourcePages,
-  buildPdfCheckpoint,
-  createPageBatches,
-  findMissingVisualCoveragePages,
-  mergeIntakeBatchResults,
-  readPdfCheckpoint
-} from "./lib/intakeBatchProcessor.mjs";
+import { analyzeOriginalPdf, maxOriginalPdfBytes } from "./lib/intakeOriginalPdf.mjs";
 import { isJobAutomationActive } from "./lib/projectLifecycle.mjs";
 
 const supabase = createSupabaseAdmin();
@@ -31,13 +24,7 @@ const batchSize = Number(process.env.INTAKE_WORKER_BATCH_SIZE || 1);
 const maxAttempts = Number(process.env.INTAKE_WORKER_MAX_ATTEMPTS || 3);
 const maxReadableFileChars = Number(process.env.INTAKE_WORKER_MAX_FILE_TEXT_CHARS || 60000);
 const maxVisionFileBytes = Number(process.env.INTAKE_VISION_MAX_FILE_BYTES || 12 * 1024 * 1024);
-const maxGeminiPdfInlineBytes = Number(process.env.INTAKE_GEMINI_PDF_INLINE_MAX_BYTES || 48 * 1024 * 1024);
 const maxDocumentFileBytes = Number(process.env.INTAKE_DOCUMENT_MAX_FILE_BYTES || 250 * 1024 * 1024);
-const pdfBatchSize = Number(process.env.INTAKE_PDF_BATCH_PAGES || 4);
-const pdfBatchRetries = Number(process.env.INTAKE_PDF_BATCH_RETRIES || 2);
-const pdfVisualFallbackMinTextCharsPerPage = Number(
-  process.env.INTAKE_PDF_VISUAL_FALLBACK_MIN_TEXT_CHARS_PER_PAGE || 80
-);
 const pdfVisualFallbackRenderWidth = Number(process.env.INTAKE_PDF_VISUAL_FALLBACK_RENDER_WIDTH || 1400);
 const staleJobMinutes = Number(process.env.INTAKE_WORKER_STALE_MINUTES || 30);
 const runOnce = process.argv.includes("--once");
@@ -129,6 +116,17 @@ async function processJob(job) {
         onProgress: () => updateReviewProgress(job.id)
       });
     if (manifest) {
+      if (source.sourceMedia?.sourceKind === "spreadsheet_regions" && result.visual_analysis?.provider !== "gemini") {
+        for (const page of source.sourceMedia.pages)
+          manifest.issues.push({
+            code: "worksheet_visual_context_unreviewed",
+            sheet: page.sheet,
+            range: page.range,
+            row_ids: manifest.rows
+              .filter((r) => r.sheet === page.sheet && r.row >= page.top && r.row <= page.bottom)
+              .map((r) => r.id)
+          });
+      }
       result = reconcileSpreadsheetRows(result, manifest);
       result = await attachNative(result);
     } else result = await attachExtractedProductImages({ job, result, images: source.extractedImages, userId });
@@ -194,12 +192,20 @@ async function processJob(job) {
   const ownerUserId = project.user_id || userId;
 
   const spreadsheet = result.source_reconciliation?.version === 2;
-  if (spreadsheet) {
-    await saveSpreadsheetDraft(job, project, ownerUserId, result);
+  const pdfHeld = result.processing?.mode === "original_pdf" && !result.items.length;
+  const syncDocument = spreadsheet || pdfHeld;
+  if (syncDocument) {
+    await saveDocumentDraft(
+      job,
+      project,
+      ownerUserId,
+      result,
+      spreadsheet ? "spreadsheet_intake_reconciliation" : "pdf_intake_review"
+    );
   } else {
     await replaceDraftSpecs(project.id, ownerUserId, result.items);
   }
-  await replaceDraftPayments(project.id, ownerUserId, result.payments);
+  if (!pdfHeld) await replaceDraftPayments(project.id, ownerUserId, result.payments);
 
   await supabase.from("agent_logs").insert({
     project_id: project.id,
@@ -234,7 +240,7 @@ async function processJob(job) {
       review_notes: clientCompletion.jobState.reviewNotes,
       project_id: project.id,
       user_id: ownerUserId,
-      ...(spreadsheet ? {} : { result_json: result }),
+      ...(syncDocument ? {} : { result_json: result }),
       completed_at: completedAt
     })
     .eq("id", job.id);
@@ -245,60 +251,56 @@ async function processJob(job) {
 
 async function parsePdfWithGeminiDocument({ job, file, userId }) {
   const fileSize = Number(file?.file_size || 0);
-  if (fileSize > maxDocumentFileBytes) {
-    throw new Error(`PDF exceeds the configured ${Math.round(maxDocumentFileBytes / 1024 / 1024)}MB processing limit.`);
-  }
+  const sizeLimit = Math.min(maxDocumentFileBytes, maxOriginalPdfBytes);
+  const held = (result, totalPages = 0) => ({
+    ...result,
+    processing: {
+      version: 4,
+      source_type: "pdf",
+      mode: "original_pdf",
+      state: "manual_review_required",
+      total_pages: totalPages,
+      completed_pages: [],
+      item_count: 0,
+      quality_gate_passed: false
+    }
+  });
+  const manualReview = async (reason) =>
+    held(
+      await parseIntakeBrief({
+        job,
+        file,
+        sourceMedia: { sourceKind: "pdf_document", mimeType: "application/pdf", byteLength: fileSize },
+        mediaIssue: reason
+      })
+    );
+  if (fileSize > sizeLimit) return manualReview("pdf_exceeds_document_limit");
   if (!file?.storage_bucket || !file?.storage_path) throw new Error("PDF storage location is missing.");
 
   const { data, error } = await supabase.storage.from(file.storage_bucket).download(file.storage_path);
   if (error) throw error;
   const buffer = Buffer.from(await data.arrayBuffer());
-  const reader = await openPdfBatchReader({
-    buffer,
-    maxTextChars: maxReadableFileChars,
-    maxVisionBytes: maxVisionFileBytes,
-    visualFallbackRenderWidth: pdfVisualFallbackRenderWidth
-  });
+  if (buffer.length > sizeLimit) return manualReview("pdf_exceeds_document_limit");
+  let reader;
+  try {
+    reader = await openPdfBatchReader({
+      buffer,
+      maxTextChars: maxReadableFileChars,
+      maxVisionBytes: maxVisionFileBytes,
+      visualFallbackRenderWidth: pdfVisualFallbackRenderWidth
+    });
+  } catch (error) {
+    if (["PasswordException", "InvalidPDFException", "FormatError"].includes(error.name))
+      return manualReview("pdf_unreadable_or_password_protected");
+    throw error;
+  }
 
   try {
     const pages = Array.from({ length: reader.totalPages }, (_, index) => index + 1);
-    const source = await reader.readPages(pages, { visualMode: "none", includeImages: false });
-    let sourceMedia = null;
-    let mediaIssue = "";
-
-    if (buffer.byteLength <= maxGeminiPdfInlineBytes) {
-      sourceMedia = {
-        sourceKind: "pdf_document",
-        mimeType: "application/pdf",
-        dataBase64: buffer.toString("base64"),
-        byteLength: buffer.byteLength,
-        pageNumbers: pages
-      };
-    } else {
-      sourceMedia = await reader.renderPages(pages, {
-        desiredWidth: pdfVisualFallbackRenderWidth,
-        maxBytes: maxVisionFileBytes,
-        sourceKind: "pdf_pages"
-      });
-      if (!sourceMedia) mediaIssue = "pdf_whole_document_exceeds_gemini_inline_limit";
+    let result = await analyzeOriginalPdf({ job, file, buffer, pages });
+    if (result.visual_analysis?.status !== "completed") {
+      return held(result, reader.totalPages);
     }
-
-    let result = await parseIntakeBrief({
-      job: {
-        ...job,
-        brief_text: [
-          job.brief_text,
-          `Analyze this complete ${reader.totalPages}-page FF&E document as one package. Classify every page before extracting furniture.`
-        ]
-          .filter(Boolean)
-          .join("\n")
-      },
-      file,
-      sourceText: source.sourceText,
-      sourceMedia,
-      mediaIssue
-    });
-
     const classifiedPages = new Set(
       (result.document_analysis?.pages || []).map((page) => Number(page.source_page)).filter(Boolean)
     );
@@ -331,10 +333,7 @@ async function parsePdfWithGeminiDocument({ job, file, userId }) {
       reader,
       source: {
         sourceKind: "pdf",
-        sourceText: source.sourceText,
-        sourceMedia,
-        sourceBuffer: buffer,
-        mediaIssue
+        sourceBuffer: buffer
       },
       file,
       job
@@ -355,20 +354,16 @@ async function parsePdfWithGeminiDocument({ job, file, userId }) {
         })
     });
 
-    const qualityPassed =
-      Boolean(sourceMedia) &&
-      !mediaIssue &&
-      Boolean(result.items?.length) &&
-      result.quality_gate?.status !== "manual_review_required";
+    const qualityPassed = Boolean(result.items?.length) && result.quality_gate?.status !== "manual_review_required";
     return {
       ...result,
       processing: {
-        version: 3,
+        version: 4,
         source_type: "pdf",
-        mode: "risk_based_evidence_review",
+        mode: "original_pdf",
         state: qualityPassed ? "completed" : "manual_review_required",
         total_pages: reader.totalPages,
-        completed_pages: pages,
+        completed_pages: pages.filter((p) => classifiedPages.has(p)),
         batch_count: 1,
         item_count: result.items?.length || 0,
         quality_gate_passed: qualityPassed,
@@ -393,180 +388,6 @@ function uniqueText(values) {
         .map((value) => [value.toLowerCase(), value])
     ).values()
   ];
-}
-
-async function parsePdfInBatches({ job, file, userId }) {
-  const fileSize = Number(file?.file_size || 0);
-  if (fileSize > maxDocumentFileBytes) {
-    throw new Error(`PDF exceeds the configured ${Math.round(maxDocumentFileBytes / 1024 / 1024)}MB processing limit.`);
-  }
-  if (!file?.storage_bucket || !file?.storage_path) throw new Error("PDF storage location is missing.");
-
-  const { data: signed, error: signedError } = await supabase.storage
-    .from(file.storage_bucket)
-    .createSignedUrl(file.storage_path, 4 * 60 * 60);
-  if (signedError || !signed?.signedUrl) throw signedError || new Error("Could not create a signed PDF URL.");
-
-  const reader = await openPdfBatchReader({
-    url: signed.signedUrl,
-    maxTextChars: maxReadableFileChars,
-    maxVisionBytes: maxVisionFileBytes,
-    visualFallbackMinTextCharsPerPage: pdfVisualFallbackMinTextCharsPerPage,
-    visualFallbackRenderWidth: pdfVisualFallbackRenderWidth
-  });
-  const fingerprint = reader.fingerprints[0] || `${file.storage_path}:${file.file_size || 0}`;
-  const previous = readPdfCheckpoint(job.result_json, { totalPages: reader.totalPages, fingerprint });
-  const completedPages = new Set(previous?.completedPages || []);
-  const batchEntries = [...(previous?.batches || [])];
-
-  try {
-    const pendingBatches = createPageBatches(reader.totalPages, pdfBatchSize, [...completedPages]);
-    for (const pages of pendingBatches) {
-      const result = await retryPdfBatch(async () => {
-        const source = await reader.readPages(pages);
-        const batchJob = {
-          ...job,
-          brief_text: [
-            job.brief_text,
-            `PDF batch pages: ${pages.join(", ")}. Extract only furniture rows whose SOURCE PAGE is in this batch.`
-          ]
-            .filter(Boolean)
-            .join("\n")
-        };
-        let parsed = await parseIntakeBrief({
-          job: batchJob,
-          file,
-          sourceText: source.sourceText,
-          sourceMedia: source.sourceMedia,
-          mediaIssue: source.mediaIssue
-        });
-        parsed = bindBatchSourcePages(parsed, pages);
-        parsed = await retryMissingPdfVisualCoverage({
-          reader,
-          job: batchJob,
-          file,
-          pages,
-          source,
-          parsed
-        });
-        return attachExtractedProductImages({ job, result: parsed, images: source.images, userId });
-      }, pdfBatchRetries);
-
-      for (const page of pages) completedPages.add(page);
-      const existingIndex = batchEntries.findIndex((entry) => Number(entry.pages?.[0]) === Number(pages[0]));
-      const entry = { pages, result, completed_at: new Date().toISOString() };
-      if (existingIndex >= 0) batchEntries[existingIndex] = entry;
-      else batchEntries.push(entry);
-
-      await savePdfCheckpoint(job.id, {
-        totalPages: reader.totalPages,
-        batchSize: pdfBatchSize,
-        fingerprint,
-        completedPages: [...completedPages],
-        batches: batchEntries,
-        currentPages: pages
-      });
-      console.log(
-        `Intake job ${job.id}: parsed PDF pages ${pages.join(", ")} (${completedPages.size}/${reader.totalPages})`
-      );
-    }
-
-    return mergeIntakeBatchResults({ job, file, batchEntries, totalPages: reader.totalPages });
-  } finally {
-    await reader.destroy();
-  }
-}
-
-async function retryMissingPdfVisualCoverage({ reader, job, file, pages, source, parsed }) {
-  const missingPages = findMissingVisualCoveragePages({
-    result: parsed,
-    visualFallbackPages: source.visualFallbackPages,
-    images: source.images
-  });
-  if (!missingPages.length) return parsed;
-
-  const recovered = [];
-  const questions = [...(parsed.questions || [])];
-  const notes = [parsed.source_notes];
-  const failedPages = [];
-
-  for (const page of missingPages) {
-    const pageSource = await reader.readPages([page]);
-    const pageJob = {
-      ...job,
-      brief_text: [
-        job.brief_text,
-        `PDF completeness retry for SOURCE PAGE ${page}. Read the page at its actual text orientation and extract every printed furniture field. Return only the furniture line on this page.`
-      ]
-        .filter(Boolean)
-        .join("\n")
-    };
-    let pageResult = await parseIntakeBrief({
-      job: pageJob,
-      file,
-      sourceText: pageSource.sourceText,
-      sourceMedia: pageSource.sourceMedia,
-      mediaIssue: pageSource.mediaIssue
-    });
-    pageResult = bindBatchSourcePages(pageResult, [page]);
-
-    const stillMissing = findMissingVisualCoveragePages({
-      result: pageResult,
-      visualFallbackPages: [page],
-      images: pageSource.images
-    });
-    if (stillMissing.length || pageResult.visual_analysis?.status === "manual_review_required") {
-      failedPages.push(page);
-      continue;
-    }
-
-    recovered.push(...(pageResult.items || []));
-    questions.push(...(pageResult.questions || []));
-    notes.push(`Recovered missing PDF SOURCE PAGE ${page} through single-page visual retry.`, pageResult.source_notes);
-  }
-
-  const uniqueQuestions = [
-    ...new Map(questions.filter(Boolean).map((question) => [String(question).trim().toLowerCase(), question])).values()
-  ];
-  return {
-    ...parsed,
-    items: [...(parsed.items || []), ...recovered],
-    questions: uniqueQuestions,
-    source_notes: notes.filter(Boolean).join("\n"),
-    visual_analysis: failedPages.length
-      ? {
-          ...(parsed.visual_analysis || {}),
-          status: "manual_review_required",
-          reason: "pdf_visual_page_coverage_missing",
-          page_numbers: failedPages
-        }
-      : parsed.visual_analysis
-  };
-}
-
-async function retryPdfBatch(task, retryCount) {
-  let lastError;
-  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
-    try {
-      return await task();
-    } catch (error) {
-      lastError = error;
-      if (attempt < retryCount) await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
-    }
-  }
-  throw lastError;
-}
-
-async function savePdfCheckpoint(jobId, checkpoint) {
-  const { error } = await supabase
-    .from("intake_jobs")
-    .update({
-      status: "processing",
-      result_json: buildPdfCheckpoint(checkpoint),
-      locked_at: new Date().toISOString()
-    })
-    .eq("id", jobId);
-  if (error) throw error;
 }
 
 async function upsertProject(job, result) {
@@ -634,7 +455,7 @@ function isGeneratedIntakeProjectName(value) {
 
 // Publish the partitioned intake and the whole project's provisional BOM together.
 // Keep this job in processing until intake finalization so the drawing worker cannot claim it early.
-async function saveSpreadsheetDraft(job, project, ownerId, result) {
+async function saveDocumentDraft(job, project, ownerId, result, operation) {
   const link = await supabase
     .from("intake_jobs")
     .update({ project_id: project.id, user_id: ownerId })
@@ -661,7 +482,7 @@ async function saveSpreadsheetDraft(job, project, ownerId, result) {
       p_guard_draft: true,
       p_sync_specs: true,
       p_actor_id: ownerId,
-      p_operation: "spreadsheet_intake_reconciliation"
+      p_operation: operation
     });
     if (!error) return;
     if (attempt === 2 || !error.message.includes("EDIT_CONFLICT")) throw error;

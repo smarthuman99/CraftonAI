@@ -22,6 +22,23 @@ const DIMENSION_PATTERN =
   /\b(?:w|width|宽|寬|d|depth|深|h|height|高|l|length|长|長)\s*[:：]?\s*\d+(?:\.\d+)?\s*(?:mm|cm|m|毫米|厘米|米)?\b/gi;
 
 export async function parseIntakeBrief({ job, file, sourceText = "", sourceMedia = null, mediaIssue = "" }) {
+  if (isDirectPdfMedia(sourceMedia)) {
+    let reason = mediaIssue || (!process.env.GEMINI_API_KEY ? "vision_not_configured" : "");
+    if (!reason) {
+      try {
+        return await parseWithGeminiVision({ job, file, sourceText, sourceMedia });
+      } catch (error) {
+        console.warn("Whole PDF analysis failed:", error.name);
+        reason = "pdf_original_analysis_failed";
+      }
+    }
+    const draft = normalizeResult({ items: [] }, { job, file, sourceMedia });
+    return {
+      ...addManualPdfVisionReview(draft, { file, sourceMedia, reason }),
+      review_routing: { route: "internal_review" },
+      quality_gate: { status: "manual_review_required", reason }
+    };
+  }
   let visionIssue = cleanField(mediaIssue);
   const isRenderedPdf = isVisualDocumentMedia(sourceMedia);
   const preferGeminiForOfficeText = isOfficeIntakeFile(file) && Boolean(sourceText);
@@ -117,6 +134,9 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
       : "",
     officeDocument
       ? "The readable source text preserves worksheet rows and EMBEDDED IMAGE N markers. Put that N in image_ref only when the marker belongs to the same furniture row; otherwise use image_ref=0. Copy the exact SOURCE ROW ID to source_row_id and the printed furniture code to item_ref. source_page is the worksheet index, never an image ID. Preserve repeated product names in different source rows."
+      : "",
+    sourceMedia?.sourceKind === "spreadsheet_regions"
+      ? "Each labelled worksheet region shows nearby original cells and anchored images. Use their positions to interpret merged headers, spanning images and footnotes. Never count a region as a product photo, assign an ambiguous image, or infer a quantity or item code from the visual. Cite the original row and cells; report unresolved ownership in limitations."
       : "",
     structuredDocument
       ? "Before extracting, determine each page's reading orientation. Preserve printed item names, quantities, dimensions, location, materials, finishes, model references, and notes exactly."
@@ -269,6 +289,12 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
   const result = enforceStructuredDocumentQualityGate(normalizeResult(parsed, { job, file, sourceText, sourceMedia }), {
     enabled: structuredDocument
   });
+  if (directPdf) {
+    result.visual_analysis.source_format = "original_pdf";
+    result.visual_analysis.submission = sourceMedia.fileUri ? "files_api" : "inline";
+  }
+  if (sourceMedia?.sourceKind === "spreadsheet_regions")
+    result.visual_analysis.worksheet_regions = mediaParts.map((part) => part.sourceLabel);
   return addVisionSafetyQuestions(result, { job, file, sourceText, sourceMedia });
 }
 
@@ -917,6 +943,8 @@ function getSourceMediaParts(sourceMedia) {
         dataBase64: part.dataBase64
       }));
   }
+  if (sourceMedia?.fileUri && isDirectPdfMedia(sourceMedia))
+    return [{ mimeType: sourceMedia.mimeType, fileUri: sourceMedia.fileUri }];
   if (!sourceMedia?.dataBase64) return [];
   return [
     {
@@ -930,6 +958,7 @@ function getSourceMediaParts(sourceMedia) {
 function buildGeminiMediaInput(parts, { renderedPdf = false } = {}) {
   return parts.flatMap((part) => {
     const image = { type: "image", data: part.dataBase64, mime_type: part.mimeType };
+    if (part.sourceLabel) return [{ type: "text", text: part.sourceLabel }, image];
     if (!renderedPdf || !part.pageNumber) return [image];
     return [{ type: "text", text: `PDF SOURCE PAGE ${part.pageNumber}` }, image];
   });
@@ -937,7 +966,9 @@ function buildGeminiMediaInput(parts, { renderedPdf = false } = {}) {
 
 function buildGeminiGenerateContentParts(parts, { renderedPdf = false } = {}) {
   return parts.flatMap((part) => {
+    if (part.fileUri) return [{ fileData: { mimeType: part.mimeType, fileUri: part.fileUri } }];
     const image = { inlineData: { mimeType: part.mimeType, data: part.dataBase64 } };
+    if (part.sourceLabel) return [{ text: part.sourceLabel }, image];
     if (!renderedPdf || !part.pageNumber) return [image];
     return [{ text: part.sourceLabel || `PDF SOURCE PAGE ${part.pageNumber}` }, image];
   });
@@ -1071,7 +1102,11 @@ function addManualPdfVisionReview(result, { file, sourceMedia, reason }) {
       image_summary_cn: "PDF 页面视觉解析未完成，需重试或人工查看原文件。",
       image_summary_en: "PDF page vision did not complete; retry or manual source review is required.",
       detected_text: [],
-      limitations: ["Rendered PDF pages were not successfully analyzed by the configured vision model."],
+      limitations: [
+        reason === "pdf_exceeds_gemini_document_limit"
+          ? "The original PDF exceeds Gemini's document size or page limit."
+          : "PDF visual analysis did not complete."
+      ],
       reason: reason || "unknown"
     }
   };

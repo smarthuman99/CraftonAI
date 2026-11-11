@@ -378,7 +378,7 @@ export async function runRiskBasedReview({
           "optional uses values required, optional, mixed_required_optional or not_stated. Keep scheme labels separate. Find isolated labelled high-resolution product images and scheme alternatives, exclude whole-room scenes, IMG TBC/NO IMAGE/NO ARMCHAIR placeholders and similar-product substitutions. Photo coordinates reference a supplied visual source unit only. An empty response for irrelevant pages is valid, but do not claim all risks resolved merely from high confidence.",
           `Risks to investigate: ${JSON.stringify(plan.targets)}`,
           context.nativeSpreadsheet
-            ? "This is a native Excel review. Worksheet units and standalone product photos are labelled by source row. Existing native image mappings and raw cell evidence are authoritative. Do not produce PDF crop coordinates for standalone photos. Investigate only unresolved fields, source contradictions and ambiguous rows."
+            ? "This is a native Excel review. EXCEL WORKSHEET REGION images show the surrounding cells and image placement for merged headers, spanning images and footnotes. Use them for layout context only. For quantities and item codes check the original source cells. Keep ambiguous photo or footnote ownership unresolved. Do not produce PDF crop coordinates for worksheet regions or standalone photos. Existing native image mappings and raw cell evidence are authoritative."
             : "",
           `Existing manifest: ${JSON.stringify(context.nativeSpreadsheet ? manifest.filter((m) => batchIndices.some((i) => m.item_ref === `REVIEW-ITEM-${i + 1}`)) : manifest)}`,
           `SOURCE UNITS: ${JSON.stringify(source.units.map((u) => ({ source_unit: u.id, label: u.label, text: u.text })))}`,

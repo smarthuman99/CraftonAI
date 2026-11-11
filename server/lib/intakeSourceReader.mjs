@@ -1,4 +1,5 @@
 import { readSpreadsheetCellImages, buildSpreadsheetManifest, sourceHash } from "./intakeSpreadsheetSource.mjs";
+import { renderSpreadsheetRegions } from "./intakeSpreadsheetRegions.mjs";
 
 const DEFAULT_MAX_TEXT_CHARS = 60000;
 const DEFAULT_MAX_VISION_BYTES = 12 * 1024 * 1024;
@@ -87,12 +88,14 @@ export async function extractIntakeSource({
       sourceText = spreadsheetSource.text;
       extractedImages = spreadsheetSource.images;
       sourceMetadata = spreadsheetSource.metadata || {};
+      sourceMedia = spreadsheetSource.regionMedia || null;
     }
     if (kind === "legacy_spreadsheet") {
       const spreadsheetSource = await extractLegacySpreadsheetSource(bytes);
       sourceText = spreadsheetSource.text;
       extractedImages = spreadsheetSource.images;
       sourceMetadata = spreadsheetSource.metadata || {};
+      sourceMedia = spreadsheetSource.regionMedia || null;
     }
     if (kind === "pdf") {
       const pdfSource = await extractPdfSource(bytes);
@@ -102,7 +105,7 @@ export async function extractIntakeSource({
     if (kind === "docx") sourceText = await extractDocxText(bytes);
     if (kind === "legacy_doc") sourceText = await extractLegacyDocText(bytes);
 
-    if (includeOfficeVisual && ["spreadsheet", "legacy_spreadsheet", "docx", "legacy_doc"].includes(kind)) {
+    if (includeOfficeVisual && ["docx", "legacy_doc"].includes(kind)) {
       try {
         sourceMedia = await renderOfficeDocumentForVision({
           buffer: bytes,
@@ -222,6 +225,9 @@ async function extractSpreadsheetSource(buffer) {
   const outside = new Set(
     manifest.image_inventory.filter((i) => i.status === "outside_product_columns").map((i) => i.image_ref)
   );
+  const photos = extractedImages.filter((image) => !outside.has(image.page));
+  const regions = await renderSpreadsheetRegions(workbook, sheets, manifest, photos, normalizeSpreadsheetCell);
+  manifest.issues.push(...regions.issues);
   output.push("SOURCE ROW IDENTITIES (use source_row_id and preserve every row):");
   for (const row of manifest.rows)
     output.push(`${row.id} | sheet=${row.sheet} | row=${row.row} | code=${row.code} | product=${row.name}`);
@@ -230,7 +236,8 @@ async function extractSpreadsheetSource(buffer) {
       .filter((line) => typeof line === "string" || !outside.has(line.page))
       .map((line) => (typeof line === "string" ? line : formatSpreadsheetImageMarker(line)))
       .join("\n"),
-    images: extractedImages.filter((image) => !outside.has(image.page)),
+    images: photos,
+    regionMedia: regions.pages.length ? { sourceKind: "spreadsheet_regions", pages: regions.pages } : null,
     metadata: {
       worksheetCount: workbook.worksheets.length,
       mergedCellCount,
@@ -347,6 +354,16 @@ function collectWorksheetImages({ workbook, worksheet, startIndex }) {
         ? Math.max(sourceRow, Number(image.range.br.nativeRow) + (Number(image.range.br.nativeRowOff) > 0 ? 1 : 0))
         : sourceRow,
       nativeKind: "floating",
+      anchor: {
+        left: Number(image.range?.tl?.nativeColOff || 0) / 9525,
+        top: Number(image.range?.tl?.nativeRowOff || 0) / 9525,
+        endColumn: image.range?.br ? Number(image.range.br.nativeCol) + 1 : null,
+        endRow: image.range?.br ? Number(image.range.br.nativeRow) + 1 : null,
+        endLeft: Number(image.range?.br?.nativeColOff || 0) / 9525,
+        endTop: Number(image.range?.br?.nativeRowOff || 0) / 9525,
+        width: image.range?.ext?.width,
+        height: image.range?.ext?.height
+      },
       rowCoverage
     });
   }
@@ -454,7 +471,13 @@ export async function openPdfBatchReader({
     ? { url }
     : { data: new Uint8Array(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || [])) };
   const parser = new PDFParse(loadSource);
-  const info = await parser.getInfo();
+  let info;
+  try {
+    info = await parser.getInfo();
+  } catch (error) {
+    await parser.destroy();
+    throw error;
+  }
   const renderPages = async (
     pages,
     { desiredWidth = visualFallbackRenderWidth, maxBytes = maxVisionBytes, sourceKind = "pdf_pages" } = {}

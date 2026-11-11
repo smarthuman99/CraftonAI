@@ -22,8 +22,10 @@ export async function createReviewSource({ source, file, job = {}, reader: suppl
           (r) => ids.includes(r.sheet_index) && (!rowIds?.length || rowIds.includes(r.id))
         );
         const imageIds = new Set(selected.flatMap((r) => r.image_refs));
-        const pages = [];
-        let bytes = 0;
+        const pages = (source.sourceMedia?.sourceKind === "spreadsheet_regions" ? source.sourceMedia.pages : []).filter(
+          (p) => ids.includes(p.pageNumber)
+        );
+        let bytes = pages.reduce((n, p) => n + p.byteLength, 0);
         for (const image of context.extractedImages.filter((i) => imageIds.has(i.page))) {
           const row = selected.find((r) => r.image_refs.includes(image.page));
           const data = await sharp(image.data)
