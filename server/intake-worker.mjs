@@ -9,7 +9,12 @@ import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { parseIntakeBrief } from "./lib/intakeProcessor.mjs";
 import { prepareInitialClientCompletion } from "./lib/intakeClientCompletion.mjs";
 import { bindIntakeResultToOwner } from "./lib/intakeOwnership.mjs";
-import { extractIntakeSource, getIntakeSourceKind, openPdfBatchReader } from "./lib/intakeSourceReader.mjs";
+import {
+  extractIntakeSource,
+  getIntakeSourceKind,
+  openPdfBatchReader,
+  requireExcelRowEvidence
+} from "./lib/intakeSourceReader.mjs";
 import {
   bindBatchSourcePages,
   buildPdfCheckpoint,
@@ -110,7 +115,7 @@ async function processJob(job) {
   if (getIntakeSourceKind(file) === "pdf") {
     result = await parsePdfWithGeminiDocument({ job, file, userId });
   } else {
-    const source = await readUploadedSource(file);
+    const source = requireExcelRowEvidence(await readUploadedSource(file), file);
     result = await parseIntakeBrief({ job, file, ...source });
     const manifest = source.sourceMetadata?.spreadsheetManifest;
     const attachNative = (parsed) =>

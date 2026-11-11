@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
-import { extractIntakeSource } from "./intakeSourceReader.mjs";
+import { extractIntakeSource, requireExcelRowEvidence } from "./intakeSourceReader.mjs";
 import {
   reconcileSpreadsheetRows,
   applySpreadsheetCompleteness,
@@ -27,6 +27,19 @@ const candidates = (manifest) =>
     image_storage_path: "test/reference.jpg"
   }));
 const queue = (result) => technicalDrawingPendingItems({ result_json: result }).map(({ item }) => item.source_row_id);
+test("an unreadable Excel or text-only fallback cannot publish inferred furniture", async () => {
+  const file = { original_name: "damaged.xlsx" };
+  const unreadable = await extractIntakeSource({ file, buffer: Buffer.from("damaged workbook") });
+  for (const source of [unreadable, { sourceKind: "legacy_spreadsheet", sourceText: "ROW 1: Rug" }]) {
+    const { sourceMetadata } = requireExcelRowEvidence(source, file);
+    const result = collect(sourceMetadata.spreadsheetManifest, [{ item_type_en: "Rug", quantity: 2 }]);
+    assert.equal(result.items.length, 0);
+    assert.equal(result.spreadsheet_row_review.held.length, 1);
+    assert.deepEqual(queue(result), []);
+  }
+  const image = { sourceKind: "image" };
+  assert.equal(requireExcelRowEvidence(image, file), image);
+});
 async function sample() {
   const wb = new ExcelJS.Workbook();
   const sheet = wb.addWorksheet("Schedule");

@@ -31,6 +31,24 @@ export function getIntakeSourceKind(file = {}) {
   return "unsupported";
 }
 
+export function requireExcelRowEvidence(source, file) {
+  if (!["spreadsheet", "legacy_spreadsheet"].includes(source.sourceKind) || source.sourceMetadata?.spreadsheetManifest)
+    return source;
+  // An unreadable workbook or text-only legacy fallback cannot establish a physical row.
+  // An empty manifest routes any proposed items through the same staff review as an unmatched row.
+  const spreadsheetManifest = buildSpreadsheetManifest({
+    sheets: [],
+    images: [],
+    fileHash: file?.sha256 || "",
+    issues: [{ code: "source_rows_unavailable", reason: source.mediaIssue || "no_native_row_evidence" }]
+  });
+  return {
+    ...source,
+    extractedImages: source.extractedImages || [],
+    sourceMetadata: { ...source.sourceMetadata, spreadsheetManifest }
+  };
+}
+
 export async function extractIntakeSource({
   file,
   buffer,
