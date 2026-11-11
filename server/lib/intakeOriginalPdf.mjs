@@ -48,14 +48,14 @@ export async function analyzeOriginalPdf({
       signal: AbortSignal.timeout(30000)
     });
     const upload = start.headers.get("x-goog-upload-url");
-    if (!start.ok || !upload) throw new Error("upload_start_failed");
+    if (!start.ok || !upload) throw Object.assign(new Error("upload_start_failed"), { status: start.status });
     const response = await fetch(upload, {
       method: "POST",
       headers: { "X-Goog-Upload-Command": "upload, finalize", "X-Goog-Upload-Offset": "0" },
       body: buffer,
       signal: AbortSignal.timeout(120000)
     });
-    if (!response.ok) throw new Error("upload_failed");
+    if (!response.ok) throw Object.assign(new Error("upload_failed"), { status: response.status });
     let resource = (await response.json()).file;
     if (!/^files\/[\w-]+$/.test(resource?.name)) throw new Error("invalid_upload_response");
     name = resource.name;
@@ -63,15 +63,16 @@ export async function analyzeOriginalPdf({
     while (resource.state === "PROCESSING" && Date.now() < deadline) {
       await delay(1500);
       const state = await fetch(base + "/" + name, { headers, signal: AbortSignal.timeout(15000) });
-      if (!state.ok) throw new Error("file_state_unavailable");
+      if (!state.ok) throw Object.assign(new Error("file_state_unavailable"), { status: state.status });
       resource = await state.json();
     }
     if (!resource.uri || resource.state !== "ACTIVE") throw new Error("file_not_ready");
     sourceMedia.fileUri = resource.uri;
     return await submit();
   } catch (error) {
-    console.warn("Gemini original PDF submission failed:", error.name);
-    return await submit("pdf_original_submission_failed");
+    const reason = error.status === 402 ? "gemini_payment_required" : "pdf_original_submission_failed";
+    console.warn("Gemini original PDF submission failed:", reason, error.status);
+    return await submit(reason);
   } finally {
     if (name) {
       try {

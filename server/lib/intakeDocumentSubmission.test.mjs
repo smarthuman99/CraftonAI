@@ -60,6 +60,18 @@ for (const fails of [false, true])
     } else assert.equal(result.visual_analysis.submission, "files_api");
   });
 
+for (const inlineBytes of [1024, 1])
+  test(
+    "billing failure is recorded without retrying another submission mode (inline limit " + inlineBytes + ")",
+    async (t) => {
+      gemini(t, async () => new Response("Prepayment credits are depleted", { status: 402 }));
+      const result = await analyzeOriginalPdf({ buffer: pdf, pages: [1], job: {}, file, inlineBytes });
+      assert.equal(globalThis.fetch.mock.callCount(), 1);
+      assert.deepEqual(result.items, []);
+      assert.equal(result.visual_analysis.reason, "gemini_payment_required");
+    }
+  );
+
 test("a PDF over the page limit goes to staff with zero proposed items", async (t) => {
   gemini(t, () => {
     throw new Error("unexpected HTTP call");
@@ -96,7 +108,7 @@ test("Excel sends native rows with labelled regions only for the complex sheet, 
     .png()
     .toBuffer();
   const photo = book.addImage({ buffer: png, extension: "png" });
-  ws.addImage(photo, { tl: { col: 3, row: 2 }, br: { col: 4, row: 4 } });
+  ws.addImage(photo, { tl: { col: 3, row: 2 }, ext: { width: 32, height: 40 } });
   const excelFile = { original_name: "sheet.xlsx" };
   const source = await extractIntakeSource({ file: excelFile, buffer: await book.xlsx.writeBuffer() });
   assert.deepEqual(
@@ -108,6 +120,7 @@ test("Excel sends native rows with labelled regions only for the complex sheet, 
     ]
   );
   const pages = source.sourceMedia.pages;
+  assert.equal(source.sourceMetadata.spreadsheetManifest.image_inventory[0].status, "ambiguous");
   assert.ok(pages.length);
   assert.ok(pages.every((p) => p.pageNumber === 2 && p.sheet === "Guest suite"));
   for (const reason of ["merged cells", "image crossing rows", "footnote"])

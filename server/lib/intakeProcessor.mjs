@@ -28,8 +28,8 @@ export async function parseIntakeBrief({ job, file, sourceText = "", sourceMedia
       try {
         return await parseWithGeminiVision({ job, file, sourceText, sourceMedia });
       } catch (error) {
-        console.warn("Whole PDF analysis failed:", error.name);
-        reason = "pdf_original_analysis_failed";
+        reason = error.status === 402 ? "gemini_payment_required" : "pdf_original_analysis_failed";
+        console.warn("Whole PDF analysis failed:", reason);
       }
     }
     const draft = normalizeResult({ items: [] }, { job, file, sourceMedia });
@@ -209,6 +209,7 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
       text = extractGeminiInteractionText(data);
       if (!text) throw new Error("Gemini Interactions response did not include structured output text.");
     } catch (err) {
+      if (err.status === 402) throw err;
       interactionsError = err;
       transport = "generateContent";
       console.warn("Gemini Interactions visual parse failed; retrying with generateContent:", err.message);
@@ -243,6 +244,7 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
       text = extractGeminiGenerateContentText(data);
       if (!text) throw new Error("Gemini generateContent response did not include structured output text.");
     } catch (err) {
+      if (err.status === 402) throw err;
       structuredError = err;
       transport = "generateContent-json";
       console.warn("Gemini structured generateContent failed; retrying JSON-only mode:", err.message);
@@ -266,6 +268,7 @@ async function parseWithGeminiVision({ job, file, sourceText, sourceMedia }) {
         text = extractGeminiGenerateContentText(data);
         if (!text) throw new Error("Gemini JSON-mode response did not include output text.");
       } catch (err) {
+        if (err.status === 402) throw err;
         throw new Error(
           `Gemini visual parse failed across all transports. Interactions: ${interactionsError?.message || "not attempted"}; structured generateContent: ${structuredError?.message || "not attempted"}; JSON generateContent: ${err.message}`
         );
@@ -356,7 +359,7 @@ async function requestGeminiJson({ url, headers, body, timeoutMs }) {
 
   if (!response.ok) {
     const responseBody = (await response.text()).slice(0, 1200);
-    throw new Error(`HTTP ${response.status}: ${responseBody}`);
+    throw Object.assign(new Error(`HTTP ${response.status}: ${responseBody}`), { status: response.status });
   }
   return response.json();
 }

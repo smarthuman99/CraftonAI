@@ -61,14 +61,7 @@ function findRegions(ws, sheet, manifest, images) {
   }
   for (const img of images) {
     if (ranges.length > 16) break;
-    let bottom = img.sourceEndRow || img.sourceRow;
-    if (img.anchor?.height && !img.anchor.endColumn) {
-      let h = img.anchor.height + img.anchor.top;
-      while (bottom < Math.min(ws.rowCount, img.sourceRow + 40) && h > rowHeight(ws, bottom) + 1) {
-        h -= rowHeight(ws, bottom);
-        bottom++;
-      }
-    }
+    const bottom = img.sourceEndRow || img.sourceRow;
     if (bottom > img.sourceRow && productRows.some((r) => r >= img.sourceRow && r <= bottom))
       add("image crossing rows", img.sourceRow, bottom, img.sourceColumn, img.anchor?.endColumn || img.sourceColumn);
   }

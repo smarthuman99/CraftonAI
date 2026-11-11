@@ -337,6 +337,18 @@ function collectWorksheetImages({ workbook, worksheet, startIndex }) {
         const bottom = row === lastRow ? Number(image.range.br.nativeRowOff || 0) / 12700 : height;
         rowCoverage.push({ row, points: Math.max(0, Math.min(height, bottom) - top) });
       }
+    } else if (image.range?.ext?.height > 0) {
+      // A one-cell anchor specifies its height in pixels, even when it covers several products.
+      let remaining = (image.range.ext.height * 72) / 96;
+      const lastRow = Math.min(worksheet.rowCount, sourceRow + 1000);
+      for (let row = sourceRow; row <= lastRow && remaining > 0; row++) {
+        const sheetRow = worksheet.getRow(row);
+        const height = sheetRow.hidden ? 0 : sheetRow.height || worksheet.properties.defaultRowHeight || 15;
+        const top = row === sourceRow ? Number(image.range.tl.nativeRowOff || 0) / 12700 : 0;
+        const points = Math.min(remaining, Math.max(0, height - top));
+        rowCoverage.push({ row, points });
+        remaining -= points;
+      }
     }
     const imageNumber = startIndex + collected.length + 1;
     collected.push({
@@ -352,7 +364,7 @@ function collectWorksheetImages({ workbook, worksheet, startIndex }) {
       sourceCell: `${worksheet.getColumn(sourceColumn).letter}${sourceRow}`,
       sourceEndRow: image.range?.br
         ? Math.max(sourceRow, Number(image.range.br.nativeRow) + (Number(image.range.br.nativeRowOff) > 0 ? 1 : 0))
-        : sourceRow,
+        : rowCoverage.at(-1)?.row || sourceRow,
       nativeKind: "floating",
       anchor: {
         left: Number(image.range?.tl?.nativeColOff || 0) / 9525,
