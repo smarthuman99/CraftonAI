@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import sharp from "sharp";
+import { reviewSpreadsheetRow } from "./intakeSpreadsheetCompleteness.mjs";
 import {
   activeProjectJob,
   buildEditPlan,
@@ -167,7 +168,16 @@ export async function clientProjectCommand({ supabase, user, body }) {
     if (error) throw error;
     return { ok: true, jobId: data, outcome: "queued" };
   }
-  if (!body.version || body.version !== workspace.version)
+  const reviewingRow = body.operation === "review_spreadsheet_row";
+  const job = reviewingRow && workspace.jobs.find((j) => j.id === body.jobId);
+  if (reviewingRow && !isProjectEditorStaff(user)) throw editError("Only Crafton staff can review source rows.", 403);
+  if (reviewingRow && (!job || (!activeProjectJob(job) && job.client_import_state !== "preview")))
+    throw editError("This import is unavailable for review.", 409);
+  if (
+    reviewingRow
+      ? !body.updatedAt || body.updatedAt !== job.updated_at
+      : !body.version || body.version !== workspace.version
+  )
     throw editError(
       "This project has changed. Reload the latest details, then review and save your changes again.",
       409
@@ -175,12 +185,22 @@ export async function clientProjectCommand({ supabase, user, body }) {
   const image = body.referenceFileId
     ? await referenceImage({ supabase, user, project: workspace.project, fileId: body.referenceFileId })
     : undefined;
-  const plan = buildEditPlan(workspace, body, {
-    actorId: user.id,
-    requestId: randomUUID(),
-    staff: isProjectEditorStaff(user),
-    image
-  });
+  const plan = reviewingRow
+    ? {
+        patches: [
+          { id: job.id, result_json: reviewSpreadsheetRow(job.result_json, body, user.id), review_status: "pending" }
+        ],
+        projectPatch: {},
+        guardDraft: activeProjectJob(job),
+        syncSpecs: activeProjectJob(job),
+        outcome: "reviewed"
+      }
+    : buildEditPlan(workspace, body, {
+        actorId: user.id,
+        requestId: randomUUID(),
+        staff: isProjectEditorStaff(user),
+        image
+      });
   const { error } = await supabase.rpc("commit_client_project_edit", {
     p_project_id: workspace.project.id,
     p_owner_id: workspace.project.user_id,

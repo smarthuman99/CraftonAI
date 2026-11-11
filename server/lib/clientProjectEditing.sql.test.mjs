@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { buildEditPlan, itemFields } from "../../shared/clientProjectEditing.mjs";
+import { reconcileSpreadsheetRows, applySpreadsheetCompleteness } from "./intakeSpreadsheetCompleteness.mjs";
+import { technicalDrawingPendingItems } from "./technicalDrawing.mjs";
 
 const owner = "11111111-1111-4111-8111-111111111111",
   projectId = "22222222-2222-4222-8222-222222222222";
@@ -108,6 +110,53 @@ test("project edit migration and transactions against isolated PostgreSQL", asyn
     assert.equal((await workspace()).jobs[0].result_json.items[0].quantity, 8);
     assert.equal((await db.query("SELECT count(*)::int n FROM workflow_events")).rows[0].n, 1);
   });
+  await t.test(
+    "persist only reconciled rows into BOM and drawing queue, including an entirely held intake",
+    async () => {
+      await seed();
+      const rows = ["Chair", "Table"].map((name, i) => ({
+        id: "test:1:" + i,
+        sheet: "Furniture",
+        sheet_index: 1,
+        row: i + 2,
+        name,
+        code: String(i + 1),
+        quantity: 2,
+        image_refs: [],
+        cells: [
+          { role: "product", ref: "A" + (i + 2), value: name },
+          { role: "quantity", ref: "B" + (i + 2), value: "2" }
+        ]
+      }));
+      const manifest = { rows, issues: [], totals: [], image_inventory: [] };
+      for (const acceptedCount of [1, 0]) {
+        const input = rows.map((row, i) => ({
+          ...item,
+          item_type_en: row.name,
+          source_row_id: row.id,
+          quantity: i < acceptedCount ? 2 : 9,
+          image_storage_path: "test.jpg"
+        }));
+        const result = applySpreadsheetCompleteness(reconcileSpreadsheetRows({ items: input }, manifest), manifest);
+        await commit(await workspace(), {
+          projectPatch: {},
+          patches: [{ id: jobId, result_json: result }],
+          guardDraft: true,
+          syncSpecs: true
+        });
+        const saved = (await workspace()).jobs[0];
+        assert.equal(saved.result_json.spreadsheet_row_review.held.length, 2 - acceptedCount);
+        assert.deepEqual(
+          (await db.query("SELECT item_type_en FROM specifications")).rows.map((r) => r.item_type_en),
+          rows.slice(0, acceptedCount).map((r) => r.name)
+        );
+        assert.deepEqual(
+          technicalDrawingPendingItems(saved).map(({ item }) => item.source_row_id),
+          rows.slice(0, acceptedCount).map((r) => r.id)
+        );
+      }
+    }
+  );
   await t.test("stale jobs and concurrent project metadata abort without partial writes", async () => {
     await seed();
     let state = await workspace();

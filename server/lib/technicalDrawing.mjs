@@ -109,6 +109,7 @@ const trackingQrDataUrl = (trackingUrl) => {
 };
 
 export function technicalDrawingEligible({ item = {}, file = null } = {}) {
+  if (item.spreadsheet_review_status === "held") return false;
   const drawing = normalizeDrawing(item.technical_drawing || item.technicalDrawing);
   if (["system_generated", "ai_concept", "formal", "approved_for_manufacture"].includes(drawing.status)) return false;
   const retryAfter = new Date(drawing.retry_after || 0).getTime();
@@ -506,6 +507,7 @@ async function uploadDrawing({ supabase, path, svg }) {
 }
 
 export async function generateTechnicalDrawingForItem({ supabase, job, result, item, itemIndex, userId }) {
+  if (item.spreadsheet_review_status === "held") throw new Error("Source row is pending staff review.");
   const file = Array.isArray(job.intake_files) ? job.intake_files[0] : job.intake_files;
   const references = await loadReferenceImages({ supabase, item, file });
   if (!references.length) throw new Error("No usable furniture reference image was found.");

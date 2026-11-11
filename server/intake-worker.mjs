@@ -188,7 +188,12 @@ async function processJob(job) {
   const project = await upsertProject(job, result);
   const ownerUserId = project.user_id || userId;
 
-  await replaceDraftSpecs(project.id, ownerUserId, result.items);
+  const spreadsheet = result.source_reconciliation?.version === 2;
+  if (spreadsheet) {
+    await saveSpreadsheetDraft(job, project, ownerUserId, result);
+  } else {
+    await replaceDraftSpecs(project.id, ownerUserId, result.items);
+  }
   await replaceDraftPayments(project.id, ownerUserId, result.payments);
 
   await supabase.from("agent_logs").insert({
@@ -215,7 +220,7 @@ async function processJob(job) {
     await supabase.from("intake_files").update({ project_id: project.id, user_id: ownerUserId }).eq("id", file.id);
   }
 
-  await supabase
+  const { error: completionError } = await supabase
     .from("intake_jobs")
     .update({
       status: "needs_review",
@@ -224,10 +229,11 @@ async function processJob(job) {
       review_notes: clientCompletion.jobState.reviewNotes,
       project_id: project.id,
       user_id: ownerUserId,
-      result_json: result,
+      ...(spreadsheet ? {} : { result_json: result }),
       completed_at: completedAt
     })
     .eq("id", job.id);
+  if (completionError) throw completionError;
 
   console.log(`Processed intake job ${job.id} -> project ${project.name}`);
 }
@@ -621,8 +627,46 @@ function isGeneratedIntakeProjectName(value) {
   return /^craft-(?:\d{4}-(?:intake|\d+)|\d{10,})/i.test(String(value || "").trim());
 }
 
+// Publish the partitioned intake and the whole project's provisional BOM together.
+// Keep this job in processing until intake finalization so the drawing worker cannot claim it early.
+async function saveSpreadsheetDraft(job, project, ownerId, result) {
+  const link = await supabase
+    .from("intake_jobs")
+    .update({ project_id: project.id, user_id: ownerId })
+    .eq("id", job.id)
+    .eq("status", "processing")
+    .select("updated_at")
+    .single();
+  if (link.error) throw link.error;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const [projectRead, jobsRead] = await Promise.all([
+      supabase.from("projects").select("client_edit_revision").eq("id", project.id).single(),
+      supabase.from("intake_jobs").select("id,updated_at").eq("project_id", project.id)
+    ]);
+    if (projectRead.error || jobsRead.error) throw projectRead.error || jobsRead.error;
+    if (!jobsRead.data.some((j) => j.id === job.id && j.updated_at === link.data.updated_at))
+      throw new Error("Intake changed during reconciliation.");
+    const { error } = await supabase.rpc("commit_client_project_edit", {
+      p_project_id: project.id,
+      p_owner_id: ownerId,
+      p_revision: projectRead.data.client_edit_revision,
+      p_expected_jobs: jobsRead.data,
+      p_project_patch: {},
+      p_patches: [{ id: job.id, result_json: result }],
+      p_guard_draft: true,
+      p_sync_specs: true,
+      p_actor_id: ownerId,
+      p_operation: "spreadsheet_intake_reconciliation"
+    });
+    if (!error) return;
+    if (attempt === 2 || !error.message.includes("EDIT_CONFLICT")) throw error;
+  }
+}
+
 async function replaceDraftSpecs(projectId, userId, items) {
-  await supabase.from("specifications").delete().eq("project_id", projectId);
+  const { error: clearError } = await supabase.from("specifications").delete().eq("project_id", projectId);
+  if (clearError) throw clearError;
+  if (!items.length) return;
 
   const rows = items.map((item) => ({
     project_id: projectId,

@@ -24,6 +24,7 @@ import { SetFurnitureCatalog, SetFurnitureShowcase } from "./components/SetFurni
 import { readPortalWorkspace } from "./portalWorkspace.mjs";
 import PortalImage, { PortalImageProvider } from "./components/PortalImage.jsx";
 import IntakeSourceFilename from "./components/IntakeSourceFilename.jsx";
+import SpreadsheetRowReview from "./components/SpreadsheetRowReview.jsx";
 import { deferredWorkspace } from "./components/DeferredWorkspace.jsx";
 import {
   clearVerifiedBrowserUser,
@@ -6065,6 +6066,18 @@ function App() {
       setPrequoteNotice("Approval is unavailable because the active project package could not be loaded.");
       return;
     }
+    if (
+      projectJobs.some((projectJob) =>
+        projectJob.result_json?.spreadsheet_row_review?.held.some((entry) => !entry.decision)
+      )
+    ) {
+      setPrequoteNotice(
+        lang === "Cn"
+          ? "请先复核暂缓进入 BOM 的来源行，再批准项目。"
+          : "Review the held source rows before approving this project."
+      );
+      return;
+    }
     const blockingQuestions = normalizeClarificationQuestions(draft.questions).filter(isClientFacingClarification);
     if (blockingQuestions.length > 0) {
       setPrequoteNotice(`Approval is blocked: ${blockingQuestions.length} client clarification(s) remain.`);
@@ -6228,6 +6241,16 @@ function App() {
   const handleCreateRfqDraft = async () => {
     const { selectedJob: job, draft, projectJobs } = getAdminDraftContext();
     if (!job || !draft) return;
+    if (
+      projectJobs.some((projectJob) =>
+        projectJob.result_json?.spreadsheet_row_review?.held.some((entry) => !entry.decision)
+      )
+    ) {
+      setPrequoteNotice(
+        lang === "Cn" ? "请先核对待处理来源行，再提交询价。" : "Review the held source rows before starting an RFQ."
+      );
+      return;
+    }
 
     const rfqDraft = buildRfqDraft(draft);
     try {
@@ -8498,6 +8521,11 @@ function App() {
             result={safeJsonObject(selectedJob?.result_json, {})}
             lang={lang}
           />
+          {[...projectJobs, ...(selectedJob?.pending_source_imports || [])]
+            .filter((job) => job.result_json?.spreadsheet_row_review?.held.some((entry) => !entry.decision))
+            .map((job) => (
+              <SpreadsheetRowReview key={job.id} job={job} command={handleClientProjectCommand} lang={lang} />
+            ))}
 
           {hasClarificationAnalysis && (
             <section

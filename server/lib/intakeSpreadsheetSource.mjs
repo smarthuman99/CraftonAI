@@ -202,11 +202,14 @@ export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash
     totals = [],
     diagnostics = [...issues];
   for (const [sheetIndex, sheet] of sheets.entries()) {
-    let headers = null,
+    let tableStart = 1,
+      subtotalStart = 1,
+      headers = null,
       foundTable = false;
     for (const [rowIndex, source] of sheet.rows.entries()) {
       const classified = classify(source);
       if (tableHeader(classified)) {
+        tableStart = subtotalStart = source.row + 1;
         resolveItemHeaders(classified, sheet.rows, rowIndex, diagnostics, sheet.name);
         headers = new Map(classified.map((c) => [c.column, { header: c.value, role: c.role }]));
         foundTable = true;
@@ -218,16 +221,23 @@ export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash
       const name = value("product"),
         code = value("code"),
         qty = value("quantity");
-      const totalLabel = /^(?:grand\s+)?total\b|^subtotal\b|^合计|^總計|^总计/i;
+      const totalLabel = /^(?:grand\s+)?total\b|^subtotal\b|^合计|^合計|^總計|^总计|^小计|^小計/i;
       const totalName =
-        /^(?:(?:grand\s+)?total|subtotal)(?:\s+(?:items|pieces|quantity))?[:：]?$|^(合计|總計|总计)[:：]?$/i;
-      if (!code && (!name || totalName.test(name)) && cells.some((c) => totalLabel.test(clean(c.value)))) {
+        /^(?:(?:grand\s+)?total|subtotal)(?:\s+(?:items|pieces|quantity))?[:：]?$|^(合计|合計|總計|总计|小计|小計)[:：]?$/i;
+      if (
+        (!code || totalName.test(code)) &&
+        (!name || totalName.test(name)) &&
+        cells.some((c) => totalLabel.test(clean(c.value)))
+      ) {
+        const subtotal = cells.some((c) => /^(subtotal\b|小计|小計)/i.test(clean(c.value)));
         totals.push({
           sheet: sheet.name,
           row: source.row,
+          start_row: subtotal ? subtotalStart : tableStart,
           stated_quantity: /^\d+(\.\d+)?$/.test(qty) ? Number(qty) : null,
           cells
         });
+        subtotalStart = source.row + 1;
         continue;
       }
       if (!name) {

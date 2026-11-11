@@ -18,7 +18,10 @@ export function buildIntakeEvidenceView(result = {}) {
     )
   ];
   const rows = list(gate.items).map((row) => {
-    const item = Number.isInteger(row.item_index) ? result.items?.[row.item_index] || {} : {};
+    const reviewRows = result.spreadsheet_row_review;
+    const held = reviewRows?.held.find((entry) => entry.index === row.item_index);
+    const index = reviewRows ? reviewRows.accepted_indices.indexOf(row.item_index) : row.item_index;
+    const item = held?.item || result.items?.[index] || {};
     const fields = list(row.fields);
     const pendingFields = fields.filter((field) => !supportedStatuses.has(field.status));
     const conflicts = list(item.review_conflicts);

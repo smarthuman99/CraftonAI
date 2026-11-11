@@ -116,24 +116,64 @@ export function reconcileSpreadsheetRows(result, manifest) {
     items = [];
   for (const [index, item] of (result.items || []).entries()) {
     const candidates = candidatesFor(item, manifest);
-    for (const row of candidates) reserved.add(row.id);
-    if (candidates.length !== 1 || used.has(candidates[0].id)) {
+    // A source row can already be claimed even if its product identity failed validation.
+    const located = manifest.rows.find(
+      (row) => row.id === item.source_row_id || (item.source_sheet === row.sheet && Number(item.source_row) === row.row)
+    );
+    const claims = new Set(candidates.map((row) => row.id));
+    if (located) claims.add(located.id);
+    const reportedCode = item.source_item_code || item.item_ref;
+    if (located?.code && reportedCode && norm(reportedCode) !== norm(located.code)) {
+      for (const row of manifest.rows.filter((r) => r.sheet === located.sheet && norm(r.code) === norm(reportedCode)))
+        claims.add(row.id);
+    }
+    if (item.source_row_id && !candidates.length) {
+      for (const row of candidatesFor({ ...item, source_row_id: "" }, manifest)) claims.add(row.id);
+    }
+    for (const id of claims) reserved.add(id);
+    if (candidates.length !== 1 || claims.size !== 1 || used.has(candidates[0].id)) {
       issues.push({
         code:
-          candidates.length > 1
+          claims.size > 1
             ? "ambiguous_product_row"
             : candidates.length
               ? "duplicate_output_row"
               : "unmatched_output_row",
-        item_index: index
+        item_index: index,
+        row_ids: [...claims]
       });
       items.push(item);
       continue;
     }
     used.add(candidates[0].id);
+    const row = candidates[0];
+    if (row.quantity === null || Number(item.quantity) !== row.quantity || item.quantity == null) {
+      issues.push({
+        code: "quantity_mismatch",
+        item_index: index,
+        row_ids: [row.id],
+        reported: item.quantity ?? null,
+        expected: row.quantity
+      });
+    }
+    const code = item.source_item_code || item.item_ref;
+    const names = [row.name, rowCell(row, "product")?.value?.split(/\r?\n/)[0]].map(norm);
+    if (
+      (row.code && code && norm(row.code) !== norm(code)) ||
+      (item.item_type_en && !names.includes(norm(item.item_type_en)))
+    ) {
+      issues.push({
+        code: "source_identity_conflict",
+        item_index: index,
+        row_ids: [row.id],
+        reported: item.item_type_en,
+        reported_code: code
+      });
+    }
     items.push(bindRow(item, candidates[0]));
   }
   const recovered = [];
+  const unlocated = issues.some((issue) => issue.code === "unmatched_output_row" && !issue.row_ids.length);
   const ambiguousRows = new Set(
     manifest.issues.filter((issue) => issue.code === "merged_product_rows").flatMap((issue) => issue.row_ids)
   );
@@ -157,13 +197,14 @@ export function reconcileSpreadsheetRows(result, manifest) {
       true
     );
     items.push(item);
+    if (unlocated) issues.push({ code: "unconfirmed_recovery", item_index: items.length - 1, row_ids: [row.id] });
     recovered.push(row.id);
   }
   return {
     ...result,
     items,
     source_manifest: manifest,
-    source_reconciliation: { version: 1, recovered_rows: recovered, issues }
+    source_reconciliation: { version: 2, recovered_rows: recovered, issues }
   };
 }
 
@@ -209,6 +250,19 @@ export function evaluateSpreadsheetCompleteness(result, manifest, { textTruncate
   const items = result.items || [],
     mapped = new Map();
   for (const [index, item] of items.entries()) {
+    if (
+      item.quantity_reconciliation?.status === "conflict" ||
+      (item.review_conflicts || []).some((message) =>
+        /^(quantity:|invalid reviewed quantity|conflicting apartment\/room quantity)/i.test(message)
+      )
+    ) {
+      issues.push({
+        code: "quantity_mismatch",
+        item_index: index,
+        reported: item.quantity,
+        expected: item.quantity_reconciliation?.breakdown_quantity
+      });
+    }
     if (!manifest.rows.some((r) => r.id === item.source_row_id)) {
       issues.push({ code: "unmatched_output_row", item_index: index });
       continue;
@@ -230,6 +284,9 @@ export function evaluateSpreadsheetCompleteness(result, manifest, { textTruncate
     if (!item) {
       issues.push({ code: "missing_source_row", row_id: row.id });
       continue;
+    }
+    if (!Number.isSafeInteger(row.quantity) || row.quantity <= 0) {
+      issues.push({ code: "source_quantity_unconfirmed", row_id: row.id, item_index: entry.index });
     }
     for (const cell of row.cells.filter((c) => c.role !== "image" && clean(c.value))) {
       fields++;
@@ -259,7 +316,9 @@ export function evaluateSpreadsheetCompleteness(result, manifest, { textTruncate
   }
   for (const total of manifest.totals) {
     if (total.stated_quantity === null) continue;
-    const sourceRows = manifest.rows.filter((r) => r.sheet === total.sheet && r.row < total.row);
+    const sourceRows = manifest.rows.filter(
+      (r) => r.sheet === total.sheet && r.row < total.row && r.row >= (total.start_row || 1)
+    );
     if (sourceRows.length && sourceRows.every((r) => r.quantity !== null)) {
       const computed = sourceRows.reduce((n, r) => n + r.quantity, 0);
       if (computed !== total.stated_quantity)
@@ -268,10 +327,17 @@ export function evaluateSpreadsheetCompleteness(result, manifest, { textTruncate
           sheet: total.sheet,
           row: total.row,
           stated: total.stated_quantity,
+          row_ids: sourceRows.map((row) => row.id),
           computed
         });
     }
   }
+  const sourceQuantity = manifest.rows.reduce((sum, row) => sum + (row.quantity || 0), 0);
+  const outputQuantity = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  if (items.length !== manifest.rows.length)
+    issues.push({ code: "output_row_count_mismatch", expected: manifest.rows.length, reported: items.length });
+  if (sourceQuantity !== outputQuantity)
+    issues.push({ code: "output_quantity_mismatch", expected: sourceQuantity, reported: outputQuantity });
   issues.push(...(result.native_image_failures || []).map((f) => ({ ...f, code: "native_image_storage_failure" })));
   return {
     version: 1,
@@ -279,8 +345,8 @@ export function evaluateSpreadsheetCompleteness(result, manifest, { textTruncate
     source_rows: manifest.rows.length,
     matched_rows: mapped.size,
     output_rows: items.length,
-    source_quantity: manifest.rows.reduce((n, r) => n + (r.quantity || 0), 0),
-    output_quantity: items.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
+    source_quantity: sourceQuantity,
+    output_quantity: outputQuantity,
     source_fields: fields,
     retained_fields: retained,
     source_photo_rows: photoRows,
@@ -290,7 +356,77 @@ export function evaluateSpreadsheetCompleteness(result, manifest, { textTruncate
   };
 }
 
+// The original evidence indexes are kept for audit. Only released items reach
+// the project, its BOM writers, and the drawing worker (all consume result.items).
+function holdConflictingRows(result, manifest, check) {
+  const blockers = new Set([
+    "duplicate_output_row",
+    "ambiguous_product_row",
+    "unmatched_output_row",
+    "missing_source_row",
+    "unconfirmed_recovery",
+    "quantity_mismatch",
+    "source_identity_conflict",
+    "source_quantity_unconfirmed",
+    "source_quantity_total_conflict",
+    "merged_product_rows"
+  ]);
+  const byIndex = new Map(),
+    byRow = new Map();
+  const add = (map, key, issue) => map.set(key, [...(map.get(key) || []), issue]);
+  for (const issue of check.issues) {
+    if (
+      !blockers.has(issue.code) &&
+      !(issue.code === "source_value_mismatch" && ["product", "quantity"].includes(issue.field))
+    )
+      continue;
+    if (Number.isInteger(issue.item_index)) add(byIndex, issue.item_index, issue);
+    const ids = new Set(
+      [...(issue.row_ids || []), issue.row_id, result.items[issue.item_index]?.source_row_id].filter(Boolean)
+    );
+    for (const id of ids) add(byRow, id, issue);
+  }
+  const accepted = [],
+    acceptedIndices = [],
+    held = [],
+    sourceRows = new Map(manifest.rows.map((row) => [row.id, row]));
+  for (const [index, item] of result.items.entries()) {
+    const issues = [...new Set([...(byIndex.get(index) || []), ...(byRow.get(item.source_row_id) || [])])];
+    if (!issues.length) {
+      accepted.push(item);
+      acceptedIndices.push(index);
+      continue;
+    }
+    const rowIds = [
+      ...new Set(
+        [
+          item.source_row_id,
+          ...issues.flatMap((issue) => (issue.item_index === index ? issue.row_ids || [] : []))
+        ].filter((id) => sourceRows.has(id))
+      )
+    ];
+    held.push({
+      index,
+      item: { ...item, spreadsheet_review_status: "held" },
+      row_ids: rowIds,
+      issues: issues.map(({ row_ids, ...details }) => details)
+    });
+  }
+  // Rows skipped because no candidate could be bound must also be reviewable.
+  for (const [id, issues] of byRow) {
+    if (!sourceRows.has(id) || result.items.some((item) => item.source_row_id === id)) continue;
+    held.push({ index: null, item: null, row_ids: [id], issues });
+  }
+  if (!held.length) return result;
+  return {
+    ...result,
+    items: accepted,
+    spreadsheet_row_review: { version: 1, held, accepted_indices: acceptedIndices }
+  };
+}
+
 export function applySpreadsheetCompleteness(result, manifest, metadata = {}) {
+  if (result.spreadsheet_row_review) return result; // Already partitioned; evidence indexes refer to the original draft.
   const check = evaluateSpreadsheetCompleteness(result, manifest, metadata);
   const missing = (result.items || []).filter((i) => !i.image_storage_path && !i.image_url);
   const next = {
@@ -310,10 +446,43 @@ export function applySpreadsheetCompleteness(result, manifest, metadata = {}) {
   if (check.status === "passed") return next;
   const question = "Crafton must review the file completeness checks before approval.";
   return {
-    ...next,
+    ...holdConflictingRows(next, manifest, check),
     quality_gate: { ...next.quality_gate, status: "manual_review_required" },
     review_routing: { ...next.review_routing, route: "internal_review" },
     questions: [...new Set([...(next.questions || []), question])],
     open_questions: [...new Set([...(next.open_questions || []), question])]
+  };
+}
+
+export function reviewSpreadsheetRow(result, { entryKey, rowId, decision, quantity }, actorId) {
+  const review = result.spreadsheet_row_review;
+  const entry = review?.held.find((e) => String(e.index ?? e.row_ids[0]) === entryKey);
+  if (!entry || entry.decision) throw new Error("This candidate has already been reviewed or no longer exists.");
+  const items = [...result.items];
+  const audit = { decision, actor_id: actorId, at: new Date().toISOString() };
+  if (decision === "accept") {
+    const row = result.source_manifest.rows.find((r) => r.id === rowId);
+    if (!row || (entry.row_ids.length && !entry.row_ids.includes(rowId)))
+      throw new Error("Select a matching original row.");
+    if (items.some((i) => i.source_row_id === rowId)) throw new Error("This source row is already in the BOM.");
+    const confirmedQuantity = Number(quantity);
+    if (!Number.isSafeInteger(confirmedQuantity) || confirmedQuantity < 1 || confirmedQuantity > 1000000)
+      throw new Error("Confirm a positive whole quantity.");
+    // Preserve verified attachments only when the candidate was bound to this source row.
+    const base = entry.item?.source_row_id === rowId ? entry.item : {};
+    const accepted = bindRow(base, row);
+    items.push({
+      ...accepted,
+      spreadsheet_review_status: "reviewed",
+      item_type_cn: (base.item_type_en === row.name && base.item_type_cn) || row.name,
+      item_ref: row.code,
+      quantity: confirmedQuantity
+    });
+    Object.assign(audit, { row_id: rowId, quantity: confirmedQuantity, item_index: items.length - 1 });
+  } else if (decision !== "exclude") throw new Error("Unknown review decision.");
+  return {
+    ...result,
+    items,
+    spreadsheet_row_review: { ...review, held: review.held.map((e) => (e === entry ? { ...e, decision: audit } : e)) }
   };
 }

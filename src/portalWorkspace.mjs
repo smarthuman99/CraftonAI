@@ -220,10 +220,26 @@ export async function readPortalWorkspace({
         : { data: [] });
       if (profiles.error) throw profiles.error;
       const byId = new Map((profiles.data || []).map((profile) => [String(profile.user_id), profile]));
-      const withOwners = (records) =>
-        records
+      const withOwners = (records) => {
+        const pending = new Map();
+        for (const row of records) {
+          if (
+            row.project_id &&
+            row.client_import_state === "preview" &&
+            row.result_json?.spreadsheet_row_review?.held.some((entry) => !entry.decision)
+          ) {
+            if (!pending.has(row.project_id)) pending.set(row.project_id, []);
+            pending.get(row.project_id).push(row);
+          }
+        }
+        return records
           .filter(activeProjectJob)
-          .map((row) => ({ ...row, owner_profile: byId.get(getPortalJobOwnerId(row)) || null }));
+          .map((row) => ({
+            ...row,
+            owner_profile: byId.get(getPortalJobOwnerId(row)) || null,
+            pending_source_imports: pending.get(row.project_id) || []
+          }));
+      };
       onReviewRows(withOwners(rows), { previewsOnly: false });
       timing("admin-list-data");
       onReviewRows(withOwners(await signing), { previewsOnly: true });
