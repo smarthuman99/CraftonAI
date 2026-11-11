@@ -129,6 +129,28 @@ test(
   async () => {
     const m = await manifestFrom(await readFile(process.env.CRAFTON_SHOW_APARTMENT_XLSX));
     assert.equal(m.file_sha256, "ff52fdd107c2ed719df4cd616cb8cd4bb0965fe7801d45dff1c257e30e86b547");
+    assert.deepEqual(
+      m.rows.filter((row) => !row.code).map((r) => [r.row, r.name, r.quantity]),
+      [[16, "Banquette", 1]]
+    );
+    assert.equal(m.rows.filter((row) => row.code).length, 30);
+    assert.deepEqual(
+      m.rows.filter((row) => [7, 36].includes(row.row)).map((row) => row.image_refs),
+      [[], []]
+    );
+    assert.equal(m.rows.filter((row) => row.image_refs.length).length, 26);
+    assert.deepEqual(
+      m.image_inventory
+        .filter((i) => i.status === "outside_product_columns")
+        .map((i) => i.source_cell)
+        .sort(),
+      ["CK7", "GG36", "KD36", "OA36", "RX36"]
+    );
+    const sofa = m.rows.find((row) => row.row === 8);
+    assert.equal(
+      m.image_inventory.find((i) => i.row_id === sofa.id).sha256,
+      "21668120207410cdc7b4888af930d7e9415907614c9e7f12cf9748e2030b025b"
+    );
     const input = process.env.CRAFTON_SHOW_APARTMENT_BACKUP
       ? JSON.parse(await readFile(process.env.CRAFTON_SHOW_APARTMENT_BACKUP, "utf8")).jobs[0].result_json.items.filter(
           (i) => !i.source_row_recovered

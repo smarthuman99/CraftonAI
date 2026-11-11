@@ -162,7 +162,7 @@ async function extractSpreadsheetSource(buffer) {
     const unique = new Map();
     for (const image of rawImages) {
       const sha256 = sourceHash(image.data);
-      const key = `${image.sourceRow}:${sha256}`;
+      const key = `${image.sourceRow}:${image.sourceColumn}:${sha256}`;
       if (!unique.has(key)) unique.set(key, { ...image, sha256 });
     }
     const worksheetImages = [...unique.values()].map((image, index) => ({
@@ -204,7 +204,7 @@ async function extractSpreadsheetSource(buffer) {
         )
         .map((value) => value.trim());
       if (values.some(Boolean)) output.push(`ROW ${rowNumber}: ${values.join(" | ")}`);
-      for (const image of imagesByRow.get(rowNumber) || []) output.push(formatSpreadsheetImageMarker(image));
+      for (const image of imagesByRow.get(rowNumber) || []) output.push(image);
     });
     sheets.push({
       name: worksheet.name,
@@ -215,16 +215,22 @@ async function extractSpreadsheetSource(buffer) {
 
     for (const image of worksheetImages) {
       if (!imagesByRow.has(image.sourceRow) || worksheet.getRow(image.sourceRow)?.hasValues) continue;
-      output.push(formatSpreadsheetImageMarker(image));
+      output.push(image);
     }
   }
   const manifest = buildSpreadsheetManifest({ sheets, images: extractedImages, issues: cellImages.issues, fileHash });
+  const outside = new Set(
+    manifest.image_inventory.filter((i) => i.status === "outside_product_columns").map((i) => i.image_ref)
+  );
   output.push("SOURCE ROW IDENTITIES (use source_row_id and preserve every row):");
   for (const row of manifest.rows)
     output.push(`${row.id} | sheet=${row.sheet} | row=${row.row} | code=${row.code} | product=${row.name}`);
   return {
-    text: output.join("\n"),
-    images: extractedImages,
+    text: output
+      .filter((line) => typeof line === "string" || !outside.has(line.page))
+      .map((line) => (typeof line === "string" ? line : formatSpreadsheetImageMarker(line)))
+      .join("\n"),
+    images: extractedImages.filter((image) => !outside.has(image.page)),
     metadata: {
       worksheetCount: workbook.worksheets.length,
       mergedCellCount,

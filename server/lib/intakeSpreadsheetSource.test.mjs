@@ -239,6 +239,40 @@ test("bidirectional checks detect missing rows, duplicate outputs, dropped field
   );
 });
 
+test("a floating photo beside the schedule never becomes evidence for an unrelated item on the same row", async () => {
+  const wb = new ExcelJS.Workbook(),
+    sheet = wb.addWorksheet("Order");
+  const buffer = await sharp({ create: { width: 32, height: 32, channels: 3, background: "#abbcad" } })
+    .png()
+    .toBuffer();
+  const image = wb.addImage({ buffer, extension: "png" });
+  sheet.addRow(["Item", "Photo", "Qty"]);
+  sheet.addRow(["Window Dressing", null, 1]);
+  sheet.addRow(["Sofa", null, 1]);
+  sheet.addImage(image, { tl: { col: 88, row: 1 }, ext: { width: 20, height: 20 } });
+  sheet.addImage(image, { tl: { col: 88, row: 2 }, ext: { width: 20, height: 20 } });
+  sheet.addImage(image, { tl: { col: 1, row: 2 }, ext: { width: 20, height: 20 } });
+  sheet.addImage(image, { tl: { col: 2, row: 1 }, ext: { width: 20, height: 20 } });
+  const source = await extractIntakeSource({
+    file: { original_name: "schedule.xlsx" },
+    buffer: await wb.xlsx.writeBuffer()
+  });
+  const manifest = source.sourceMetadata.spreadsheetManifest;
+  assert.deepEqual(
+    source.extractedImages.map((i) => i.sourceCell),
+    ["B3"]
+  );
+  assert.deepEqual(
+    manifest.rows.map((r) => r.image_refs),
+    [[], [source.extractedImages[0].page]]
+  );
+  assert.deepEqual(
+    manifest.image_inventory.filter((i) => i.status === "outside_product_columns").map((i) => i.source_cell),
+    ["CK2", "CK3", "C2"]
+  );
+  assert.equal(source.sourceText.match(/EMBEDDED IMAGE/g).length, 1);
+});
+
 test("slight image overhang is mapped by coverage; equal cross-row coverage remains unresolved", () => {
   const rows = [1, 2, 3].map((row) => ({
     row,
@@ -260,6 +294,7 @@ test("slight image overhang is mapped by coverage; equal cross-row coverage rema
       {
         page: 1,
         worksheet: "Room",
+        sourceColumn: 1,
         sourceRow: 2,
         sourceEndRow: 3,
         rowCoverage: [

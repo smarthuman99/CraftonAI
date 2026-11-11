@@ -197,6 +197,7 @@ function resolveItemHeaders(columns, rows, start, diagnostics, sheet) {
 }
 
 export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash }) {
+  const imageScopeByRow = new Map();
   const rows = [],
     unclassified = [],
     totals = [],
@@ -205,6 +206,7 @@ export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash
     let tableStart = 1,
       subtotalStart = 1,
       headers = null,
+      imageScope = null,
       foundTable = false;
     for (const [rowIndex, source] of sheet.rows.entries()) {
       const classified = classify(source);
@@ -212,6 +214,13 @@ export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash
         tableStart = subtotalStart = source.row + 1;
         resolveItemHeaders(classified, sheet.rows, rowIndex, diagnostics, sheet.name);
         headers = new Map(classified.map((c) => [c.column, { header: c.value, role: c.role }]));
+        const titled = classified.filter((c) => clean(c.value));
+        imageScope = {
+          first: Math.min(...titled.map((c) => c.column)),
+          last: Math.max(...titled.map((c) => c.column)),
+          photos: titled.filter((c) => c.role === "image").map((c) => c.column),
+          rows: new Set()
+        };
         foundTable = true;
         continue;
       }
@@ -244,8 +253,11 @@ export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash
         if (cells.some((c) => clean(c.value))) unclassified.push({ sheet: sheet.name, row: source.row, cells });
         continue;
       }
+      const id = `${fileHash.slice(0, 16)}:${sheetIndex + 1}:${source.row}`;
+      imageScope.rows.add(source.row);
+      imageScopeByRow.set(id, imageScope);
       rows.push({
-        id: `${fileHash.slice(0, 16)}:${sheetIndex + 1}:${source.row}`,
+        id,
         sheet: sheet.name,
         sheet_index: sheetIndex + 1,
         row: source.row,
@@ -269,6 +281,14 @@ export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash
     }
   }
   const imageInventory = [];
+  // A schedule can have an unlabelled photo column immediately beside the table.
+  // Require images on multiple product rows in that column before treating it as part of the schedule.
+  const placements = new Map();
+  for (const image of images) {
+    const key = `${image.worksheet}:${image.sourceColumn}`;
+    if (!placements.has(key)) placements.set(key, new Set());
+    placements.get(key).add(image.sourceRow);
+  }
   for (const image of images) {
     let candidates = rows.filter(
       (r) => r.sheet === image.worksheet && r.row >= image.sourceRow && r.row <= (image.sourceEndRow || image.sourceRow)
@@ -279,6 +299,26 @@ export function buildSpreadsheetManifest({ sheets, images, issues = [], fileHash
         (r) => (image.rowCoverage.find((c) => c.row === r.row)?.points || 0) >= total * 0.8
       );
       if (total > 0 && dominant.length === 1) candidates = dominant;
+    }
+    if (
+      candidates.length &&
+      !candidates.some((r) => {
+        const scope = imageScopeByRow.get(r.id);
+        const column = image.sourceColumn;
+        if (scope.photos.length) return scope.photos.includes(column);
+        if (column >= scope.first && column <= scope.last) return true;
+        if (column !== scope.last + 1 && column !== scope.first - 1) return false;
+        return [...placements.get(`${image.worksheet}:${column}`)].filter((row) => scope.rows.has(row)).length >= 2;
+      })
+    ) {
+      imageInventory.push({
+        image_ref: image.page,
+        status: "outside_product_columns",
+        sheet: image.worksheet,
+        source_cell: image.sourceCell,
+        sha256: image.sha256
+      });
+      continue;
     }
     if (candidates.length === 1) {
       candidates[0].image_refs.push(image.page);
