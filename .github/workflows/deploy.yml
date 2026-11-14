@@ -33,6 +33,7 @@ jobs:
           npm run test:intake
           npm run test:rfq
           npm run test:performance
+          npm run test:support
           node --test src/intakeEvidenceView.test.mjs
           python3 server/configure-thumbnail-cache.test.py
           node --test src/customerServiceCopy.test.mjs server/lib/aiSupportAgent.test.mjs server/lib/technicalDrawing.test.mjs server/lib/projectLifecycle.test.mjs server/lib/rfqSourceData.test.mjs
@@ -75,7 +76,7 @@ jobs:
           
           # Upload the tarball
           scp release.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
-          scp server-release.tar.gz scripts/check-project-edit-schema.mjs ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
+          scp server-release.tar.gz scripts/check-project-edit-schema.mjs scripts/check-project-support-schema.mjs ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:${{ secrets.VPS_TARGET_DIR }}/
           
       - name: Pause background workers
         run: |
@@ -185,6 +186,7 @@ jobs:
             # Stop the known systemd workers before enabling staged imports.
             # Do not publish the frontend until the new API and workers pass probes.
             test -r "$old_env"
+            node --env-file="$old_env" "${{ secrets.VPS_TARGET_DIR }}/check-project-support-schema.mjs"
             if ! node --env-file="$old_env" "${{ secrets.VPS_TARGET_DIR }}/check-project-edit-schema.mjs" --wait; then
               # No runtime or frontend changes have been made yet.
               systemctl start crafton-intake-worker.service crafton-technical-drawing-worker.service
@@ -256,6 +258,11 @@ jobs:
               echo "Project editing API version probe failed with HTTP $probe_code"
               exit 1
             fi
+            support_probe="$(curl --silent --output /dev/null --write-out "%{http_code}" -X POST -H "Content-Type: application/json" -d "{\"action\":\"concierge_bootstrap\"}" http://127.0.0.1:8787/api/ai-support-chat)"
+            if [ "$support_probe" != "401" ]; then
+              echo "Project support authentication probe failed with HTTP $support_probe"
+              exit 1
+            fi
 
             python3 server/configure-thumbnail-cache.py
 
@@ -322,7 +329,7 @@ jobs:
             printf "%s\n" "${{ github.sha }}" > "$dir/release-version.txt"
             echo "Published Crafton frontend: $dir"
           done
-          rm -f "$release" "${{ secrets.VPS_TARGET_DIR }}/check-project-edit-schema.mjs"
+          rm -f "$release" "${{ secrets.VPS_TARGET_DIR }}/check-project-edit-schema.mjs" "${{ secrets.VPS_TARGET_DIR }}/check-project-support-schema.mjs"
           curl --fail --silent --show-error http://127.0.0.1:8787/health
           systemctl is-active crafton-intake-worker.service crafton-technical-drawing-worker.service crafton-thumbnail-worker.service
           REMOTE

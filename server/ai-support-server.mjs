@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createAiSupportReply } from "./lib/aiSupportAgent.mjs";
+import { createConciergeService } from "./lib/projectConcierge.mjs";
+import { supabaseConciergeStore } from "./lib/projectConciergeStore.mjs";
 import { createSupabaseAdmin } from "./lib/supabaseAdmin.mjs";
 import { createRfqDraft } from "./lib/rfqGenerator.mjs";
 import { dispatchRfqEmails, getRfqDispatchStatus } from "./lib/rfqDispatch.mjs";
@@ -33,6 +35,7 @@ import { loadOperationsContext, loadQuoteAnalysisContext } from "./lib/workflowC
 const port = Number(process.env.AI_SUPPORT_PORT || 8787);
 const logDir = path.resolve("server", "logs");
 const logFile = path.join(logDir, "ai-support.log");
+let conciergeService;
 const allowedOrigins = (process.env.AI_SUPPORT_ALLOWED_ORIGINS || "http://127.0.0.1:8000,http://localhost:8000")
   .split(",")
   .map((origin) => origin.trim())
@@ -80,7 +83,12 @@ const server = http.createServer(async (req, res) => {
     let result;
 
     if (req.url === "/api/ai-support-chat") {
-      if (body.action === "portal_thumbnail_batch") {
+      if (typeof body.action === "string" && body.action.startsWith("concierge_")) {
+        res.setHeader("Cache-Control", "private, no-store");
+        const { supabase, user } = await requireAuthenticatedUser(req);
+        conciergeService ||= createConciergeService({ store: supabaseConciergeStore(supabase) });
+        result = await conciergeService({ user, body });
+      } else if (body.action === "portal_thumbnail_batch") {
         res.setHeader("Cache-Control", "private, no-store");
         const started = performance.now();
         const { supabase, user } = await requireAuthenticatedUser(req);

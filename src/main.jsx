@@ -1,8 +1,13 @@
 console.log("=== MAIN.JSX ENTRY START ===");
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './app.jsx';
-import './style.css';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./app.jsx";
+import "./style.css";
+
+const RootApp =
+  import.meta.env.DEV && new window.URLSearchParams(window.location.search).get("demo") === "support"
+    ? React.lazy(() => import("./supportDemo.jsx"))
+    : App;
 
 class TopErrorBoundary extends React.Component {
   constructor(props) {
@@ -22,10 +27,35 @@ class TopErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div id="crafton-error-overlay" style={{ padding: '20px', background: '#2B1E1E', color: '#FF6B6B', fontSize: '18px', zIndex: 99999, position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflow: 'auto', fontFamily: 'monospace' }}>
+        <div
+          id="crafton-error-overlay"
+          style={{
+            padding: "20px",
+            background: "#2B1E1E",
+            color: "#FF6B6B",
+            fontSize: "18px",
+            zIndex: 99999,
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            overflow: "auto",
+            fontFamily: "monospace"
+          }}
+        >
           <h1>🚨 Rendering Crashed at Top Level</h1>
           <p>A critical runtime exception occurred during render. Stack trace:</p>
-          <pre style={{ background: '#140E0E', padding: '15rem 1.5rem', borderRadius: '4px', overflowX: 'auto', color: '#E5CFCF', whiteSpace: 'pre-wrap' }}>
+          <pre
+            style={{
+              background: "#140E0E",
+              padding: "15rem 1.5rem",
+              borderRadius: "4px",
+              overflowX: "auto",
+              color: "#E5CFCF",
+              whiteSpace: "pre-wrap"
+            }}
+          >
             {this.state.error?.message}
             {"\n\n"}
             {this.state.error?.stack}
@@ -38,13 +68,13 @@ class TopErrorBoundary extends React.Component {
 }
 
 console.log("=== MAIN.JSX MOUNTING ===");
-ReactDOM.createRoot(document.getElementById('root')).render(
+ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <TopErrorBoundary>
-      <App />
+      <React.Suspense fallback={<div style={{ padding: 40 }}>Loading Crafton…</div>}>
+        <RootApp />
+      </React.Suspense>
     </TopErrorBoundary>
   </React.StrictMode>
 );
 console.log("=== MAIN.JSX ENTRY END ===");
-
-

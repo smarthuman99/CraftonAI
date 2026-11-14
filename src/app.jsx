@@ -46,6 +46,10 @@ import { AdminLocalized, adminText } from "./adminI18n";
 import { deriveProjectLifecycle, mergeProjectJobSources } from "./projectLifecycle.js";
 import { normalizeProjectItemsForLoading } from "./loadingAiProjectItems.js";
 import { callWorkflowAi } from "./components/workflowAiClient.js";
+import "./components/projectSupport.css";
+const ProjectSupportWidget = deferredWorkspace(() => import("./components/ProjectSupportWidget.jsx"));
+const SupportReviewWorkspace = deferredWorkspace(() => import("./components/SupportReviewWorkspace.jsx"));
+const callProjectSupport = (body) => callWorkflowAi(getSupabaseBrowserClient(), body);
 import { buildPortalOwnershipFilter, filterPortalJobsForOwner, getPortalJobOwnerId } from "./portalOwnership.js";
 
 const IMAGES = {
@@ -1183,6 +1187,7 @@ function App() {
   const [supabaseSessionUser, setSupabaseSessionUser] = useState(null);
   const [supabaseAuthReady, setSupabaseAuthReady] = useState(false);
   const [adminAccessStatus, setAdminAccessStatus] = useState("checking");
+  const [showSupportReview, setShowSupportReview] = useState(false);
   const isStaffUser = Boolean(user?.isStaff);
   const isSupplierUser = Boolean(user?.isSupplier);
 
@@ -16234,6 +16239,9 @@ function App() {
         <SupplierProductionPortal lang={lang} user={user} supabaseClient={getSupabaseBrowserClient()} />
       )}
 
+      {currentView === "ClientPortal" && supabaseSessionUser?.id && (
+        <ProjectSupportWidget key={supabaseSessionUser.id} api={callProjectSupport} lang={lang} />
+      )}
       {/* VIEW 3: Client Portal (Member Center) */}
       {currentView === "ClientPortal" && (
         <div
@@ -17857,7 +17865,17 @@ function App() {
 
           {/* Right Main Admin Area */}
           <div className="main-content">
-            {adminWorkspaceMode === "overview" ? (
+            <div className="support-admin-tabs">
+              <button aria-pressed={!showSupportReview} onClick={() => setShowSupportReview(false)}>
+                {lang === "Cn" ? "項目工作台" : "Projects"}
+              </button>
+              <button aria-pressed={showSupportReview} onClick={() => setShowSupportReview(true)}>
+                {lang === "Cn" ? "AI 客服復查" : "AI support review"}
+              </button>
+            </div>
+            {showSupportReview ? (
+              <SupportReviewWorkspace key={supabaseSessionUser?.id || "guest"} api={callProjectSupport} lang={lang} />
+            ) : adminWorkspaceMode === "overview" ? (
               renderAdminPortfolioOverview()
             ) : (
               <>
