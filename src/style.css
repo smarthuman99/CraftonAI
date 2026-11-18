@@ -18476,6 +18476,7 @@ select:focus,
 
 .cho-project-line-items-heading {
   display: flex;
+  flex-wrap: wrap;
   min-height: 44px;
   align-items: flex-start;
   justify-content: space-between;
@@ -18485,6 +18486,19 @@ select:focus,
 .cho-project-line-items-heading .cho-project-card-label {
   margin: 7px 0 0;
 }
+
+.cho-project-drawing-download {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  margin: 0 0 10px auto;
+  max-width: 100%;
+}
+
+.cho-project-drawing-download button { gap: 8px; }
+.cho-project-drawing-download button:disabled { opacity: .65; cursor: default; }
+.cho-project-drawing-download small { color: var(--cho-walnut); text-align: end; }
+.cho-project-drawing-download small:empty { display: none; }
 
 .cho-project-line-action-count {
   display: inline-flex;

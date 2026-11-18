@@ -21,6 +21,13 @@ export default defineConfig({
   build: {
     outDir: "dist",
     assetsDir: "assets",
+    rollupOptions: {
+      output: {
+        // Tesseract looks up this basename inside its language directory.
+        assetFileNames: (asset) =>
+          asset.name === "eng.traineddata.gz" ? "assets/ocr-[hash]/[name][extname]" : "assets/[name]-[hash][extname]"
+      }
+    },
     sourcemap: false
   }
 });

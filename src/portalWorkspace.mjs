@@ -167,35 +167,44 @@ export async function readPortalWorkspace({
     if (error) throw error;
     let rows = withPortalThumbnailRefs(filterPortalJobsForOwner(data || [], ownerId));
     let progress = null;
+    let signaturesReady = false;
     const publish = () =>
       onClientRows(
-        rows.map((row) =>
-          progress
-            ? {
-                ...row,
-                client_progress: Object.fromEntries(
-                  Object.entries(progress).map(([key, entries]) => [
-                    key,
-                    entries.filter((entry) => String(entry.project_id) === String(row.project_id))
-                  ])
-                )
-              }
-            : row
-        )
+        rows.map((row) => ({
+          ...row,
+          client_drawing_files_state:
+            !progress || !signaturesReady ? "loading" : row.project_id && !progress.projectFiles ? "error" : "ready",
+          ...(progress && {
+            client_progress: Object.fromEntries(
+              Object.entries(progress).map(([key, entries]) => [
+                key,
+                entries.filter((entry) => String(entry.project_id) === String(row.project_id))
+              ])
+            )
+          })
+        }))
       );
     publish(); // Show the list before Storage signatures, progress or drawing requests.
     timing("client-list-data");
     await Promise.all([
-      signIntakeRows(client, rows, previews).then((signed) => {
-        rows = signed;
-        publish();
-      }),
+      signIntakeRows(client, rows, previews)
+        .then((signed) => {
+          rows = signed;
+        })
+        .finally(() => {
+          signaturesReady = true;
+          publish();
+        }),
       readClientProgress(client, rows, loadDrawings, onProgressError)
         .then((value) => {
           progress = value;
           publish();
         })
-        .catch(onProgressError)
+        .catch((error) => {
+          progress = {};
+          publish();
+          onProgressError(error);
+        })
     ]);
     timing("client-enrichment");
   };
@@ -232,13 +241,11 @@ export async function readPortalWorkspace({
             pending.get(row.project_id).push(row);
           }
         }
-        return records
-          .filter(activeProjectJob)
-          .map((row) => ({
-            ...row,
-            owner_profile: byId.get(getPortalJobOwnerId(row)) || null,
-            pending_source_imports: pending.get(row.project_id) || []
-          }));
+        return records.filter(activeProjectJob).map((row) => ({
+          ...row,
+          owner_profile: byId.get(getPortalJobOwnerId(row)) || null,
+          pending_source_imports: pending.get(row.project_id) || []
+        }));
       };
       onReviewRows(withOwners(rows), { previewsOnly: false });
       timing("admin-list-data");

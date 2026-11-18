@@ -6,6 +6,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { deriveProjectLifecycle } from "../projectLifecycle.js";
 import { customerServiceError } from "../customerServiceCopy.js";
 import ClientProjectEditor from "./ClientProjectEditor.jsx";
+import ProjectDrawingDownload from "./ProjectDrawingDownload.jsx";
+import { drawingExportPlan } from "../drawingExportPlan.mjs";
 
 const copy = (lang, cn, en) => (lang === "Cn" ? cn : en);
 const projectOrderCount = (project) => project.jobs.filter((job) => !job.isProjectAddition).length;
@@ -276,68 +278,6 @@ const isDrawingPreviewImage = (file) => String(file?.payload?.mime_type || "").s
 
 const getDrawingQrElementId = (trackingId) =>
   `cho-drawing-qr-${String(trackingId || "item").replace(/[^A-Za-z0-9_-]/g, "-")}`;
-
-const safeDownloadName = (value, fallback = "Crafton-three-view") =>
-  String(value || fallback)
-    .normalize("NFKD")
-    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 120) || fallback;
-
-const loadBrowserImage = (src) =>
-  new Promise((resolve, reject) => {
-    const image = new window.Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("The drawing image could not be prepared for download."));
-    image.src = src;
-  });
-
-const triggerBlobDownload = (blob, filename) => {
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = objectUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-};
-
-const drawTrackingPanel = (context, { x, y, width, height, qrImage, sku, trackingId, legacy = false }) => {
-  const scale = legacy ? width / 2000 : width / 470;
-  const inset = (legacy ? 80 : 26) * scale;
-  const qrSize = 168 * scale;
-  const qrX = x + width - (legacy ? 70 : 15) * scale - qrSize;
-  const qrY = y + Math.max((height - qrSize) / 2, 5 * scale);
-  const textX = x + inset;
-
-  context.save();
-  context.fillStyle = "#f7f5f0";
-  context.fillRect(x, y, width, height);
-  context.strokeStyle = "#d8d2c8";
-  context.lineWidth = Math.max(1, scale);
-  context.strokeRect(x, y, width, height);
-  context.fillStyle = "#73695f";
-  context.font = `700 ${14 * scale}px Arial, sans-serif`;
-  context.fillText("ITEM TRACEABILITY", textX, y + 40 * scale);
-  context.fillStyle = "#211f1b";
-  context.font = `700 ${18 * scale}px Arial, sans-serif`;
-  context.fillText(sku, textX, y + 80 * scale);
-  context.fillStyle = "#82786e";
-  context.font = `600 ${12 * scale}px Arial, sans-serif`;
-  context.fillText("SCAN FOR LIVE RECORD", textX, y + 119 * scale);
-  context.fillStyle = "#4a3525";
-  context.font = `600 ${14 * scale}px Arial, sans-serif`;
-  context.fillText(trackingId, textX, y + 153 * scale);
-  context.fillStyle = "#82786e";
-  context.font = `600 ${12 * scale}px Arial, sans-serif`;
-  context.fillText("QR ID · ACCESS CONTROLLED", textX, y + 196 * scale);
-  context.fillStyle = "#ffffff";
-  context.fillRect(qrX - 5 * scale, qrY - 5 * scale, qrSize + 10 * scale, qrSize + 10 * scale);
-  context.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
-  context.restore();
-};
 
 function DrawingTrackingPanel({ lang, preview, legacy = false }) {
   return (
@@ -966,6 +906,29 @@ function ClientProjectDetail({
   const referenceFileInputRef = useRef(null);
   const referenceTargetRef = useRef(null);
   const projectItems = useMemo(() => getProjectItems(project), [project]);
+  const drawingPlan = useMemo(
+    () =>
+      drawingExportPlan({
+        project,
+        lang,
+        lines: projectItems
+          .filter(({ job }) => job.items.length)
+          .map(({ job, item }) => {
+            const trackingId = getItemTrackingId(project, job, item);
+            return {
+              item,
+              job,
+              sku: getItemSku(project, job, item),
+              trackingId,
+              trackingUrl: getItemTrackingUrl(trackingId)
+            };
+          }),
+        supplierFiles: getProgressRows(project, "projectFiles").filter(
+          (file) => file.file_group === "supplier_shop_drawing"
+        )
+      }),
+    [projectItems, project, lang]
+  );
   const itemPage = usePaginatedRows(projectItems, { resetKey: project.key });
   const projectStage = getProjectStage(project);
   const status = getProjectStatus(project, lang);
@@ -1188,73 +1151,21 @@ function ClientProjectDetail({
       message: copy(lang, "正在准备带追踪二维码的三视图…", "Preparing the three-view with tracking QR…")
     });
 
-    let sourceObjectUrl = "";
-    let qrObjectUrl = "";
     try {
-      const response = await window.fetch(drawingPreview.url);
-      if (!response.ok) throw new Error(`Drawing download failed (${response.status}).`);
-      const sourceBlob = await response.blob();
-      const filename = `${safeDownloadName(`${drawingPreview.sku}-${drawingPreview.itemName}`)}-three-view.png`;
-
-      if (drawingPreview.drawing.trackingEmbedded) {
-        triggerBlobDownload(sourceBlob, filename);
-      } else {
-        const qrElement = document.getElementById(getDrawingQrElementId(drawingPreview.trackingId));
-        if (!qrElement) throw new Error("The tracking QR code is not ready yet.");
-
-        sourceObjectUrl = URL.createObjectURL(sourceBlob);
-        const sourceImage = await loadBrowserImage(sourceObjectUrl);
-        const qrMarkup = new window.XMLSerializer().serializeToString(qrElement);
-        qrObjectUrl = URL.createObjectURL(new window.Blob([qrMarkup], { type: "image/svg+xml;charset=utf-8" }));
-        const qrImage = await loadBrowserImage(qrObjectUrl);
-        const usesCurrentSheetLayout = drawingPreview.drawing.promptVersion === "three-view-v1";
-        const sourceWidth = sourceImage.naturalWidth || sourceImage.width;
-        const sourceHeight = sourceImage.naturalHeight || sourceImage.height;
-        const exportScale = Math.max(1, 2000 / sourceWidth);
-        const exportWidth = Math.round(sourceWidth * exportScale);
-        const exportHeight = Math.round(sourceHeight * exportScale);
-        const legacyStripHeight = usesCurrentSheetLayout ? 0 : Math.round(exportWidth * 0.113);
-        const canvas = document.createElement("canvas");
-        canvas.width = exportWidth;
-        canvas.height = exportHeight + legacyStripHeight;
-        const context = canvas.getContext("2d");
-        if (!context) throw new Error("Canvas export is not supported in this browser.");
-        context.fillStyle = "#ffffff";
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(sourceImage, 0, 0, exportWidth, exportHeight);
-
-        if (usesCurrentSheetLayout) {
-          drawTrackingPanel(context, {
-            x: exportWidth * (1470 / 2000),
-            y: exportHeight * (754 / 1300),
-            width: exportWidth * (470 / 2000),
-            height: exportHeight * (226 / 1300),
-            qrImage,
-            sku: drawingPreview.sku,
-            trackingId: drawingPreview.trackingId
-          });
-        } else {
-          drawTrackingPanel(context, {
-            x: 0,
-            y: exportHeight,
-            width: exportWidth,
-            height: legacyStripHeight,
-            qrImage,
-            sku: drawingPreview.sku,
-            trackingId: drawingPreview.trackingId,
-            legacy: true
-          });
-        }
-
-        const downloadBlob = await new Promise((resolve, reject) => {
-          canvas.toBlob(
-            (blob) => (blob ? resolve(blob) : reject(new Error("The drawing export could not be created."))),
-            "image/png",
-            1
-          );
-        });
-        triggerBlobDownload(downloadBlob, filename);
-      }
+      const entry = drawingPlan.entries.find(
+        (candidate) =>
+          candidate.url === drawingPreview.url &&
+          (!candidate.trackingId || candidate.trackingId === drawingPreview.trackingId)
+      );
+      if (!entry) throw new Error(copy(lang, "請重新整理項目後再試。", "Please refresh the project and try again."));
+      const { downloadProjectDrawings } = await import("../projectDrawingDownload.js");
+      await downloadProjectDrawings({
+        project,
+        lang,
+        plan: { entries: [entry], pending: [] },
+        single: true,
+        signal: new AbortController().signal
+      });
 
       setDrawingDownloadState({
         status: "success",
@@ -1269,9 +1180,6 @@ function ClientProjectDetail({
           copy(lang, "三视图下载失败，请稍后重试。", "Download failed. Please try again.")
         )
       });
-    } finally {
-      if (sourceObjectUrl) URL.revokeObjectURL(sourceObjectUrl);
-      if (qrObjectUrl) URL.revokeObjectURL(qrObjectUrl);
     }
   };
 
@@ -1459,6 +1367,7 @@ function ClientProjectDetail({
                 {actionCount} {copy(lang, "项待处理", actionCount === 1 ? "action" : "actions")}
               </span>
             )}
+            <ProjectDrawingDownload key={String(project.key) + lang} project={project} plan={drawingPlan} lang={lang} />
           </div>
           <div className="cho-project-table" role="table">
             <div className="cho-project-table-head" role="row">
