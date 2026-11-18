@@ -58,7 +58,7 @@ jobs:
             python3 - <<'PY'
           import os, re, pathlib
           key = os.environ.get("NEW_GEMINI_KEY", "").strip()
-          if not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", key):
+          if not re.fullmatch(r"[A-Za-z0-9._~+/=-]{20,4096}", key):
               raise SystemExit("Save a valid GEMINI_API_KEY repository secret before rotating.")
           pathlib.Path(os.environ["RUNNER_TEMP"], "crafton-gemini-key").write_text(key, encoding="utf-8")
           PY

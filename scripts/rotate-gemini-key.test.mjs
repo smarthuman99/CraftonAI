@@ -29,3 +29,8 @@ test("refuses ambiguous duplicates and multiline or shell-like key values", () =
   for (const invalid of ["", "short", key + "\nEVIL=1", key + ";whoami", key + '"'])
     assert.throws(() => replaceGeminiKey("GEMINI_API_KEY=old\n", invalid), /Invalid/);
 });
+
+test("accepts opaque keys with base64 token punctuation and long key formats", () => {
+  const opaque = "AQ." + "aB01_+/~-".repeat(70) + "==";
+  assert.equal(parseEnv(replaceGeminiKey("GEMINI_API_KEY=old\n", opaque)).GEMINI_API_KEY, opaque);
+});

@@ -10,7 +10,7 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const report = (event, details = {}) => console.log(JSON.stringify({ event, ...details }));
 
 export function replaceGeminiKey(original, key) {
-  if (!/^[A-Za-z0-9_-]{20,256}$/.test(key)) throw new Error("Invalid Gemini key format; expected a single token.");
+  if (!/^[A-Za-z0-9._~+/=-]{20,4096}$/.test(key)) throw new Error("Invalid Gemini key format; expected a single token.");
   const pattern = /^([ \t]*(?:export[ \t]+)?GEMINI_API_KEY[ \t]*=)[^\r\n]*/gm;
   const matches = [...original.matchAll(pattern)];
   if (matches.length > 1) throw new Error("Duplicate GEMINI_API_KEY entries; manual review required.");
