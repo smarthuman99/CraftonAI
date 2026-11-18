@@ -1,0 +1,69 @@
+name: Update Crafton Gemini key
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Inspect the runtime or rotate GEMINI_API_KEY and verify workers
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, rotate]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crafton-production
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate configuration replacement
+        run: node --test scripts/rotate-gemini-key.test.mjs
+      - name: Set up existing deployment SSH access
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+      - name: Inspect or update server key
+        env:
+          VPS_HOST: ${{ secrets.VPS_IP }}
+          VPS_LOGIN: ${{ secrets.VPS_USER }}
+          NEW_GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MAINTENANCE_MODE: ${{ inputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          target="$VPS_LOGIN@$VPS_HOST"
+          remote_dir="$(ssh "$target" 'umask 077; mktemp -d /tmp/crafton-gemini-XXXXXXXX')"
+          [[ "$remote_dir" =~ ^/tmp/crafton-gemini-[A-Za-z0-9]+$ ]]
+          local_key="$RUNNER_TEMP/crafton-gemini-key"
+          cleanup() {
+            rm -f -- "$local_key"
+            ssh "$target" "rm -f -- '$remote_dir/key' '$remote_dir/rotate-gemini-key.mjs'; rmdir -- '$remote_dir'" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          scp -q scripts/rotate-gemini-key.mjs "$target:$remote_dir/rotate-gemini-key.mjs"
+          if [ "$MAINTENANCE_MODE" = rotate ]; then
+            python3 - <<'PY'
+          import os, re, pathlib
+          key = os.environ.get("NEW_GEMINI_KEY", "").strip()
+          if not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", key):
+              raise SystemExit("Save a valid GEMINI_API_KEY repository secret before rotating.")
+          pathlib.Path(os.environ["RUNNER_TEMP"], "crafton-gemini-key").write_text(key, encoding="utf-8")
+          PY
+            scp -q "$local_key" "$target:$remote_dir/key"
+            ssh "$target" "node '$remote_dir/rotate-gemini-key.mjs' rotate '$remote_dir/key'"
+          else
+            ssh "$target" "node '$remote_dir/rotate-gemini-key.mjs' inspect"
+          fi
