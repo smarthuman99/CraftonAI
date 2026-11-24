@@ -43,7 +43,7 @@ export function drawingDimensions(item = {}) {
   const sourceText = text;
   const notes = [],
     missing = [];
-  let pieceCount;
+  let pieceCount, sectionDimensions;
   const add = (key, value, unit = "mm") => {
     const n = round(Number(value) * units[unit.toLowerCase()]);
     if (!(n > 0 && n <= 100000)) {
@@ -104,6 +104,10 @@ export function drawingDimensions(item = {}) {
             issues.push("conflicting_sections");
           else {
             ["width", "depth", "height"].forEach((key, i) => add(key, sections[i + 1]));
+            sectionDimensions = {
+              count: Number(sections[4]),
+              values: { width: Number(sections[5]), depth: Number(sections[6]), height: Number(sections[7]) }
+            };
             notes.push(`${sections[4]} SECTIONS · EACH W ${sections[5]} × D ${sections[6]} × H ${sections[7]} mm`);
           }
         } else if (incomplete) {
@@ -168,7 +172,23 @@ export function drawingDimensions(item = {}) {
     unit: "mm",
     ...(notes.length ? { notes } : {}),
     ...(missing.length ? { missing } : {}),
+    ...(sectionDimensions ? { sections: sectionDimensions } : {}),
     ...(pieceCount ? { pieceCount, scope: "per_piece" } : {})
+  };
+}
+
+// Explicit section dimensions describe a unit, not a stretched whole assembly.
+// Keep overall values for the schedule/title block and label the pictured unit.
+export function drawingViewDimensions(dimensions) {
+  if (!dimensions.sections) return dimensions;
+  return {
+    ...dimensions,
+    values: dimensions.sections.values,
+    scope: "single_section",
+    notes: [
+      `SINGLE SECTION SHOWN · ${dimensions.sections.count} SECTIONS · OVERALL W ${dimensions.values.width} mm`,
+      ...dimensions.notes
+    ]
   };
 }
 

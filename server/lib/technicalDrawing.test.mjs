@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import sharp from "sharp";
-import { drawingDimensions, dimensionSummary } from "./drawingDimensions.mjs";
+import { drawingDimensions, drawingViewDimensions, dimensionSummary } from "./drawingDimensions.mjs";
 import { prepareDrawingViews, dimensionedViewsSvg } from "./drawingDimensionLayout.mjs";
 import {
   buildItemTrackingUrl,
@@ -114,6 +114,8 @@ test("holds ambiguous, contradictory and physically invalid dimensions instead o
 test("keeps source section sizes and per-piece sizes distinct from overall dimensions", () => {
   const sofa = drawingDimensions({ dimensions_text: "4499 x 942 x 762 2 sections 2249.5 x 942 x762" });
   assert.deepEqual(sofa.values, { width: 4499, depth: 942, height: 762 });
+  assert.deepEqual(sofa.sections, { count: 2, values: { width: 2249.5, depth: 942, height: 762 } });
+  assert.equal(drawingViewDimensions(sofa).values.width, 2249.5);
   assert.match(sofa.notes[0], /EACH W 2249.5/);
   assert.deepEqual(drawingDimensions({ dimensions_text: "4400 x 942 x 762 2 sections 2249.5 x 942 x762" }).values, {});
   const desk = drawingDimensions({ dimensions_text: "2 pieces of 1500 x 1100 x 750" });
@@ -145,7 +147,7 @@ async function fixtureViews(extra = "") {
   return { mimeType: "image/png", dataBase64: buffer.toString("base64") };
 }
 
-test("isolates each view and renders exact source dimension arrows at common scale", async () => {
+test("isolates each view and renders exact source dimension arrows without stretching linework", async () => {
   const generatedImage = await fixtureViews();
   generatedImage.views = await prepareDrawingViews(generatedImage);
   assert.deepEqual(Object.keys(generatedImage.views), ["top", "front", "side"]);
@@ -169,6 +171,38 @@ test("isolates each view and renders exact source dimension arrows at common sca
   const prompt = buildGenerationPrompt({ item: { dimensions_text: confirmedText } });
   assert.ok(prompt.includes(JSON.stringify(dims.values)));
   assert.match(prompt, /Do not infer seat width from seat depth/);
+});
+
+test("does not stretch a section sofa to the whole assembly width or shrink the elevations", async () => {
+  const text = "4499 x 942 x 762 2 sections 2249.5 x 942 x762";
+  const dims = drawingDimensions({ dimensions_text: text });
+  // Actual crop proportions from the affected Dorset House drawing.
+  const views = Object.fromEntries(
+    Object.entries({ top: [693, 274], front: [696, 242], side: [300, 245] }).map(([name, [width, height]]) => [
+      name,
+      { ...image, width, height }
+    ])
+  );
+  const svg = dimensionedViewsSvg(views, dims);
+  assert.match(svg, /SINGLE SECTION SHOWN/);
+  assert.match(svg, /OVERALL W 4499 mm/);
+  assert.match(svg, /2249.5 mm/);
+  assert.doesNotMatch(svg, /preserveAspectRatio="none"/);
+  const topImageY = Number(svg.match(/data-drawing-view="top"[^>]+\sy="([\d.]+)"/)[1]);
+  assert.ok(topImageY - 42 > 226, "dimension text must clear both source notes");
+  const pictures = [...svg.matchAll(/<image data-drawing-view="(\w+)"[^>]+width="([\d.]+)" height="([\d.]+)"/g)];
+  assert.equal(pictures.length, 3);
+  for (const [, name, width, height] of pictures) {
+    assert.ok(Math.abs(Number(width) / Number(height) - views[name].width / views[name].height) < 0.001, name);
+    if (name === "front") {
+      assert.ok(Number(width) > 650, "wide items should use the available drawing area");
+      assert.ok(Number(height) > 220, "the sofa must not collapse to the previous 71 px height");
+    }
+  }
+  const prompt = buildGenerationPrompt({ item: { dimensions_text: text } });
+  assert.match(prompt, /Draw ONE section only/);
+  assert.match(prompt, /"width":2249.5/);
+  assert.deepEqual(dimensionSummary(dims), ["W 4499 x D 942 x H 762 mm"], "the schedule retains overall dimensions");
 });
 
 test("rejects overlapping or missing generated views before adding dimension labels", async () => {

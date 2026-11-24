@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { drawingViewDimensions } from "./drawingDimensions.mjs";
 const layoutError = (message) => Object.assign(new Error(message), { code: "DRAWING_LAYOUT_REVIEW" });
 
 // Isolate connected linework, not fixed pixels: image models can move views and
@@ -156,30 +157,49 @@ function vertical(y1, y2, objectX, x, label, key) {
 }
 
 export function dimensionedViewsSvg(views, dimensions) {
+  dimensions = drawingViewDimensions(dimensions);
   const v = dimensions.values;
   const pieceCount = dimensions.scope === "per_piece" ? dimensions.pieceCount : 1;
   const displayWidth = v.width * pieceCount;
-  const scale =
-    v.width && v.depth && v.height ? Math.min(420 / displayWidth, 360 / v.depth, 285 / v.height, 270 / v.depth) : null;
+  const wide = displayWidth && v.height && displayWidth / v.height > 2.2;
+  const noteBottom = dimensions.notes?.length ? 180 + (dimensions.notes.length - 1) * 26 : 140;
+  const topBaseline = Math.max(505, noteBottom + 80 + 270);
+  const slots = [
+    ["top", wide ? 520 : 710, topBaseline, displayWidth, v.depth, wide ? 780 : 500, 270, "PLAN / TOP"],
+    ["front", wide ? 520 : 410, 912, displayWidth, v.height, wide ? 760 : 420, 285, "FRONT / ELEVATION"],
+    ["side", wide ? 1190 : 1070, 912, v.depth, v.height, wide ? 300 : 360, 285, "RIGHT SIDE / SECTION"]
+  ].map(([name, cx, baseline, a, b, maxW, maxH, label]) => {
+    const view = views[name];
+    if (!view) throw new Error(`Missing ${name} drawing view.`);
+    // Use a uniform pixel scale. Dimensions are annotations, not permission to
+    // warp the linework to a numeric aspect ratio (especially section vs overall).
+    const ratio = view.width / view.height;
+    const baseW = a || (b ? b * ratio : view.width);
+    const baseH = baseW / ratio;
+    return { name, cx, baseline, maxW, maxH, label, view, baseW, baseH };
+  });
+  const commonScale =
+    v.width && v.depth && v.height
+      ? Math.min(...slots.flatMap(({ maxW, maxH, baseW, baseH }) => [maxW / baseW, maxH / baseH]))
+      : null;
   const defs = `<defs><marker id="dim-arrow" viewBox="0 0 10 8" refX="10" refY="4" markerWidth="9" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M10 4L0 0L0 8Z" fill="#211f1b"/></marker></defs>`;
   const boxes = {};
   let svg = defs;
   if (dimensions.notes?.length)
-    svg += `<text x="85" y="180" font-family="Arial,sans-serif" font-size="18" fill="#73695f">${dimensions.notes.join(" · ").replaceAll("&", "&amp;").replaceAll("<", "&lt;")}</text>`;
-  for (const [name, cx, baseline, a, b, maxW, maxH, label] of [
-    ["top", 710, 505, displayWidth, v.depth, 500, 270, "PLAN / TOP"],
-    ["front", 410, 912, displayWidth, v.height, 420, 285, "FRONT / ELEVATION"],
-    ["side", 1070, 912, v.depth, v.height, 360, 285, "RIGHT SIDE / SECTION"]
-  ]) {
-    const view = views[name];
-    if (!view) throw new Error(`Missing ${name} drawing view.`);
-    const ratio = a && b ? a / b : view.width / view.height;
-    const w = scale ? a * scale : Math.min(maxW, maxH * ratio);
-    const h = scale ? b * scale : w / ratio;
+    svg += dimensions.notes
+      .map(
+        (note, i) =>
+          `<text x="85" y="${180 + i * 26}" font-family="Arial,sans-serif" font-size="18" fill="#73695f">${note.replaceAll("&", "&amp;").replaceAll("<", "&lt;")}</text>`
+      )
+      .join("");
+  for (const { name, cx, baseline, maxW, maxH, label, view, baseW, baseH } of slots) {
+    const scale = commonScale || Math.min(maxW / baseW, maxH / baseH);
+    const w = baseW * scale,
+      h = baseH * scale;
     const x = cx - w / 2,
       y = baseline - h;
     boxes[name] = { x, y, w, h, right: x + w, bottom: baseline };
-    svg += `<image href="data:${view.mimeType};base64,${view.dataBase64}" x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" preserveAspectRatio="none"/><text x="${cx}" y="${baseline + (name === "front" ? 75 : 40)}" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" fill="#211f1b">${label}</text>`;
+    svg += `<image data-drawing-view="${name}" href="data:${view.mimeType};base64,${view.dataBase64}" x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" preserveAspectRatio="xMidYMid meet"/><text x="${cx}" y="${baseline + (name === "front" ? 75 : 40)}" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" fill="#211f1b">${label}</text>`;
   }
   const t = boxes.top,
     f = boxes.front,
