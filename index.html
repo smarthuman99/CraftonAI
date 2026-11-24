@@ -88,6 +88,12 @@
         };
 
         window.addEventListener('unhandledrejection', function(event) {
+          // Extensions may read a cloned fetch body after our request has been cancelled.
+          // Only our explicitly marked thumbnail cancellation is an expected outcome.
+          if (event.reason?.name === 'AbortError' && event.reason.code === 'CRAFTON_THUMBNAIL_CANCELLED') {
+            event.preventDefault();
+            return;
+          }
           var reason = event.reason || 'Unknown Rejection';
           var errorMsg = typeof reason === 'object' ? (reason.message || reason.toString()) : reason;
           var stack = reason.stack || '';

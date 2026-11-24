@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 import { createThumbnailCache, preloadThumbnailImage } from "./portalThumbnailCache.mjs";
 import { thumbnailReferenceKey, thumbnailSourceVersion } from "../shared/portalThumbnailIdentity.mjs";
 const pause = (ms = 15) => new Promise((r) => setTimeout(r, ms));
@@ -84,6 +86,7 @@ test("visible images precede next-screen work; leaving a project cancels unstart
   item.cancel();
   await failed;
   assert.equal(signal.aborted, true);
+  assert.equal(signal.reason.code, "CRAFTON_THUMBNAIL_CANCELLED");
 });
 
 test("failed authorization retries and image-only version changes invalidate cache", async () => {
@@ -187,6 +190,70 @@ test("leaving a project cancels background image downloads and prevents queued d
   await pause();
   assert.equal(loads.length, 3);
   assert.ok(loads.every((load) => load.signal.aborted));
+  assert.ok(loads.every((load) => load.signal.reason.code === "CRAFTON_THUMBNAIL_CANCELLED"));
+});
+
+test("cancelling a preloading image leaves its completed authorization response alone", async () => {
+  let requestSignal;
+  const cache = createThumbnailCache(
+    async (body, { signal }) => {
+      requestSignal = signal;
+      return response(body);
+    },
+    {
+      batchDelay: 1,
+      loadImage: (_url, { signal }) =>
+        new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason)))
+    }
+  );
+  const item = cache.subscribe({ jobId: "departing", index: 0 });
+  const failure = assert.rejects(item.promise, { name: "AbortError", code: "CRAFTON_THUMBNAIL_CANCELLED" });
+  await pause();
+  item.cancel();
+  await failure;
+  assert.equal(requestSignal.aborted, false);
+});
+
+test("global error handling ignores marked thumbnail cancellations but reports genuine failures", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const handlers = new Map(),
+    overlays = [];
+  const window = { addEventListener: (name, handler) => handlers.set(name, handler) };
+  const document = {
+    getElementById: () => null,
+    createElement: () => ({ style: {}, appendChild() {} }),
+    body: { appendChild: (element) => overlays.push(element) }
+  };
+  runInNewContext(script, { window, document });
+  const cache = createThumbnailCache(
+    async () => {
+      throw new Error("Unexpected request");
+    },
+    { batchDelay: 1 }
+  );
+  const item = cache.subscribe({ jobId: "cancelled", index: 0 });
+  const outcome = item.promise.catch((error) => error);
+  item.cancel();
+  let prevented = false;
+  handlers.get("unhandledrejection")({
+    reason: await outcome,
+    preventDefault() {
+      prevented = true;
+    }
+  });
+  assert.equal(prevented, true);
+  assert.equal(overlays.length, 0);
+  for (const reason of [new Error("Real failure"), new DOMException("Unclassified abort", "AbortError")])
+    handlers.get("unhandledrejection")({
+      reason,
+      preventDefault() {
+        assert.fail("Unexpected suppression");
+      }
+    });
+  assert.equal(overlays.length, 2);
+  window.onerror("Rendering failure", "app.js", 1, 1, new Error("Rendering failure"));
+  assert.equal(overlays.length, 3);
 });
 
 test("a transient image failure refreshes authorization and retries only the thumbnail", async () => {

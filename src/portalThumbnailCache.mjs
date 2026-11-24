@@ -1,6 +1,10 @@
 import { thumbnailReferenceKey } from "../shared/portalThumbnailIdentity.mjs";
 
-const aborted = () => Object.assign(new Error("Preview no longer needed"), { name: "AbortError" });
+const aborted = () =>
+  Object.assign(new Error("Preview no longer needed"), {
+    name: "AbortError",
+    code: "CRAFTON_THUMBNAIL_CANCELLED"
+  });
 export function createThumbnailCache(
   request,
   { maxEntries = 480, now = Date.now, batchDelay = 40, onTiming = () => {}, loadImage = async () => {} } = {}
@@ -81,10 +85,11 @@ export function createThumbnailCache(
       const group = candidates[0].group;
       const batch = candidates.filter((e) => e.group === group).slice(0, 24);
       const controller = new AbortController();
+      const task = { entries: batch, controller, pending: true };
       for (const entry of batch) {
         queued.delete(entry);
         entry.state = "active";
-        entry.batch = { entries: batch, controller };
+        entry.batch = task;
       }
       active++;
       const started = now();
@@ -139,6 +144,7 @@ export function createThumbnailCache(
             }
         })
         .finally(() => {
+          task.pending = false;
           active--;
           schedule();
         });
@@ -188,9 +194,11 @@ export function createThumbnailCache(
         queued.delete(entry);
         downloads.delete(entry);
         if (cache.get(key) === entry) cache.delete(key);
-        entry.reject(aborted());
-        entry.downloadController?.abort();
-        if (entry.batch?.entries.every((e) => !e.watchers.size)) entry.batch.controller.abort();
+        const reason = aborted();
+        entry.reject(reason);
+        entry.downloadController?.abort(reason);
+        if (entry.batch?.pending && entry.batch.entries.every((e) => !e.watchers.size))
+          entry.batch.controller.abort(reason);
       }
     };
   }
