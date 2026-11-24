@@ -1,57 +1,106 @@
 import sharp from "sharp";
 const layoutError = (message) => Object.assign(new Error(message), { code: "DRAWING_LAYOUT_REVIEW" });
 
-// The generator supplies unlabelled views in three isolated slots. White gutters
-// are verified before cropping: a misplaced view must not receive misleading arrows.
-export async function prepareDrawingViews(generatedImage) {
+// Isolate connected linework, not fixed pixels: image models can move views and
+// add captions despite the prompt. Captions are not used as dimension evidence.
+export async function prepareDrawingViews(generatedImage, dimensions = { values: {} }) {
   const input = Buffer.from(generatedImage.dataBase64, "base64");
-  const { data, info } = await sharp(input)
+  const width = 1200,
+    height = 675;
+  const data = await sharp(input)
     .flatten({ background: "#fff" })
-    .resize(1200, 675, { fit: "fill" })
+    .resize(width, height, { fit: "fill" })
     .greyscale()
     .raw()
-    .toBuffer({ resolveWithObject: true });
-  const dark = (x, y) => data[y * info.width + x] < 190;
-  const count = (x0, y0, x1, y1) => {
-    let n = 0;
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (dark(x, y)) n++;
-    return n;
-  };
-  if (count(0, 325, 1200, 350) > 12 || count(588, 350, 612, 675) > 12) {
-    throw layoutError("Drawing layout needs review: generated views overlap the required white gutters.");
-  }
-  const regions = { top: [0, 0, 1200, 325], front: [0, 350, 588, 675], side: [612, 350, 1200, 675] };
-  const views = {};
-  for (const [name, [x0, y0, x1, y1]] of Object.entries(regions)) {
-    let left = x1,
-      right = x0,
-      top = y1,
-      bottom = y0,
-      ink = 0;
-    for (let y = y0; y < y1; y++)
-      for (let x = x0; x < x1; x++) {
-        if (!dark(x, y)) continue;
-        ink++;
-        left = Math.min(left, x);
-        right = Math.max(right, x);
-        top = Math.min(top, y);
-        bottom = Math.max(bottom, y);
-      }
-    if (
-      ink < 100 ||
-      right - left < 35 ||
-      bottom - top < 25 ||
-      left <= x0 + 2 ||
-      right >= x1 - 3 ||
-      top <= y0 + 2 ||
-      bottom >= y1 - 3
-    ) {
-      throw layoutError(`Drawing layout needs review: ${name} view is missing or clipped.`);
+    .toBuffer();
+  const ink = Uint8Array.from(data, (value) => (value < 190 ? 1 : 0));
+  // A shared drafting floor line can join the two elevations. Remove only long
+  // continuous baselines in the lower half, never furniture-sized edges.
+  for (let y = Math.floor(height * 0.55); y < height; y++) {
+    let run = 0,
+      longest = 0;
+    for (let x = 0; x < width; x++) {
+      run = ink[y * width + x] ? run + 1 : 0;
+      longest = Math.max(longest, run);
     }
-    // Crop the full-resolution source using the measured ink bounds.
-    const meta = await sharp(input).metadata();
-    const sx = meta.width / 1200,
-      sy = meta.height / 675;
+    if (longest > width * 0.6) ink.fill(0, y * width, (y + 1) * width);
+  }
+  const seen = new Uint8Array(ink.length),
+    queue = new Int32Array(ink.length),
+    components = [];
+  for (let i = 0; i < ink.length; i++) {
+    if (!ink[i] || seen[i]) continue;
+    let head = 0,
+      tail = 1,
+      left = width,
+      right = 0,
+      top = height,
+      bottom = 0;
+    queue[0] = i;
+    seen[i] = 1;
+    while (head < tail) {
+      const at = queue[head++],
+        x = at % width,
+        y = Math.floor(at / width);
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx,
+            ny = y + dy,
+            index = ny * width + nx;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height || seen[index] || !ink[index]) continue;
+          seen[index] = 1;
+          queue[tail++] = index;
+        }
+    }
+    if (tail >= 100 && right - left >= 35 && bottom - top >= 28) components.push({ left, right, top, bottom });
+  }
+  // Disconnected upholstery outlines can belong to the same view; their bounds
+  // overlap. Small glyphs remain excluded rather than being included in the crop.
+  for (let changed = true; changed; ) {
+    changed = false;
+    outer: for (let i = 0; i < components.length; i++)
+      for (let j = i + 1; j < components.length; j++) {
+        const a = components[i],
+          b = components[j];
+        if (a.left > b.right + 4 || b.left > a.right + 4 || a.top > b.bottom + 4 || b.top > a.bottom + 4) continue;
+        components[i] = {
+          left: Math.min(a.left, b.left),
+          right: Math.max(a.right, b.right),
+          top: Math.min(a.top, b.top),
+          bottom: Math.max(a.bottom, b.bottom)
+        };
+        components.splice(j, 1);
+        changed = true;
+        break outer;
+      }
+  }
+  if (components.length !== 3)
+    throw layoutError("Drawing layout needs review: expected three separate complete views.");
+  components.sort((a, b) => a.top - b.top);
+  const [topView, ...lower] = components;
+  lower.sort((a, b) => a.left - b.left);
+  if (
+    topView.bottom >= Math.min(...lower.map((b) => b.top)) ||
+    lower[0].right >= lower[1].left ||
+    Math.abs(lower[0].bottom - lower[1].bottom) > height * 0.15
+  )
+    throw layoutError("Drawing layout needs review: views overlap or are not orthographic triptych layout.");
+  const meta = await sharp(input).metadata(),
+    sx = meta.width / width,
+    sy = meta.height / height;
+  const views = {};
+  for (const [name, region] of [
+    ["top", topView],
+    ["front", lower[0]],
+    ["side", lower[1]]
+  ]) {
+    const { left, right, top, bottom } = region;
+    if (left <= 2 || right >= width - 3 || top <= 2 || bottom >= height - 3)
+      throw layoutError(`Drawing layout needs review: ${name} view is clipped.`);
     const box = {
       left: Math.floor(left * sx),
       top: Math.floor(top * sy),
@@ -60,12 +109,33 @@ export async function prepareDrawingViews(generatedImage) {
     };
     box.width = Math.min(box.width, meta.width - box.left);
     box.height = Math.min(box.height, meta.height - box.top);
-    const buffer = await sharp(input).extract(box).png().toBuffer();
+    let flip = false;
+    if (name === "side" && dimensions.values.seatHeight && dimensions.values.height > dimensions.values.seatHeight) {
+      // Locate the raised backrest in the upper band, then orient it to the left.
+      let sum = 0,
+        count = 0;
+      const bandBottom = Math.min(bottom, top + Math.max(4, Math.floor((bottom - top) * 0.12)));
+      for (let y = top; y <= bandBottom; y++)
+        for (let x = left; x <= right; x++)
+          if (ink[y * width + x]) {
+            sum += x;
+            count++;
+          }
+      const relative = count ? (sum / count - left) / (right - left) : 0.5;
+      if (relative > 0.56) flip = true;
+      else if (relative > 0.44)
+        throw layoutError("Drawing layout needs review: seating side orientation is ambiguous.");
+    }
+    let pipeline = sharp(input).extract(box);
+    if (flip) pipeline = pipeline.flop();
+    const buffer = await pipeline.png().toBuffer();
     views[name] = {
       mimeType: "image/png",
       dataBase64: buffer.toString("base64"),
       width: box.width,
-      height: box.height
+      height: box.height,
+      sourceBox: box,
+      mirrored: flip
     };
   }
   return views;

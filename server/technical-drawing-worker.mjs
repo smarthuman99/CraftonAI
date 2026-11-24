@@ -118,6 +118,7 @@ async function processPendingItem({ job, item, index }) {
               : "generation_failed",
         provider_http_status: Number(error?.httpStatus) || null,
         diagnostic_geometry_path: error.diagnosticGeometryPath || null,
+        diagnostic_geometry_key: error.diagnosticGeometryKey || null,
         layout_review_reason: error?.code === "DRAWING_LAYOUT_REVIEW" ? error.message : null,
         retry_after: retryAfter,
         updated_at: new Date().toISOString()

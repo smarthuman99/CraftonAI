@@ -8,6 +8,7 @@ import {
   buildTechnicalDrawingSvg,
   buildGenerationPrompt,
   generateTechnicalDrawingForItem,
+  drawingGeometryInputKey,
   extractGeminiImage,
   formalizeTechnicalDrawing,
   refreshTechnicalDrawingPng,
@@ -113,7 +114,7 @@ test("holds ambiguous, contradictory and physically invalid dimensions instead o
 async function fixtureViews(extra = "") {
   const buffer = await sharp(
     Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675"><rect width="1200" height="675" fill="white"/><g fill="none" stroke="black" stroke-width="2"><rect x="400" y="40" width="400" height="240"/><rect x="100" y="380" width="300" height="250"/><rect x="800" y="380" width="250" height="250"/>${extra}</g></svg>`
+      `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675"><rect width="1200" height="675" fill="white"/><g fill="none" stroke="black" stroke-width="2"><rect x="400" y="40" width="400" height="240"/><rect x="100" y="380" width="300" height="250"/><path d="M800 380H850V480H1050V630H800Z"/>${extra}</g></svg>`
     )
   )
     .png()
@@ -149,16 +150,34 @@ test("isolates each view and renders exact source dimension arrows at common sca
 
 test("rejects overlapping or missing generated views before adding dimension labels", async () => {
   await assert.rejects(
-    prepareDrawingViews(await fixtureViews('<line x1="200" y1="300" x2="200" y2="380"/>')),
-    /gutters/
+    prepareDrawingViews(await fixtureViews('<line x1="400" y1="270" x2="400" y2="380"/>')),
+    /three separate/
   );
   const blank = await sharp({ create: { width: 1200, height: 675, channels: 3, background: "#fff" } })
     .png()
     .toBuffer();
   await assert.rejects(
     prepareDrawingViews({ mimeType: "image/png", dataBase64: blank.toString("base64") }),
-    /missing or clipped/
+    /three separate/
   );
+});
+
+test("removes model-added captions and a shared baseline and corrects a reversed seating side view", async () => {
+  const input = await sharp(
+    Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675"><rect width="1200" height="675" fill="white"/><g fill="none" stroke="black" stroke-width="2"><rect x="200" y="30" width="300" height="250"/><rect x="200" y="380" width="300" height="250"/><path d="M800 480H950V380H1050V630H800Z"/><path d="M80 630H1120"/></g><g font-family="Arial" font-size="16" fill="black"><text x="250" y="310">PLAN / TOP</text><text x="250" y="335">x=25-75%, y=6-43%</text><text x="250" y="660">FRONT / ELEVATION</text><text x="850" y="660">RIGHT SIDE</text></g></svg>`
+    )
+  )
+    .png()
+    .toBuffer();
+  const views = await prepareDrawingViews(
+    { mimeType: "image/png", dataBase64: input.toString("base64") },
+    drawingDimensions({ dimensions_text: confirmedText })
+  );
+  assert.equal(views.side.mirrored, true);
+  assert.equal(views.front.mirrored, false);
+  assert.ok(views.top.sourceBox.top + views.top.height < 300, "caption must not affect object bounds");
+  assert.ok(views.front.sourceBox.top + views.front.height < 640, "shared floor and captions must not join the views");
 });
 
 test("generation stores an immutable annotated revision while retaining the previous drawing", async () => {
@@ -211,6 +230,26 @@ test("generation stores an immutable annotated revision while retaining the prev
     assert.equal(uploads[0].options.upsert, false);
     assert.equal((await sharp(uploads[1].data).metadata()).width, 2000);
     assert.equal(result.review_status, "reference_only");
+    item.technical_drawing = {
+      ...item.technical_drawing,
+      diagnostic_geometry_path: result.geometry_storage_path,
+      diagnostic_geometry_key: drawingGeometryInputKey(item)
+    };
+    globalThis.fetch = async () => {
+      throw new Error("Saved geometry must not call the model again.");
+    };
+    const replay = await generateTechnicalDrawingForItem({
+      supabase,
+      item,
+      job: { id: "job" },
+      itemIndex: 0,
+      userId: "owner"
+    });
+    assert.equal(replay.dimension_annotations.values.height, 640);
+    assert.notEqual(
+      drawingGeometryInputKey({ ...item, dimensions_text: "W 700 D 570 H 640" }),
+      result.geometry_input_key
+    );
   } finally {
     globalThis.fetch = oldFetch;
     if (oldKey === undefined) delete process.env.GEMINI_API_KEY;
