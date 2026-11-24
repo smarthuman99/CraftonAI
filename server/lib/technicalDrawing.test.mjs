@@ -206,8 +206,10 @@ test("generation stores an immutable annotated revision while retaining the prev
       result.draft_storage_path,
       /owner\/derived\/job\/technical-drawings\/item-1-three-view-v2-dimensions-[\da-f-]+-draft.png/
     );
-    assert.equal(uploads.length, 1);
-    assert.equal((await sharp(uploads[0].data).metadata()).width, 2000);
+    assert.equal(uploads.length, 2);
+    assert.equal(uploads[0].path, result.geometry_storage_path);
+    assert.equal(uploads[0].options.upsert, false);
+    assert.equal((await sharp(uploads[1].data).metadata()).width, 2000);
     assert.equal(result.review_status, "reference_only");
   } finally {
     globalThis.fetch = oldFetch;

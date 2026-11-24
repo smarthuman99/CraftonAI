@@ -533,10 +533,24 @@ export async function generateTechnicalDrawingForItem({ supabase, job, result, i
     projectName: result?.project?.name || job.project_name,
     references
   });
-  generatedImage.views = await prepareDrawingViews(generatedImage);
-  const dimensions = drawingDimensions(item);
   const itemToken = clean(item.id || item.item_code || `item-${itemIndex + 1}`, 80).replace(/[^a-zA-Z0-9_-]+/g, "-");
   const basePath = `${userId || "unowned"}/derived/${job.id}/technical-drawings/${itemToken}-${DRAWING_PROMPT_VERSION}-${randomUUID()}`;
+  const geometryPath = `${basePath}-geometry.${imageExtension(generatedImage.mimeType)}`;
+  const { error: geometryError } = await supabase.storage
+    .from(DRAWING_BUCKET)
+    .upload(geometryPath, Buffer.from(generatedImage.dataBase64, "base64"), {
+      contentType: generatedImage.mimeType,
+      cacheControl: "3600",
+      upsert: false
+    });
+  if (geometryError) throw new Error("Could not preserve generated drawing geometry for review.");
+  try {
+    generatedImage.views = await prepareDrawingViews(generatedImage);
+  } catch (error) {
+    error.diagnosticGeometryPath = geometryPath;
+    throw error;
+  }
+  const dimensions = drawingDimensions(item);
   const draftPath = `${basePath}-draft.png`;
   const sourceSummary = references.map((reference) => ({
     storage_bucket: reference.bucket || "",
@@ -577,6 +591,7 @@ export async function generateTechnicalDrawingForItem({ supabase, job, result, i
     formal_storage_path: "",
     source_images: sourceSummary,
     source_count: references.length,
+    geometry_storage_path: geometryPath,
     dimensions_source:
       item.dimension_revision?.confirmed_text === item.dimensions_text ? "user_confirmed_revision" : "client_ffe",
     dimension_annotations: { ...dimensions, method: "source_values_svg_overlay", layout: "three_isolated_views_v1" },

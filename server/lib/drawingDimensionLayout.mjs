@@ -1,4 +1,5 @@
 import sharp from "sharp";
+const layoutError = (message) => Object.assign(new Error(message), { code: "DRAWING_LAYOUT_REVIEW" });
 
 // The generator supplies unlabelled views in three isolated slots. White gutters
 // are verified before cropping: a misplaced view must not receive misleading arrows.
@@ -17,7 +18,7 @@ export async function prepareDrawingViews(generatedImage) {
     return n;
   };
   if (count(0, 325, 1200, 350) > 12 || count(588, 350, 612, 675) > 12) {
-    throw new Error("Drawing layout needs review: generated views overlap the required white gutters.");
+    throw layoutError("Drawing layout needs review: generated views overlap the required white gutters.");
   }
   const regions = { top: [0, 0, 1200, 325], front: [0, 350, 588, 675], side: [612, 350, 1200, 675] };
   const views = {};
@@ -45,7 +46,7 @@ export async function prepareDrawingViews(generatedImage) {
       top <= y0 + 2 ||
       bottom >= y1 - 3
     ) {
-      throw new Error(`Drawing layout needs review: ${name} view is missing or clipped.`);
+      throw layoutError(`Drawing layout needs review: ${name} view is missing or clipped.`);
     }
     // Crop the full-resolution source using the measured ink bounds.
     const meta = await sharp(input).metadata();

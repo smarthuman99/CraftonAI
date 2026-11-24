@@ -46,9 +46,15 @@ async function saveResult(jobId, result, expectedVersion) {
   const { data, error } = await supabase
     .from("intake_jobs")
     .update({ result_json: result, updated_at: new Date().toISOString() })
-    .eq("id", jobId).eq("updated_at", expectedVersion).select("updated_at").maybeSingle();
+    .eq("id", jobId)
+    .eq("updated_at", expectedVersion)
+    .select("updated_at")
+    .maybeSingle();
   if (error) throw error;
-  if (!data) throw Object.assign(new Error("The furniture specification changed during drawing generation."), { code: "EDIT_CONFLICT" });
+  if (!data)
+    throw Object.assign(new Error("The furniture specification changed during drawing generation."), {
+      code: "EDIT_CONFLICT"
+    });
   return data.updated_at;
 }
 
@@ -107,7 +113,12 @@ async function processPendingItem({ job, item, index }) {
           ? "provider_quota_exceeded"
           : error?.name === "AbortError"
             ? "generation_timeout"
-            : "generation_failed",
+            : error?.code === "DRAWING_LAYOUT_REVIEW"
+              ? "drawing_layout_review"
+              : "generation_failed",
+        provider_http_status: Number(error?.httpStatus) || null,
+        diagnostic_geometry_path: error.diagnosticGeometryPath || null,
+        layout_review_reason: error?.code === "DRAWING_LAYOUT_REVIEW" ? error.message : null,
         retry_after: retryAfter,
         updated_at: new Date().toISOString()
       }
