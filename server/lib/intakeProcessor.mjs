@@ -371,7 +371,7 @@ async function parseWithDeepSeek({ job, file, sourceText }) {
     "Write summaries and client questions in plain service language about files, furniture and project details. Do not mention AI, model providers, workers or internal processing technology. Preserve all source product names, identifiers and specifications exactly.",
     "Return strict JSON only. Extract a customer requirements table for Cho to review.",
     "Use conservative assumptions. Do not invent production-critical dimensions, materials, prices, standards, or delivery dates.",
-    "Preserve every stated Width, Depth, and Height exactly. Combine them into dimensions_text as W x D x H with the source unit.",
+    "Preserve every stated Width, Depth, and Height exactly. Combine them into dimensions_text as W x D x H with the source unit. Also preserve explicitly stated seat depth (SD), seat height (SH), arm height (AH), and diameter with their labels and units. Never infer missing dimensions from a photo or substitute seat depth for seat width.",
     "When the extracted PDF text contains page markers, keep source_page so each furniture row can be linked to its page image.",
     "For spreadsheets, copy the SOURCE ROW ID to source_row_id and the printed furniture code to item_ref. source_page is the 1-based worksheet index, never an image ID. Put EMBEDDED IMAGE N in image_ref only when it belongs to the same row; otherwise image_ref=0. Preserve every furniture row, including repeated product names in different rooms.",
     "If information is missing, leave the field as 'To confirm' and add a focused missing question.",
@@ -1271,7 +1271,11 @@ function intakeResultSchema({ includeVision = false } = {}) {
     material_en: { type: "string" },
     original_unit_price: { type: "number", minimum: 0 },
     unit_price: { type: "number", minimum: 0 },
-    dimensions_text: { type: "string", description: "Exact stated W x D x H and unit, otherwise To confirm." },
+    dimensions_text: {
+      type: "string",
+      description:
+        "Exact stated W x D x H and unit; retain explicitly stated SD (seat depth), SH (seat height), AH (arm height), or diameter with labels. Never infer missing dimensions; otherwise To confirm."
+    },
     usage_location: { type: "string" },
     source_page: { type: "integer", minimum: 0 },
     source_row_id: { type: "string", description: "Exact SOURCE ROW ID for spreadsheets; empty for other sources." },
