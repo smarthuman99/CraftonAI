@@ -41,6 +41,9 @@ export function drawingDimensions(item = {}) {
         ? item.dimensions.trim()
         : "";
   const sourceText = text;
+  const notes = [],
+    missing = [];
+  let pieceCount;
   const add = (key, value, unit = "mm") => {
     const n = round(Number(value) * units[unit.toLowerCase()]);
     if (!(n > 0 && n <= 100000)) {
@@ -78,6 +81,44 @@ export function drawingDimensions(item = {}) {
       for (const m of text.matchAll(pattern)) add(labels[m[1].toLowerCase()], m[2], m[3] || sharedUnit);
       // Native schedules use W x D x H. Do not interpret unlabeled pairs or extra numbers.
       if (!values.width && !values.depth && !values.height && !values.length && !values.diameter) {
+        const pieces = text.match(
+          /^(\d+)\s+pieces?\s+of\s+(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)(?:\s*mm)?\s*$/i
+        );
+        const sections = text.match(
+          /^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s+(\d+)\s+sections?\s+(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)(?:\s*mm)?\s*$/i
+        );
+        const incomplete = text.match(/^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*x\s*(?:TBC|To confirm)?\s*$/i);
+        const upperSection = text.match(
+          /^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s+top\s+section\s+(\d+(?:\.\d+)?)\s*$/i
+        );
+        if (pieces && Number(pieces[1]) > 0 && Number(pieces[1]) <= 20) {
+          pieceCount = Number(pieces[1]);
+          ["width", "depth", "height"].forEach((key, i) => add(key, pieces[i + 2]));
+          notes.push(`${pieceCount} PIECES · DIMENSIONS PER PIECE`);
+        } else if (sections) {
+          if (
+            Math.abs(Number(sections[1]) - Number(sections[4]) * Number(sections[5])) > 0.1 ||
+            Number(sections[2]) !== Number(sections[6]) ||
+            Number(sections[3]) !== Number(sections[7])
+          )
+            issues.push("conflicting_sections");
+          else {
+            ["width", "depth", "height"].forEach((key, i) => add(key, sections[i + 1]));
+            notes.push(`${sections[4]} SECTIONS · EACH W ${sections[5]} × D ${sections[6]} × H ${sections[7]} mm`);
+          }
+        } else if (incomplete) {
+          add("width", incomplete[1]);
+          add("depth", incomplete[2]);
+          missing.push("height");
+          notes.push("OVERALL HEIGHT TO CONFIRM");
+        } else if (upperSection) {
+          add("width", upperSection[1]);
+          add("depth", upperSection[2]);
+          missing.push("height");
+          notes.push(
+            `SOURCE H ${upperSection[3]} mm / TOP SECTION ${upperSection[4]} mm · HEIGHT ALLOCATION TO CONFIRM`
+          );
+        }
         const triplet = text.match(
           new RegExp(
             `^\\s*(${numberPattern})\\s*x\\s*(${numberPattern})\\s*x\\s*(${numberPattern})\\s*(${unitPattern})?\\s*(?=$|[;,])`,
@@ -120,7 +161,15 @@ export function drawingDimensions(item = {}) {
   }
   // A conflict holds the whole annotation set rather than mixing contradictory dimensions.
   if (issues.length) return { values: {}, sourceText, issues, unit: "mm" };
-  return { values, sourceText, issues, unit: "mm" };
+  return {
+    values,
+    sourceText,
+    issues,
+    unit: "mm",
+    ...(notes.length ? { notes } : {}),
+    ...(missing.length ? { missing } : {}),
+    ...(pieceCount ? { pieceCount, scope: "per_piece" } : {})
+  };
 }
 
 export function dimensionSummary(dimensions) {
@@ -143,5 +192,12 @@ export function dimensionSummary(dimensions) {
     .filter(([, n]) => n)
     .map(([label, n]) => `${label} ${n}`)
     .join(" · ");
-  return [overall || "TO CONFIRM", details && `${details} mm`].filter(Boolean);
+  const secondary = [
+    details && `${details} mm`,
+    dimensions.missing?.includes("height") && "H TO CONFIRM",
+    dimensions.scope === "per_piece" && "PER PIECE"
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return [overall || "TO CONFIRM", secondary].filter(Boolean);
 }

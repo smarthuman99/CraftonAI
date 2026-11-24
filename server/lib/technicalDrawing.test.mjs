@@ -111,6 +111,29 @@ test("holds ambiguous, contradictory and physically invalid dimensions instead o
   assert.deepEqual(drawingDimensions({ dimensions_text: "600 x 400" }).values, {});
 });
 
+test("keeps source section sizes and per-piece sizes distinct from overall dimensions", () => {
+  const sofa = drawingDimensions({ dimensions_text: "4499 x 942 x 762 2 sections 2249.5 x 942 x762" });
+  assert.deepEqual(sofa.values, { width: 4499, depth: 942, height: 762 });
+  assert.match(sofa.notes[0], /EACH W 2249.5/);
+  assert.deepEqual(drawingDimensions({ dimensions_text: "4400 x 942 x 762 2 sections 2249.5 x 942 x762" }).values, {});
+  const desk = drawingDimensions({ dimensions_text: "2 pieces of 1500 x 1100 x 750" });
+  assert.deepEqual(desk.values, { width: 1500, depth: 1100, height: 750 });
+  assert.equal(desk.pieceCount, 2);
+  assert.equal(desk.scope, "per_piece");
+});
+
+test("does not fill missing heights or add an ambiguous top-section number to the height", () => {
+  const seat = drawingDimensions({ dimensions_text: "1300 x 650 x" });
+  assert.deepEqual(seat.values, { width: 1300, depth: 650 });
+  assert.deepEqual(seat.missing, ["height"]);
+  assert.ok(dimensionSummary(seat).includes("H TO CONFIRM"));
+  const bar = drawingDimensions({ dimensions_text: "1501 x 600 x 900 top section 600" });
+  assert.deepEqual(bar.values, { width: 1501, depth: 600 });
+  assert.deepEqual(bar.missing, ["height"]);
+  assert.match(bar.notes[0], /H 900 mm/);
+  assert.match(bar.notes[0], /TOP SECTION 600 mm/);
+});
+
 async function fixtureViews(extra = "") {
   const buffer = await sharp(
     Buffer.from(
@@ -178,6 +201,20 @@ test("removes model-added captions and a shared baseline and corrects a reversed
   assert.equal(views.front.mirrored, false);
   assert.ok(views.top.sourceBox.top + views.top.height < 300, "caption must not affect object bounds");
   assert.ok(views.front.sourceBox.top + views.front.height < 640, "shared floor and captions must not join the views");
+});
+
+test("retains thin screen and mirror projections without discarding them as captions", async () => {
+  const bytes = await sharp(
+    Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675"><rect width="1200" height="675" fill="white"/><g fill="none" stroke="black" stroke-width="2"><rect x="400" y="100" width="350" height="20"/><rect x="200" y="300" width="350" height="300"/><rect x="900" y="300" width="20" height="300"/></g></svg>'
+    )
+  )
+    .png()
+    .toBuffer();
+  const views = await prepareDrawingViews({ mimeType: "image/png", dataBase64: bytes.toString("base64") });
+  assert.equal(Object.keys(views).length, 3);
+  assert.ok(views.side.width < 30);
+  assert.ok(views.top.height < 30);
 });
 
 test("generation stores an immutable annotated revision while retaining the previous drawing", async () => {

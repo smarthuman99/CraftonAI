@@ -56,7 +56,10 @@ export async function prepareDrawingViews(generatedImage, dimensions = { values:
           queue[tail++] = index;
         }
     }
-    if (tail >= 100 && right - left >= 35 && bottom - top >= 28) components.push({ left, right, top, bottom });
+    const w = right - left,
+      h = bottom - top;
+    if (tail >= 100 && ((w >= 35 && h >= 28) || (Math.max(w, h) >= 120 && Math.min(w, h) >= 3)))
+      components.push({ left, right, top, bottom });
   }
   // Disconnected upholstery outlines can belong to the same view; their bounds
   // overlap. Small glyphs remain excluded rather than being included in the crop.
@@ -84,7 +87,7 @@ export async function prepareDrawingViews(generatedImage, dimensions = { values:
   const [topView, ...lower] = components;
   lower.sort((a, b) => a.left - b.left);
   if (
-    topView.bottom >= Math.min(...lower.map((b) => b.top)) ||
+    (topView.top + topView.bottom) / 2 >= Math.min(...lower.map((b) => (b.top + b.bottom) / 2)) ||
     lower[0].right >= lower[1].left ||
     Math.abs(lower[0].bottom - lower[1].bottom) > height * 0.15
   )
@@ -149,19 +152,23 @@ function horizontal(x1, x2, objectY, y, label, key) {
 }
 function vertical(y1, y2, objectX, x, label, key) {
   if (!(y2 > y1)) return "";
-  return `<g data-dimension="${key}">${line(objectX, y1, x + (x > objectX ? 10 : -10), y1)}${line(objectX, y2, x + (x > objectX ? 10 : -10), y2)}${line(x, y1, x, y2, 'marker-start="url(#dim-arrow)" marker-end="url(#dim-arrow)"')}<text transform="translate(${n(x - 11)} ${n((y1 + y2) / 2)}) rotate(-90)">${label} mm</text></g>`;
+  return `<g data-dimension="${key}">${line(objectX, y1, x + (x > objectX ? 10 : -10), y1)}${line(objectX, y2, x + (x > objectX ? 10 : -10), y2)}${line(x, y1, x, y2, 'marker-start="url(#dim-arrow)" marker-end="url(#dim-arrow)"')}<text transform="translate(${n(x - 11)} ${n((y1 + y2) / 2)}) rotate(-90)">${label}${/TO CONFIRM/.test(String(label)) ? "" : " mm"}</text></g>`;
 }
 
 export function dimensionedViewsSvg(views, dimensions) {
   const v = dimensions.values;
+  const pieceCount = dimensions.scope === "per_piece" ? dimensions.pieceCount : 1;
+  const displayWidth = v.width * pieceCount;
   const scale =
-    v.width && v.depth && v.height ? Math.min(420 / v.width, 360 / v.depth, 285 / v.height, 270 / v.depth) : null;
+    v.width && v.depth && v.height ? Math.min(420 / displayWidth, 360 / v.depth, 285 / v.height, 270 / v.depth) : null;
   const defs = `<defs><marker id="dim-arrow" viewBox="0 0 10 8" refX="10" refY="4" markerWidth="9" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M10 4L0 0L0 8Z" fill="#211f1b"/></marker></defs>`;
   const boxes = {};
   let svg = defs;
+  if (dimensions.notes?.length)
+    svg += `<text x="85" y="180" font-family="Arial,sans-serif" font-size="18" fill="#73695f">${dimensions.notes.join(" · ").replaceAll("&", "&amp;").replaceAll("<", "&lt;")}</text>`;
   for (const [name, cx, baseline, a, b, maxW, maxH, label] of [
-    ["top", 710, 505, v.width, v.depth, 500, 270, "PLAN / TOP"],
-    ["front", 410, 912, v.width, v.height, 420, 285, "FRONT / ELEVATION"],
+    ["top", 710, 505, displayWidth, v.depth, 500, 270, "PLAN / TOP"],
+    ["front", 410, 912, displayWidth, v.height, 420, 285, "FRONT / ELEVATION"],
     ["side", 1070, 912, v.depth, v.height, 360, 285, "RIGHT SIDE / SECTION"]
   ]) {
     const view = views[name];
@@ -179,7 +186,26 @@ export function dimensionedViewsSvg(views, dimensions) {
     s = boxes.side;
   svg +=
     '<g fill="none" stroke="#211f1b" stroke-width="1.5" class="dimension-lines"><style>.dimension-lines text{fill:#211f1b;stroke:#fff;stroke-width:5px;paint-order:stroke;stroke-linejoin:round;font:22px Arial,sans-serif;text-anchor:middle}</style>';
-  if (v.width)
+  if (v.width && pieceCount > 1) {
+    for (let i = 0; i < pieceCount; i++)
+      svg +=
+        horizontal(
+          t.x + (t.w * i) / pieceCount,
+          t.x + (t.w * (i + 1)) / pieceCount,
+          t.y - 4,
+          t.y - 32,
+          v.width,
+          `top-piece-${i + 1}-width`
+        ) +
+        horizontal(
+          f.x + (f.w * i) / pieceCount,
+          f.x + (f.w * (i + 1)) / pieceCount,
+          f.bottom + 4,
+          f.bottom + 33,
+          v.width,
+          `front-piece-${i + 1}-width`
+        );
+  } else if (v.width)
     svg +=
       horizontal(t.x, t.right, t.y - 4, t.y - 32, v.diameter ? `Ø ${v.diameter}` : v.width, "top-width") +
       horizontal(f.x, f.right, f.bottom + 4, f.bottom + 33, v.width, "front-width");
@@ -191,6 +217,10 @@ export function dimensionedViewsSvg(views, dimensions) {
     svg +=
       vertical(f.y, f.bottom, f.x - 4, f.x - 42, v.height, "front-height") +
       vertical(s.y, s.bottom, s.x - 4, s.x - 42, v.height, "side-height");
+  else if (dimensions.missing?.includes("height"))
+    svg +=
+      vertical(f.y, f.bottom, f.x - 4, f.x - 42, "H TO CONFIRM", "front-height-pending") +
+      vertical(s.y, s.bottom, s.x - 4, s.x - 42, "H TO CONFIRM", "side-height-pending");
   if (v.seatHeight && v.height) {
     svg += vertical(
       f.bottom - (f.h * v.seatHeight) / v.height,
